@@ -1798,25 +1798,29 @@ function Sidebar({
   const [expanded, setExpanded] = useState(() => new Set<string>());
   const [folderStates, setFolderStates] = useState<Record<string, FolderLoadState>>({});
 
-  const loadFolders = useCallback((accountId: string) => {
-    setFolderStates((current) => ({ ...current, [accountId]: { status: 'loading' } }));
-    void window.emzero.folders
-      .list(accountId)
-      .then((result) => {
-        setFolderStates((current) => ({
-          ...current,
-          [accountId]: result.ok
-            ? { status: 'loaded', folders: result.folders }
-            : { status: 'error', message: result.message ?? 'Could not load folders.' },
-        }));
-      })
-      .catch(() => {
-        setFolderStates((current) => ({
-          ...current,
-          [accountId]: { status: 'error', message: 'Could not load folders.' },
-        }));
-      });
-  }, []);
+  const loadFolders = useCallback(
+    (accountId: string, onLoaded?: (folders: MailFolderSummary[]) => void) => {
+      setFolderStates((current) => ({ ...current, [accountId]: { status: 'loading' } }));
+      void window.emzero.folders
+        .list(accountId)
+        .then((result) => {
+          setFolderStates((current) => ({
+            ...current,
+            [accountId]: result.ok
+              ? { status: 'loaded', folders: result.folders }
+              : { status: 'error', message: result.message ?? 'Could not load folders.' },
+          }));
+          if (result.ok) onLoaded?.(result.folders);
+        })
+        .catch(() => {
+          setFolderStates((current) => ({
+            ...current,
+            [accountId]: { status: 'error', message: 'Could not load folders.' },
+          }));
+        });
+    },
+    [],
+  );
 
   useEffect(() => {
     let active = true;
@@ -1847,15 +1851,23 @@ function Sidebar({
     };
   }, [accounts, syncRevision]);
 
-  const toggleAccount = (accountId: string) => {
-    const isOpening = !expanded.has(accountId);
+  const toggleAccount = (account: AccountSummary) => {
+    const isOpening = !expanded.has(account.id);
     setExpanded((current) => {
       const next = new Set(current);
-      if (next.has(accountId)) next.delete(accountId);
-      else next.add(accountId);
+      if (next.has(account.id)) next.delete(account.id);
+      else next.add(account.id);
       return next;
     });
-    if (isOpening && !folderStates[accountId]) loadFolders(accountId);
+    if (isOpening) {
+      const selectInbox = (folders: MailFolderSummary[]) => {
+        const inbox = findInboxFolder(folders);
+        if (inbox) onSelect({ kind: 'folder', account, folder: inbox });
+      };
+      const folderState = folderStates[account.id];
+      if (folderState?.status === 'loaded') selectInbox(folderState.folders);
+      else loadFolders(account.id, selectInbox);
+    }
   };
 
   return (
@@ -1911,7 +1923,7 @@ function Sidebar({
                     variant="ghost"
                     className="h-auto w-full justify-start gap-2 py-2"
                     aria-expanded={isExpanded}
-                    onClick={() => toggleAccount(account.id)}
+                    onClick={() => toggleAccount(account)}
                   >
                     {isExpanded ? (
                       <ChevronDown className="size-3.5 text-muted-foreground" />
