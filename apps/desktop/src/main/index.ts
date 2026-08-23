@@ -4,6 +4,17 @@ import { registerAccountHandlers } from './accounts.js';
 
 let mainWindow: BrowserWindow | null = null;
 
+const linuxDesktop = process.env.XDG_CURRENT_DESKTOP?.toLowerCase().split(':') ?? [];
+if (
+  process.platform === 'linux' &&
+  linuxDesktop.includes('hyprland') &&
+  !app.commandLine.hasSwitch('password-store')
+) {
+  // Chromium does not auto-detect a password store for Hyprland. Omarchy runs
+  // the freedesktop Secret Service through GNOME Keyring, so select it explicitly.
+  app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
+}
+
 const createWindow = (): void => {
   mainWindow = new BrowserWindow({
     width: 1280,

@@ -137,7 +137,8 @@ export function registerAccountHandlers(): void {
     if (!connectionResult.ok) return connectionResult;
     const insecureLinuxBackend =
       process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text';
-    if (!safeStorage.isEncryptionAvailable() || insecureLinuxBackend) {
+    const asyncEncryptionAvailable = await safeStorage.isAsyncEncryptionAvailable();
+    if (!safeStorage.isEncryptionAvailable() || !asyncEncryptionAvailable || insecureLinuxBackend) {
       return {
         ok: false,
         message:
@@ -158,7 +159,7 @@ export function registerAccountHandlers(): void {
       imap: { ...draft.imap, host: draft.imap.host.trim() },
       smtp: { ...draft.smtp, host: draft.smtp.host.trim() },
       createdAt: new Date().toISOString(),
-      encryptedPassword: safeStorage.encryptString(draft.password).toString('base64'),
+      encryptedPassword: (await safeStorage.encryptStringAsync(draft.password)).toString('base64'),
     };
 
     await writeAccounts([...accounts, account]);
