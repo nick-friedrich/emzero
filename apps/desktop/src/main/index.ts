@@ -31,6 +31,8 @@ const createWindow = (): void => {
     },
   });
 
+  if (process.platform === 'linux') mainWindow.setMenu(null);
+
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.once('closed', () => {
     mainWindow = null;
