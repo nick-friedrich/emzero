@@ -12,6 +12,7 @@ import {
   LoaderCircle,
   LockKeyhole,
   Mail,
+  MailOpen,
   Menu,
   Paperclip,
   Palette,
@@ -22,6 +23,7 @@ import {
   Server,
   Star,
   Trash2,
+  Type,
   XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -33,7 +35,15 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
-import { messageThemeColors, themes, useTheme, type Theme } from '@/theme';
+import {
+  interfaceFonts,
+  messageThemeColors,
+  themeColorSchemes,
+  themes,
+  useTheme,
+  type InterfaceFont,
+  type Theme,
+} from '@/theme';
 import type {
   AccountDraft,
   AccountSummary,
@@ -465,7 +475,7 @@ function htmlDocument(body: string, showQuoted: boolean, theme: Theme): string {
     ? ''
     : 'blockquote,.gmail_quote,.yahoo_quoted,.moz-cite-prefix,#divRplyFwdMsg{display:none!important}';
   const colors = messageThemeColors[theme];
-  const colorScheme = theme === 'light' ? 'light' : 'dark';
+  const colorScheme = themeColorSchemes[theme];
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="${colorScheme}"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline';"><style>html{color-scheme:${colorScheme};background:${colors.background}}body{box-sizing:border-box;margin:0;padding:1.5rem;color:${colors.foreground};background:${colors.background};font:14px/1.65 Inter,ui-sans-serif,system-ui,sans-serif;overflow-wrap:anywhere}a{color:inherit}img{max-width:100%;height:auto}table{max-width:100%}${quotedStyle}</style></head><body>${body}</body></html>`;
 }
 
@@ -524,6 +534,88 @@ type MessageDetailLoadState =
   | { status: 'loading' }
   | { status: 'loaded'; message: MailMessageDetail }
   | { status: 'error'; message: string };
+
+type ConversationAction = 'read' | 'unread' | 'delete';
+
+async function performConversationAction(
+  accountId: string,
+  folderPath: string,
+  conversation: MailConversation,
+  action: ConversationAction,
+): Promise<string | null> {
+  const uids = conversation.messages
+    .filter((message) => message.folderPath === folderPath)
+    .map((message) => message.uid);
+  const result =
+    action === 'delete'
+      ? await window.emzero.messages.delete(accountId, folderPath, uids)
+      : await window.emzero.messages.setUnread(accountId, folderPath, uids, action === 'unread');
+  return result.ok ? null : result.message ?? 'The action could not be completed.';
+}
+
+function conversationWithUnread(
+  conversation: MailConversation,
+  folderPath: string,
+  unread: boolean,
+): MailConversation {
+  return {
+    ...conversation,
+    messages: conversation.messages.map((message) =>
+      message.folderPath === folderPath ? { ...message, unread } : message,
+    ),
+  };
+}
+
+function ConversationActions({
+  unread,
+  busy,
+  confirmPermanentDelete,
+  onSetUnread,
+  onDelete,
+}: {
+  unread: boolean;
+  busy: boolean;
+  confirmPermanentDelete: boolean;
+  onSetUnread: (unread: boolean) => void;
+  onDelete: () => void;
+}) {
+  const unreadLabel = unread ? 'Mark as read' : 'Mark as unread';
+  const deleteConversation = () => {
+    if (
+      confirmPermanentDelete &&
+      !window.confirm(
+        'Permanently delete this conversation? This action cannot be undone.',
+      )
+    ) {
+      return;
+    }
+    onDelete();
+  };
+  return (
+    <div className="flex shrink-0 items-center gap-1" aria-label="Conversation actions">
+      <Button
+        variant="ghost"
+        className="size-8 px-0"
+        aria-label={unreadLabel}
+        title={unreadLabel}
+        disabled={busy}
+        onClick={() => onSetUnread(!unread)}
+      >
+        {unread ? <MailOpen className="size-4" /> : <Mail className="size-4" />}
+      </Button>
+      <Button
+        variant="ghost"
+        className="size-8 px-0 text-danger hover:text-danger"
+        aria-label="Delete conversation"
+        title="Delete conversation"
+        disabled={busy}
+        onClick={deleteConversation}
+      >
+        {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+      </Button>
+    </div>
+  );
+}
 
 function MessageBody({ message }: { message: MailMessageDetail }) {
   const { theme } = useTheme();
@@ -705,11 +797,22 @@ function ConversationReader({
   selection,
   conversation,
   onBack,
+  busy,
+  actionError,
+  onSetUnread,
+  onDelete,
 }: {
   selection: FolderSelection;
   conversation: MailConversation;
   onBack: () => void;
+  busy: boolean;
+  actionError: string | null;
+  onSetUnread: (unread: boolean) => void;
+  onDelete: () => void;
 }) {
+  const unread = conversation.messages.some(
+    (message) => message.folderPath === selection.folder.path && message.unread,
+  );
   return (
     <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
       <header className="flex items-center gap-3 border-b border-border bg-card py-3 pl-16 pr-4 lg:px-4">
@@ -720,7 +823,21 @@ function ConversationReader({
         <span className="truncate text-sm text-muted-foreground">
           {selection.account.name} / {displayFolderName(selection.folder)}
         </span>
+        <div className="ml-auto">
+          <ConversationActions
+            unread={unread}
+            busy={busy}
+            confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
+            onSetUnread={onSetUnread}
+            onDelete={onDelete}
+          />
+        </div>
       </header>
+      {actionError && (
+        <div className="border-b border-danger/20 bg-danger/8 px-4 py-3 text-xs text-danger">
+          {actionError}
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-7 lg:px-10">
         <div className="mx-auto max-w-4xl">
           <div className="mb-6 flex items-end justify-between gap-4">
@@ -752,6 +869,8 @@ function MessageList({ selection }: { selection: FolderSelection }) {
   const [state, setState] = useState<MessageLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedConversation, setSelectedConversation] = useState<MailConversation | null>(null);
+  const [busyConversation, setBusyConversation] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -830,6 +949,71 @@ function MessageList({ selection }: { selection: FolderSelection }) {
       ? groupMessagesWithRelated(state.messages, state.relatedMessages)
       : [];
 
+  const runAction = async (conversation: MailConversation, action: ConversationAction) => {
+    setBusyConversation(conversation.id);
+    setActionError(null);
+    try {
+      const error = await performConversationAction(
+        selection.account.id,
+        selection.folder.path,
+        conversation,
+        action,
+      );
+      if (error) {
+        setActionError(error);
+        return;
+      }
+      const keys = new Set(
+        conversation.messages
+          .filter((message) => message.folderPath === selection.folder.path)
+          .map((message) => `${message.folderPath}:${message.uid}`),
+      );
+      if (action === 'delete') {
+        setState((current) =>
+          current.status === 'loaded'
+            ? {
+                ...current,
+                messages: current.messages.filter(
+                  (message) => !keys.has(`${message.folderPath}:${message.uid}`),
+                ),
+                relatedMessages: current.relatedMessages.filter(
+                  (message) => !keys.has(`${message.folderPath}:${message.uid}`),
+                ),
+                total: Math.max(
+                  0,
+                  current.total -
+                    current.messages.filter((message) =>
+                      keys.has(`${message.folderPath}:${message.uid}`),
+                    ).length,
+                ),
+              }
+            : current,
+        );
+        setSelectedConversation(null);
+      } else {
+        const unread = action === 'unread';
+        const update = (message: MailMessageSummary) =>
+          keys.has(`${message.folderPath}:${message.uid}`) ? { ...message, unread } : message;
+        setState((current) =>
+          current.status === 'loaded'
+            ? {
+                ...current,
+                messages: current.messages.map(update),
+                relatedMessages: current.relatedMessages.map(update),
+              }
+            : current,
+        );
+        setSelectedConversation((current) =>
+          current ? conversationWithUnread(current, selection.folder.path, unread) : current,
+        );
+      }
+    } catch {
+      setActionError('The action could not be completed.');
+    } finally {
+      setBusyConversation(null);
+    }
+  };
+
   if (selectedConversation) {
     return (
       <ConversationReader
@@ -837,6 +1021,12 @@ function MessageList({ selection }: { selection: FolderSelection }) {
         selection={selection}
         conversation={selectedConversation}
         onBack={() => setSelectedConversation(null)}
+        busy={busyConversation === selectedConversation.id}
+        actionError={actionError}
+        onSetUnread={(unread) =>
+          void runAction(selectedConversation, unread ? 'unread' : 'read')
+        }
+        onDelete={() => void runAction(selectedConversation, 'delete')}
       />
     );
   }
@@ -917,48 +1107,74 @@ function MessageList({ selection }: { selection: FolderSelection }) {
         </div>
       )}
 
+      {state.status === 'loaded' && actionError && (
+        <div className="border-b border-danger/20 bg-danger/8 px-4 py-3 text-xs text-danger lg:px-6">
+          {actionError}
+        </div>
+      )}
+
       {state.status === 'loaded' && state.messages.length > 0 && (
         <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Messages">
           {conversations.map((conversation) => {
             const latest = conversation.messages[0];
             const opponent = conversationOpponent(conversation.messages, selection.account);
             const date = latest.sentAt ?? latest.receivedAt;
-            const unread = conversation.messages.some((message) => message.unread);
+            const unread = conversation.messages.some(
+              (message) => message.folderPath === selection.folder.path && message.unread,
+            );
             const flagged = conversation.messages.some((message) => message.flagged);
             return (
-              <button
-                type="button"
+              <div
                 key={conversation.id}
-                className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-border px-4 py-3 text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6"
+                className="flex min-w-0 items-center border-b border-border hover:bg-accent/60"
                 role="listitem"
-                onClick={() => setSelectedConversation(conversation)}
               >
-                <div className="flex min-w-0 items-center gap-2">
-                  <span
-                    className={`size-1.5 shrink-0 rounded-full ${unread ? 'bg-primary' : 'bg-transparent'}`}
-                    aria-label={unread ? 'Contains unread messages' : 'Read'}
-                  />
-                  <span className={`truncate text-sm ${unread ? 'font-semibold' : ''}`}>
-                    {showRecipients ? `To: ${opponent}` : opponent}
-                  </span>
-                </div>
-                <p
-                  className={`col-span-2 col-start-1 row-start-2 min-w-0 truncate pl-3.5 text-sm lg:col-auto lg:row-auto lg:pl-0 ${unread ? 'font-semibold' : ''}`}
+                <button
+                  type="button"
+                  className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-left focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6"
+                  onClick={() => {
+                    setActionError(null);
+                    setSelectedConversation(conversation);
+                  }}
                 >
-                  {conversation.subject}
-                  {conversation.messages.length > 1 && (
-                    <span className="ml-2 font-normal text-muted-foreground">
-                      ({conversation.messages.length})
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className={`size-1.5 shrink-0 rounded-full ${unread ? 'bg-primary' : 'bg-transparent'}`}
+                      aria-label={unread ? 'Contains unread messages' : 'Read'}
+                    />
+                    <span className={`truncate text-sm ${unread ? 'font-semibold' : ''}`}>
+                      {showRecipients ? `To: ${opponent}` : opponent}
                     </span>
-                  )}
-                </p>
-                <div className="col-start-2 row-start-1 flex items-center gap-3 text-xs text-muted-foreground lg:col-auto lg:row-auto">
-                  {flagged && (
-                    <Star className="size-3.5 fill-primary text-primary" aria-label="Flagged" />
-                  )}
-                  <time dateTime={date ?? undefined}>{messageDate(date)}</time>
+                  </div>
+                  <p
+                    className={`col-span-2 col-start-1 row-start-2 min-w-0 truncate pl-3.5 text-sm lg:col-auto lg:row-auto lg:pl-0 ${unread ? 'font-semibold' : ''}`}
+                  >
+                    {conversation.subject}
+                    {conversation.messages.length > 1 && (
+                      <span className="ml-2 font-normal text-muted-foreground">
+                        ({conversation.messages.length})
+                      </span>
+                    )}
+                  </p>
+                  <div className="col-start-2 row-start-1 flex items-center gap-3 text-xs text-muted-foreground lg:col-auto lg:row-auto">
+                    {flagged && (
+                      <Star className="size-3.5 fill-primary text-primary" aria-label="Flagged" />
+                    )}
+                    <time dateTime={date ?? undefined}>{messageDate(date)}</time>
+                  </div>
+                </button>
+                <div className="pr-3 lg:pr-5">
+                  <ConversationActions
+                    unread={unread}
+                    busy={busyConversation === conversation.id}
+                    confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
+                    onSetUnread={(nextUnread) =>
+                      void runAction(conversation, nextUnread ? 'unread' : 'read')
+                    }
+                    onDelete={() => void runAction(conversation, 'delete')}
+                  />
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -978,6 +1194,8 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
   const [state, setState] = useState<UnifiedInboxLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedItem, setSelectedItem] = useState<UnifiedConversationItem | null>(null);
+  const [busyConversation, setBusyConversation] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -1087,6 +1305,77 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
     setRefreshKey((current) => current + 1);
   };
 
+  const itemKey = (item: UnifiedConversationItem) =>
+    `${item.selection.account.id}:${item.conversation.id}`;
+
+  const runAction = async (item: UnifiedConversationItem, action: ConversationAction) => {
+    const key = itemKey(item);
+    setBusyConversation(key);
+    setActionError(null);
+    try {
+      const error = await performConversationAction(
+        item.selection.account.id,
+        item.selection.folder.path,
+        item.conversation,
+        action,
+      );
+      if (error) {
+        setActionError(error);
+        return;
+      }
+      if (action === 'delete') {
+        setState((current) =>
+          current.status === 'loaded'
+            ? {
+                ...current,
+                items: current.items.filter((candidate) => itemKey(candidate) !== key),
+                loadedMessages: Math.max(
+                  0,
+                  current.loadedMessages -
+                    item.conversation.messages.filter(
+                      (message) => message.folderPath === item.selection.folder.path,
+                    ).length,
+                ),
+                totalMessages: Math.max(
+                  0,
+                  current.totalMessages -
+                    item.conversation.messages.filter(
+                      (message) => message.folderPath === item.selection.folder.path,
+                    ).length,
+                ),
+              }
+            : current,
+        );
+        setSelectedItem(null);
+      } else {
+        const unread = action === 'unread';
+        const updatedItem = {
+          ...item,
+          conversation: conversationWithUnread(
+            item.conversation,
+            item.selection.folder.path,
+            unread,
+          ),
+        };
+        setState((current) =>
+          current.status === 'loaded'
+            ? {
+                ...current,
+                items: current.items.map((candidate) =>
+                  itemKey(candidate) === key ? updatedItem : candidate,
+                ),
+              }
+            : current,
+        );
+        setSelectedItem((current) => (current && itemKey(current) === key ? updatedItem : current));
+      }
+    } catch {
+      setActionError('The action could not be completed.');
+    } finally {
+      setBusyConversation(null);
+    }
+  };
+
   if (selectedItem) {
     return (
       <ConversationReader
@@ -1094,6 +1383,12 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
         selection={selectedItem.selection}
         conversation={selectedItem.conversation}
         onBack={() => setSelectedItem(null)}
+        busy={busyConversation === itemKey(selectedItem)}
+        actionError={actionError}
+        onSetUnread={(unread) =>
+          void runAction(selectedItem, unread ? 'unread' : 'read')
+        }
+        onDelete={() => void runAction(selectedItem, 'delete')}
       />
     );
   }
@@ -1169,6 +1464,12 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
         </div>
       )}
 
+      {state.status === 'loaded' && actionError && (
+        <div className="border-b border-danger/20 bg-danger/8 px-4 py-3 text-xs text-danger lg:px-6">
+          {actionError}
+        </div>
+      )}
+
       {state.status === 'loaded' && state.items.length === 0 && (
         <div className="grid flex-1 place-items-center p-8 text-center">
           <div>
@@ -1200,16 +1501,21 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
             const latest = conversation.messages[0];
             const opponent = conversationOpponent(conversation.messages, selection.account);
             const date = latest.sentAt ?? latest.receivedAt;
-            const unread = conversation.messages.some((message) => message.unread);
+            const unread = conversation.messages.some(
+              (message) => message.folderPath === selection.folder.path && message.unread,
+            );
             const flagged = conversation.messages.some((message) => message.flagged);
             return (
-              <button
-                type="button"
+              <div
                 key={`${selection.account.id}:${conversation.id}`}
-                className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-border px-4 py-3 text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6"
+                className="flex min-w-0 items-center border-b border-border hover:bg-accent/60"
                 role="listitem"
-                onClick={() => setSelectedItem(item)}
               >
+                <button
+                  type="button"
+                  className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-left focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6"
+                  onClick={() => { setActionError(null); setSelectedItem(item); }}
+                >
                 <div className="flex min-w-0 items-center gap-2">
                   <span
                     className={`size-1.5 shrink-0 rounded-full ${unread ? 'bg-primary' : 'bg-transparent'}`}
@@ -1238,7 +1544,19 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
                   )}
                   <time dateTime={date ?? undefined}>{messageDate(date)}</time>
                 </div>
-              </button>
+                </button>
+                <div className="pr-3 lg:pr-5">
+                  <ConversationActions
+                    unread={unread}
+                    busy={busyConversation === itemKey(item)}
+                    confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
+                    onSetUnread={(nextUnread) =>
+                      void runAction(item, nextUnread ? 'unread' : 'read')
+                    }
+                    onDelete={() => void runAction(item, 'delete')}
+                  />
+                </div>
+              </div>
             );
           })}
         </div>
@@ -1264,7 +1582,7 @@ function Sidebar({
   onAdd: () => void;
   className?: string;
 }) {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, interfaceFont, setInterfaceFont } = useTheme();
   const [expanded, setExpanded] = useState(() => new Set<string>());
   const [folderStates, setFolderStates] = useState<Record<string, FolderLoadState>>({});
 
@@ -1341,7 +1659,7 @@ function Sidebar({
         </div>
         <div>
           <p className="font-semibold tracking-tight">Emzero</p>
-          <p className="text-xs text-muted-foreground">Private mail</p>
+          <p className="text-xs text-muted-foreground">Mail</p>
         </div>
       </div>
 
@@ -1459,7 +1777,7 @@ function Sidebar({
         <label className="relative mb-2 block" aria-label="Color theme">
           <Palette className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
           <select
-            className="theme-select"
+            className="preference-select"
             value={theme}
             title="Color theme"
             onChange={(event) => setTheme(event.target.value as Theme)}
@@ -1467,6 +1785,22 @@ function Sidebar({
             {themes.map(({ value, label }) => (
               <option key={value} value={value}>
                 {label} theme
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-2.5 size-4 text-muted-foreground" />
+        </label>
+        <label className="relative mb-2 block" aria-label="Interface font">
+          <Type className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+          <select
+            className="preference-select"
+            value={interfaceFont}
+            title="Interface font"
+            onChange={(event) => setInterfaceFont(event.target.value as InterfaceFont)}
+          >
+            {interfaceFonts.map(({ value, label }) => (
+              <option key={value} value={value}>
+                {label}
               </option>
             ))}
           </select>

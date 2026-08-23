@@ -156,4 +156,23 @@ describe('MailCache', () => {
 
     expect(cache.getMessageBody('account-1', 'INBOX', 2)).toEqual(detail);
   });
+
+  it('updates unread state and removes messages from the cache', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox]);
+    cache.replaceRecentMessages('account-1', 'INBOX', [message(1), message(2)], 2);
+
+    cache.setMessagesUnread('account-1', 'INBOX', [1], true);
+    expect(cache.listMessages('account-1', 'INBOX').messages.map(({ uid, unread }) => ({ uid, unread }))).toEqual([
+      { uid: 2, unread: true },
+      { uid: 1, unread: true },
+    ]);
+
+    cache.deleteMessages('account-1', 'INBOX', [2]);
+    expect(cache.listMessages('account-1', 'INBOX')).toMatchObject({
+      messages: [{ uid: 1, unread: true }],
+      total: 1,
+    });
+    expect(cache.listFolders('account-1')[0].unreadCount).toBe(1);
+  });
 });

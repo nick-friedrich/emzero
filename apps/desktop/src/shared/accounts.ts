@@ -123,6 +123,11 @@ export interface MessageDetailResult {
   message?: string;
 }
 
+export interface MessageOperationResult {
+  ok: boolean;
+  message?: string;
+}
+
 export interface AccountOperationResult {
   ok: boolean;
   message: string;
@@ -159,6 +164,8 @@ export const ACCOUNT_CHANNELS = {
   listFolders: 'folders:list',
   listMessages: 'messages:list',
   getMessage: 'messages:get',
+  setMessageUnread: 'messages:set-unread',
+  deleteMessages: 'messages:delete',
   syncStatus: 'sync:status',
   syncNow: 'sync:now',
   syncChanged: 'sync:changed',

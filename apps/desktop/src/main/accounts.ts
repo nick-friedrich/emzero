@@ -18,6 +18,7 @@ import {
   type MailSyncStatus,
   type MessageDetailResult,
   type MessageListResult,
+  type MessageOperationResult,
   validateAccountDraft,
 } from '../shared/accounts.js';
 import { discoverProvider, listProviders } from './provider-discovery.js';
@@ -495,6 +496,92 @@ async function getFolderMessage(
   }
 }
 
+function validUids(value: unknown): value is number[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((uid) => typeof uid === 'number' && Number.isInteger(uid) && uid > 0)
+  );
+}
+
+async function changeMessageUnread(
+  account: StoredAccount,
+  folderPath: string,
+  uids: number[],
+  unread: boolean,
+): Promise<MessageOperationResult> {
+  let password = '';
+  let imap: ImapFlow | null = null;
+  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
+  try {
+    password = await decryptPassword(account);
+    imap = new ImapFlow({
+      host: account.imap.host,
+      port: account.imap.port,
+      secure: account.imap.secure,
+      auth: { user: account.username, pass: password },
+      logger: false,
+      connectionTimeout: 12_000,
+      greetingTimeout: 12_000,
+      socketTimeout: 20_000,
+    });
+    await imap.connect();
+    lock = await imap.getMailboxLock(folderPath);
+    const changed = unread
+      ? await imap.messageFlagsRemove(uids, ['\\Seen'], { uid: true })
+      : await imap.messageFlagsAdd(uids, ['\\Seen'], { uid: true });
+    if (!changed) return { ok: false, message: 'The messages are no longer available.' };
+    mailCache().setMessagesUnread(account.id, folderPath, uids, unread);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: `Could not update messages: ${errorMessage(error, password)}` };
+  } finally {
+    lock?.release();
+    if (imap?.usable) await imap.logout().catch(() => imap?.close());
+    else imap?.close();
+  }
+}
+
+async function deleteFolderMessages(
+  account: StoredAccount,
+  folderPath: string,
+  uids: number[],
+): Promise<MessageOperationResult> {
+  let password = '';
+  let imap: ImapFlow | null = null;
+  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
+  try {
+    password = await decryptPassword(account);
+    imap = new ImapFlow({
+      host: account.imap.host,
+      port: account.imap.port,
+      secure: account.imap.secure,
+      auth: { user: account.username, pass: password },
+      logger: false,
+      connectionTimeout: 12_000,
+      greetingTimeout: 12_000,
+      socketTimeout: 20_000,
+    });
+    await imap.connect();
+    lock = await imap.getMailboxLock(folderPath);
+    const trash = mailCache()
+      .listFolders(account.id)
+      .find((folder) => folder.selectable && folder.specialUse === '\\Trash');
+    const deleted = trash && trash.path !== folderPath
+      ? await imap.messageMove(uids, trash.path, { uid: true })
+      : await imap.messageDelete(uids, { uid: true });
+    if (!deleted) return { ok: false, message: 'The messages are no longer available.' };
+    mailCache().deleteMessages(account.id, folderPath, uids);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: `Could not delete messages: ${errorMessage(error, password)}` };
+  } finally {
+    lock?.release();
+    if (imap?.usable) await imap.logout().catch(() => imap?.close());
+    else imap?.close();
+  }
+}
+
 function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
   const senderUrl = event.senderFrame?.url;
   if (!senderUrl) return false;
@@ -586,6 +673,32 @@ export function registerAccountHandlers(): void {
         return { ok: false, message: 'Account not found.' } satisfies MessageDetailResult;
       }
       return getFolderMessage(account, folderPath, uid);
+    },
+  );
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.setMessageUnread,
+    async (event, accountId: unknown, folderPath: unknown, uids: unknown, unread: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (typeof accountId !== 'string' || typeof folderPath !== 'string' || !folderPath || !validUids(uids) || typeof unread !== 'boolean') {
+        return { ok: false, message: 'Invalid messages.' } satisfies MessageOperationResult;
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return { ok: false, message: 'Account not found.' } satisfies MessageOperationResult;
+      return changeMessageUnread(account, folderPath, uids, unread);
+    },
+  );
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.deleteMessages,
+    async (event, accountId: unknown, folderPath: unknown, uids: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (typeof accountId !== 'string' || typeof folderPath !== 'string' || !folderPath || !validUids(uids)) {
+        return { ok: false, message: 'Invalid messages.' } satisfies MessageOperationResult;
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return { ok: false, message: 'Account not found.' } satisfies MessageOperationResult;
+      return deleteFolderMessages(account, folderPath, uids);
     },
   );
 

@@ -398,6 +398,65 @@ export class MailCache {
     ).map(({ uid }) => uid);
   }
 
+  setMessagesUnread(
+    accountId: string,
+    folderPath: string,
+    uids: number[],
+    unread: boolean,
+  ): void {
+    const updateMessages = this.#database.prepare(`
+      UPDATE messages SET unread = ?
+      WHERE account_id = ? AND folder_path = ? AND uid = ?
+    `);
+    const updateFolder = this.#database.prepare(`
+      UPDATE folders SET unread_count = (
+        SELECT COUNT(*) FROM messages
+        WHERE account_id = ? AND folder_path = ? AND unread = 1
+      )
+      WHERE account_id = ? AND path = ?
+    `);
+
+    this.#database.exec('BEGIN');
+    try {
+      for (const uid of uids) {
+        updateMessages.run(unread ? 1 : 0, accountId, folderPath, uid);
+      }
+      updateFolder.run(accountId, folderPath, accountId, folderPath);
+      this.#database.exec('COMMIT');
+    } catch (error) {
+      this.#database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  deleteMessages(accountId: string, folderPath: string, uids: number[]): void {
+    const remove = this.#database.prepare(`
+      DELETE FROM messages WHERE account_id = ? AND folder_path = ? AND uid = ?
+    `);
+    const updateFolder = this.#database.prepare(`
+      UPDATE folders
+      SET message_count = MAX(0, message_count - ?),
+          unread_count = (
+            SELECT COUNT(*) FROM messages
+            WHERE account_id = ? AND folder_path = ? AND unread = 1
+          )
+      WHERE account_id = ? AND path = ?
+    `);
+
+    this.#database.exec('BEGIN');
+    try {
+      let removed = 0;
+      for (const uid of uids) {
+        removed += Number(remove.run(accountId, folderPath, uid).changes);
+      }
+      updateFolder.run(removed, accountId, folderPath, accountId, folderPath);
+      this.#database.exec('COMMIT');
+    } catch (error) {
+      this.#database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   applyIncrementalSync(
     accountId: string,
     folderPath: string,

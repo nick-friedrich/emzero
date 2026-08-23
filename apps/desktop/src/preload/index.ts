@@ -7,6 +7,7 @@ import {
   type FolderListResult,
   type MessageListResult,
   type MessageDetailResult,
+  type MessageOperationResult,
   type MailProvider,
   type MailSyncStatus,
   type ProviderDiscoveryResult,
@@ -25,6 +26,17 @@ export interface EmzeroDesktopApi {
   messages: {
     list: (accountId: string, folderPath: string, refresh?: boolean) => Promise<MessageListResult>;
     get: (accountId: string, folderPath: string, uid: number) => Promise<MessageDetailResult>;
+    setUnread: (
+      accountId: string,
+      folderPath: string,
+      uids: number[],
+      unread: boolean,
+    ) => Promise<MessageOperationResult>;
+    delete: (
+      accountId: string,
+      folderPath: string,
+      uids: number[],
+    ) => Promise<MessageOperationResult>;
   };
   sync: {
     status: () => Promise<MailSyncStatus>;
@@ -53,6 +65,10 @@ contextBridge.exposeInMainWorld('emzero', {
       ipcRenderer.invoke(ACCOUNT_CHANNELS.listMessages, accountId, folderPath, refresh),
     get: (accountId, folderPath, uid) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.getMessage, accountId, folderPath, uid),
+    setUnread: (accountId, folderPath, uids, unread) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.setMessageUnread, accountId, folderPath, uids, unread),
+    delete: (accountId, folderPath, uids) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.deleteMessages, accountId, folderPath, uids),
   },
   sync: {
     status: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.syncStatus),

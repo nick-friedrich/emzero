@@ -1,3 +1,6 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource-variable/source-serif-4";
 @import "tailwindcss";
 
 @theme inline {
@@ -21,45 +24,55 @@
 
 :root {
   color-scheme: light;
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-  --background: oklch(0.985 0.004 85);
-  --foreground: oklch(0.2 0.01 70);
+  --font-interface: "Inter Variable", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-interface);
+  --background: oklch(0.985 0.008 250);
+  --foreground: oklch(0.22 0.03 255);
   --card: oklch(1 0 0);
-  --primary: oklch(0.27 0.04 160);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.94 0.008 85);
-  --secondary-foreground: oklch(0.25 0.01 70);
-  --muted-foreground: oklch(0.5 0.015 70);
-  --accent: oklch(0.94 0.008 85);
-  --accent-foreground: oklch(0.25 0.01 70);
-  --border: oklch(0.89 0.008 85);
-  --ring: oklch(0.55 0.08 160);
-  --sidebar: oklch(0.97 0.006 85);
+  --primary: oklch(0.52 0.18 255);
+  --primary-foreground: oklch(0.985 0.005 250);
+  --secondary: oklch(0.94 0.024 250);
+  --secondary-foreground: oklch(0.27 0.035 255);
+  --muted-foreground: oklch(0.5 0.035 255);
+  --accent: oklch(0.925 0.038 250);
+  --accent-foreground: oklch(0.25 0.04 255);
+  --border: oklch(0.87 0.028 250);
+  --ring: oklch(0.6 0.16 250);
+  --sidebar: oklch(0.955 0.02 250);
   --success: oklch(0.46 0.11 158);
   --danger: oklch(0.52 0.19 27);
-  --account: oklch(0.92 0.025 158);
+  --account: oklch(0.9 0.06 250);
+}
+
+:root[data-font="jetbrains-mono"] {
+  --font-interface: "JetBrains Mono Variable", ui-monospace, SFMono-Regular,
+    Consolas, "Liberation Mono", monospace;
+}
+
+:root[data-font="source-serif"] {
+  --font-interface: "Source Serif 4 Variable", ui-serif, Georgia, Cambria,
+    "Times New Roman", serif;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --background: oklch(0.17 0.008 150);
-  --foreground: oklch(0.92 0.006 150);
-  --card: oklch(0.205 0.009 150);
-  --primary: oklch(0.76 0.12 158);
-  --primary-foreground: oklch(0.16 0.02 155);
-  --secondary: oklch(0.25 0.012 150);
-  --secondary-foreground: oklch(0.91 0.006 150);
-  --muted-foreground: oklch(0.68 0.012 150);
-  --accent: oklch(0.285 0.014 150);
-  --accent-foreground: oklch(0.95 0.004 150);
-  --border: oklch(0.31 0.012 150);
-  --ring: oklch(0.7 0.11 158);
-  --sidebar: oklch(0.145 0.009 150);
+  --background: oklch(0.17 0.025 255);
+  --foreground: oklch(0.93 0.018 245);
+  --card: oklch(0.205 0.03 255);
+  --primary: oklch(0.72 0.14 245);
+  --primary-foreground: oklch(0.15 0.035 260);
+  --secondary: oklch(0.25 0.04 255);
+  --secondary-foreground: oklch(0.92 0.02 245);
+  --muted-foreground: oklch(0.7 0.035 250);
+  --accent: oklch(0.29 0.055 250);
+  --accent-foreground: oklch(0.96 0.012 245);
+  --border: oklch(0.32 0.045 250);
+  --ring: oklch(0.7 0.14 245);
+  --sidebar: oklch(0.145 0.028 260);
   --success: oklch(0.74 0.14 150);
   --danger: oklch(0.71 0.17 25);
-  --account: oklch(0.29 0.045 158);
+  --account: oklch(0.29 0.075 250);
 }
 
 :root[data-theme="catppuccin"] {
@@ -82,6 +95,86 @@
   --account: #3b3652;
 }
 
+:root[data-theme="catppuccin-latte"] {
+  color-scheme: light;
+  --background: #eff1f5;
+  --foreground: #4c4f69;
+  --card: #e6e9ef;
+  --primary: #8839ef;
+  --primary-foreground: #eff1f5;
+  --secondary: #dce0e8;
+  --secondary-foreground: #4c4f69;
+  --muted-foreground: #5c5f77;
+  --accent: #ccd0da;
+  --accent-foreground: #4c4f69;
+  --border: #bcc0cc;
+  --ring: #7287fd;
+  --sidebar: #e6e9ef;
+  --success: #40a02b;
+  --danger: #d20f39;
+  --account: #ddd5f3;
+}
+
+:root[data-theme="nord"] {
+  color-scheme: dark;
+  --background: #2e3440;
+  --foreground: #d8dee9;
+  --card: #3b4252;
+  --primary: #88c0d0;
+  --primary-foreground: #2e3440;
+  --secondary: #3b4252;
+  --secondary-foreground: #e5e9f0;
+  --muted-foreground: #a7b4c8;
+  --accent: #434c5e;
+  --accent-foreground: #eceff4;
+  --border: #4c566a;
+  --ring: #88c0d0;
+  --sidebar: #272c36;
+  --success: #a3be8c;
+  --danger: #bf616a;
+  --account: #3b5361;
+}
+
+:root[data-theme="tokyo-night"] {
+  color-scheme: dark;
+  --background: #1a1b26;
+  --foreground: #c0caf5;
+  --card: #1f2335;
+  --primary: #7aa2f7;
+  --primary-foreground: #16161e;
+  --secondary: #24283b;
+  --secondary-foreground: #c0caf5;
+  --muted-foreground: #9aa5ce;
+  --accent: #292e42;
+  --accent-foreground: #d5d6f3;
+  --border: #3b4261;
+  --ring: #7dcfff;
+  --sidebar: #16161e;
+  --success: #9ece6a;
+  --danger: #f7768e;
+  --account: #253659;
+}
+
+:root[data-theme="solarized-dark"] {
+  color-scheme: dark;
+  --background: #002b36;
+  --foreground: #93a1a1;
+  --card: #073642;
+  --primary: #2aa198;
+  --primary-foreground: #002b36;
+  --secondary: #073642;
+  --secondary-foreground: #eee8d5;
+  --muted-foreground: #839496;
+  --accent: #0a4050;
+  --accent-foreground: #fdf6e3;
+  --border: #1b5662;
+  --ring: #268bd2;
+  --sidebar: #00242d;
+  --success: #859900;
+  --danger: #dc322f;
+  --account: #0e4a58;
+}
+
 * {
   border-color: var(--border);
 }
@@ -102,7 +195,7 @@ button {
   background: color-mix(in oklab, var(--primary) 32%, transparent);
 }
 
-.theme-select {
+.preference-select {
   width: 100%;
   height: 2.25rem;
   appearance: none;
@@ -117,11 +210,11 @@ button {
   outline: none;
 }
 
-.theme-select:hover {
+.preference-select:hover {
   background: color-mix(in oklab, var(--secondary) 82%, var(--foreground));
 }
 
-.theme-select:focus-visible {
+.preference-select:focus-visible {
   box-shadow: 0 0 0 2px var(--ring);
 }
 
