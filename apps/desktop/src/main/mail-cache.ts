@@ -190,6 +190,10 @@ export class MailCache {
     this.#database.close();
   }
 
+  deleteAccount(accountId: string): void {
+    this.#database.prepare('DELETE FROM folders WHERE account_id = ?').run(accountId);
+  }
+
   replaceFolders(accountId: string, folders: MailFolderSummary[]): void {
     const upsert = this.#database.prepare(`
       INSERT INTO folders (

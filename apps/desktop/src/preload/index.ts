@@ -3,6 +3,7 @@ import {
   ACCOUNT_CHANNELS,
   type AccountDraft,
   type AccountOperationResult,
+  type AccountNameUpdate,
   type AccountSummary,
   type FolderListResult,
   type MessageListResult,
@@ -19,6 +20,8 @@ export interface EmzeroDesktopApi {
     list: () => Promise<AccountSummary[]>;
     test: (draft: AccountDraft) => Promise<AccountOperationResult>;
     save: (draft: AccountDraft) => Promise<AccountOperationResult>;
+    update: (accountId: string, update: AccountNameUpdate) => Promise<AccountOperationResult>;
+    remove: (accountId: string) => Promise<AccountOperationResult>;
   };
   folders: {
     list: (accountId: string, refresh?: boolean) => Promise<FolderListResult>;
@@ -55,6 +58,8 @@ contextBridge.exposeInMainWorld('emzero', {
     list: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.list),
     test: (draft) => ipcRenderer.invoke(ACCOUNT_CHANNELS.test, draft),
     save: (draft) => ipcRenderer.invoke(ACCOUNT_CHANNELS.save, draft),
+    update: (accountId, update) => ipcRenderer.invoke(ACCOUNT_CHANNELS.update, accountId, update),
+    remove: (accountId) => ipcRenderer.invoke(ACCOUNT_CHANNELS.remove, accountId),
   },
   folders: {
     list: (accountId, refresh = false) =>

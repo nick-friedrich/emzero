@@ -21,12 +21,31 @@ import {
   RefreshCw,
   Send,
   Server,
+  Settings2,
   Star,
   Trash2,
   Type,
   XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Sheet,
   SheetContent,
@@ -53,7 +72,7 @@ import type {
   MailProvider,
   MailSyncStatus,
 } from '../shared/accounts';
-import { displayFolderName, findInboxFolder } from '../shared/accounts';
+import { defaultAccountName, displayFolderName, findInboxFolder } from '../shared/accounts';
 import {
   groupMessagesWithRelated,
   splitQuotedText,
@@ -61,7 +80,7 @@ import {
 } from '../shared/conversations';
 
 const initialDraft: AccountDraft = {
-  name: 'Personal',
+  name: '',
   email: '',
   username: '',
   password: '',
@@ -242,6 +261,46 @@ function AccountSetup({
         <div className="space-y-8 rounded-xl border border-border bg-card p-6 shadow-sm">
           <fieldset className="grid gap-4 sm:grid-cols-2">
             <legend className="mb-4 text-sm font-semibold">Account details</legend>
+            <Field label="Email address">
+              <input
+                className="field"
+                type="email"
+                placeholder="you@example.com"
+                value={draft.email}
+                onChange={(event) => {
+                  const email = event.target.value;
+                  setDetection(null);
+                  setDraft((current) => ({
+                    ...current,
+                    email,
+                    name:
+                      current.name === defaultAccountName(current.email)
+                        ? defaultAccountName(email)
+                        : current.name,
+                    username: current.username === current.email ? email : current.username,
+                  }));
+                }}
+                autoComplete="email"
+              />
+            </Field>
+            <Field label="Username">
+              <input
+                className="field"
+                placeholder="Usually your email address"
+                value={draft.username}
+                onChange={(event) => setDraft({ ...draft, username: event.target.value })}
+                autoComplete="username"
+              />
+            </Field>
+            <Field label="Account name">
+              <input
+                className="field"
+                placeholder="Uses the email address by default"
+                value={draft.name}
+                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                autoComplete="off"
+              />
+            </Field>
             <Field label="Provider">
               <div className="relative">
                 <select
@@ -264,41 +323,6 @@ function AccountSetup({
                   {detection}
                 </span>
               )}
-            </Field>
-            <Field label="Account name">
-              <input
-                className="field"
-                value={draft.name}
-                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                autoComplete="off"
-              />
-            </Field>
-            <Field label="Email address">
-              <input
-                className="field"
-                type="email"
-                placeholder="you@example.com"
-                value={draft.email}
-                onChange={(event) => {
-                  const email = event.target.value;
-                  setDetection(null);
-                  setDraft((current) => ({
-                    ...current,
-                    email,
-                    username: current.username === current.email ? email : current.username,
-                  }));
-                }}
-                autoComplete="email"
-              />
-            </Field>
-            <Field label="Username">
-              <input
-                className="field"
-                placeholder="Usually your email address"
-                value={draft.username}
-                onChange={(event) => setDraft({ ...draft, username: event.target.value })}
-                autoComplete="username"
-              />
             </Field>
             <div className="sm:col-span-2">
               <Field label="Password or app password">
@@ -580,17 +604,18 @@ function ConversationActions({
   onDelete: () => void;
 }) {
   const unreadLabel = unread ? 'Mark as read' : 'Mark as unread';
-  const deleteConversation = () => {
-    if (
-      confirmPermanentDelete &&
-      !window.confirm(
-        'Permanently delete this conversation? This action cannot be undone.',
-      )
-    ) {
-      return;
-    }
-    onDelete();
-  };
+  const deleteButton = (
+    <Button
+      variant="ghost"
+      className="size-8 px-0 text-danger hover:text-danger"
+      aria-label="Delete conversation"
+      title="Delete conversation"
+      disabled={busy}
+      onClick={confirmPermanentDelete ? undefined : onDelete}
+    >
+      {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+    </Button>
+  );
   return (
     <div className="flex shrink-0 items-center gap-1" aria-label="Conversation actions">
       <Button
@@ -603,16 +628,25 @@ function ConversationActions({
       >
         {unread ? <MailOpen className="size-4" /> : <Mail className="size-4" />}
       </Button>
-      <Button
-        variant="ghost"
-        className="size-8 px-0 text-danger hover:text-danger"
-        aria-label="Delete conversation"
-        title="Delete conversation"
-        disabled={busy}
-        onClick={deleteConversation}
-      >
-        {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-      </Button>
+      {confirmPermanentDelete ? (
+        <AlertDialog>
+          <AlertDialogTrigger asChild>{deleteButton}</AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Permanently delete this conversation?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This conversation will be permanently removed and cannot be recovered.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={onDelete}>Permanently delete</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : (
+        deleteButton
+      )}
     </div>
   );
 }
@@ -1565,6 +1599,182 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
   );
 }
 
+function AccountSettingsDialog({
+  open,
+  accounts,
+  onOpenChange,
+  onUpdated,
+  onRemoved,
+}: {
+  open: boolean;
+  accounts: AccountSummary[];
+  onOpenChange: (open: boolean) => void;
+  onUpdated: (account: AccountSummary) => void;
+  onRemoved: (accountId: string) => void;
+}) {
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [busyAccount, setBusyAccount] = useState<string | null>(null);
+  const [status, setStatus] = useState<Status | null>(null);
+
+  const rename = async (account: AccountSummary) => {
+    const name = names[account.id]?.trim() ?? '';
+    if (!name) {
+      setStatus({ kind: 'error', message: 'Enter a name for this account.' });
+      return;
+    }
+    setBusyAccount(account.id);
+    setStatus(null);
+    try {
+      const result = await window.emzero.accounts.update(account.id, { name });
+      if (result.ok && result.account) {
+        onUpdated(result.account);
+        setStatus({ kind: 'success', message: result.message });
+      } else {
+        setStatus({ kind: 'error', message: result.message });
+      }
+    } catch {
+      setStatus({ kind: 'error', message: 'The account could not be updated.' });
+    } finally {
+      setBusyAccount(null);
+    }
+  };
+
+  const remove = async (account: AccountSummary) => {
+    setBusyAccount(account.id);
+    setStatus(null);
+    try {
+      const result = await window.emzero.accounts.remove(account.id);
+      if (result.ok) {
+        onRemoved(account.id);
+        setStatus({ kind: 'success', message: `${account.email} was deleted.` });
+      } else {
+        setStatus({ kind: 'error', message: result.message });
+      }
+    } catch {
+      setStatus({ kind: 'error', message: 'The account could not be deleted.' });
+    } finally {
+      setBusyAccount(null);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          setNames({});
+          setStatus(null);
+        }
+        onOpenChange(nextOpen);
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Account settings</DialogTitle>
+          <DialogDescription>
+            Rename connected accounts or remove them from Emzero.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          {accounts.map((account) => (
+            <div key={account.id} className="rounded-lg border border-border bg-background p-4">
+              <div className="mb-3 flex items-center gap-3">
+                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-account text-sm font-semibold text-primary">
+                  {account.name.charAt(0).toUpperCase()}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{account.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{account.email}</p>
+                </div>
+              </div>
+              <form
+                className="flex flex-col gap-2 sm:flex-row"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void rename(account);
+                }}
+              >
+                <label className="min-w-0 flex-1">
+                  <span className="sr-only">Name for {account.email}</span>
+                  <input
+                    className="field"
+                    value={names[account.id] ?? account.name}
+                    disabled={busyAccount === account.id}
+                    onChange={(event) =>
+                      setNames((current) => ({ ...current, [account.id]: event.target.value }))
+                    }
+                  />
+                </label>
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  disabled={
+                    busyAccount === account.id ||
+                    !names[account.id]?.trim() ||
+                    names[account.id]?.trim() === account.name
+                  }
+                >
+                  {busyAccount === account.id ? (
+                    <LoaderCircle className="size-4 animate-spin" />
+                  ) : null}
+                  Save name
+                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="px-3 text-danger hover:text-danger"
+                      aria-label={`Delete ${account.email}`}
+                      title="Delete account"
+                      disabled={busyAccount === account.id}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete {account.name}?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This removes {account.email} and its locally cached mail from Emzero. It
+                        does not delete anything from your mail provider.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => void remove(account)}>
+                        Delete account
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </form>
+            </div>
+          ))}
+        </div>
+
+        {status && (
+          <p
+            className={cn(
+              'flex items-center gap-2 text-sm',
+              status.kind === 'success' ? 'text-success' : 'text-danger',
+            )}
+            role="status"
+          >
+            {status.kind === 'success' ? (
+              <CheckCircle2 className="size-4" />
+            ) : (
+              <CircleAlert className="size-4" />
+            )}
+            {status.message}
+          </p>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function Sidebar({
   accounts,
   selection,
@@ -1572,6 +1782,7 @@ function Sidebar({
   syncRevision,
   onSelect,
   onAdd,
+  onManage,
   className,
 }: {
   accounts: AccountSummary[];
@@ -1580,6 +1791,7 @@ function Sidebar({
   syncRevision: number;
   onSelect: (selection: MailboxSelection) => void;
   onAdd: () => void;
+  onManage: () => void;
   className?: string;
 }) {
   const { theme, setTheme, interfaceFont, setInterfaceFont } = useTheme();
@@ -1824,6 +2036,15 @@ function Sidebar({
                 ? `Synced ${messageDate(syncStatus.lastSyncedAt)}`
                 : 'Sync mail'}
         </Button>
+        <Button
+          variant="ghost"
+          className="mb-1 w-full justify-start text-muted-foreground"
+          disabled={accounts.length === 0}
+          onClick={onManage}
+        >
+          <Settings2 className="size-4" />
+          Manage accounts
+        </Button>
         <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={onAdd}>
           <Plus className="size-4" />
           Add account
@@ -1837,6 +2058,7 @@ export function App() {
   const [accounts, setAccounts] = useState<AccountSummary[] | null>(null);
   const [providers, setProviders] = useState<MailProvider[]>([]);
   const [showSetup, setShowSetup] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selection, setSelection] = useState<MailboxSelection>({ kind: 'unified' });
   const [syncStatus, setSyncStatus] = useState<MailSyncStatus>({
@@ -1894,6 +2116,7 @@ export function App() {
           setShowSetup(false);
         }}
         onAdd={() => setShowSetup(true)}
+        onManage={() => setSettingsOpen(true)}
       />
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetTrigger asChild>
@@ -1926,9 +2149,43 @@ export function App() {
               setShowSetup(true);
               setSidebarOpen(false);
             }}
+            onManage={() => {
+              setSettingsOpen(true);
+              setSidebarOpen(false);
+            }}
           />
         </SheetContent>
       </Sheet>
+      <AccountSettingsDialog
+        open={settingsOpen}
+        accounts={accounts}
+        onOpenChange={setSettingsOpen}
+        onUpdated={(updatedAccount) => {
+          setAccounts((current) =>
+            current?.map((account) =>
+              account.id === updatedAccount.id ? updatedAccount : account,
+            ) ?? [],
+          );
+          setSelection((current) =>
+            current.kind === 'folder' && current.account.id === updatedAccount.id
+              ? { ...current, account: updatedAccount }
+              : current,
+          );
+        }}
+        onRemoved={(accountId) => {
+          const remainingAccounts = accounts.filter((account) => account.id !== accountId);
+          setAccounts(remainingAccounts);
+          setSelection((current) =>
+            current.kind === 'folder' && current.account.id === accountId
+              ? { kind: 'unified' }
+              : current,
+          );
+          if (remainingAccounts.length === 0) {
+            setSettingsOpen(false);
+            setShowSetup(true);
+          }
+        }}
+      />
       {showSetup ? (
         <AccountSetup
           providers={providers}

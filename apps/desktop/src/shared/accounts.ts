@@ -134,6 +134,10 @@ export interface AccountOperationResult {
   account?: AccountSummary;
 }
 
+export interface AccountNameUpdate {
+  name: string;
+}
+
 export interface MailSyncStatus {
   state: 'idle' | 'syncing' | 'error';
   lastSyncedAt: string | null;
@@ -159,6 +163,8 @@ export const ACCOUNT_CHANNELS = {
   list: 'accounts:list',
   test: 'accounts:test',
   save: 'accounts:save',
+  update: 'accounts:update',
+  remove: 'accounts:remove',
   providers: 'providers:list',
   discoverProvider: 'providers:discover',
   listFolders: 'folders:list',
@@ -172,6 +178,10 @@ export const ACCOUNT_CHANNELS = {
 } as const;
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function defaultAccountName(email: string): string {
+  return email.trim();
+}
 
 export function validateAccountDraft(value: AccountDraft): string | null {
   if (!value.name.trim()) return 'Enter a name for this account.';

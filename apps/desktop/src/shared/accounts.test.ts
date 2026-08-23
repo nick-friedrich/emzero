@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  defaultAccountName,
   displayFolderName,
   findInboxFolder,
   type AccountDraft,
@@ -26,6 +27,12 @@ describe('validateAccountDraft', () => {
     expect(
       validateAccountDraft({ ...validDraft, imap: { ...validDraft.imap, port: 70_000 } }),
     ).toMatch(/valid IMAP port/);
+  });
+});
+
+describe('defaultAccountName', () => {
+  it('uses the trimmed email address', () => {
+    expect(defaultAccountName('  hello@example.com ')).toBe('hello@example.com');
   });
 });
 

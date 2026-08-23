@@ -9,6 +9,7 @@ import {
   ACCOUNT_CHANNELS,
   type AccountDraft,
   type AccountOperationResult,
+  type AccountNameUpdate,
   type AccountSummary,
   type FolderListResult,
   type MailAddressSummary,
@@ -615,6 +616,50 @@ export function registerAccountHandlers(): void {
   ipcMain.handle(ACCOUNT_CHANNELS.list, async (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return (await readAccounts()).map(toSummary);
+  });
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.update,
+    async (event, accountId: unknown, update: AccountNameUpdate) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (
+        typeof accountId !== 'string' ||
+        !update ||
+        typeof update !== 'object' ||
+        typeof update.name !== 'string' ||
+        !update.name.trim()
+      ) {
+        return { ok: false, message: 'Enter a name for this account.' } satisfies AccountOperationResult;
+      }
+      const accounts = await readAccounts();
+      const index = accounts.findIndex((candidate) => candidate.id === accountId);
+      if (index < 0) {
+        return { ok: false, message: 'Account not found.' } satisfies AccountOperationResult;
+      }
+      const account = { ...accounts[index], name: update.name.trim() };
+      accounts[index] = account;
+      await writeAccounts(accounts);
+      return {
+        ok: true,
+        message: 'Account name updated.',
+        account: toSummary(account),
+      } satisfies AccountOperationResult;
+    },
+  );
+
+  ipcMain.handle(ACCOUNT_CHANNELS.remove, async (event, accountId: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (typeof accountId !== 'string') {
+      return { ok: false, message: 'Invalid account.' } satisfies AccountOperationResult;
+    }
+    const accounts = await readAccounts();
+    const account = accounts.find((candidate) => candidate.id === accountId);
+    if (!account) {
+      return { ok: false, message: 'Account not found.' } satisfies AccountOperationResult;
+    }
+    await writeAccounts(accounts.filter((candidate) => candidate.id !== accountId));
+    mailCache().deleteAccount(accountId);
+    return { ok: true, message: 'Account deleted.' } satisfies AccountOperationResult;
   });
 
   ipcMain.handle(ACCOUNT_CHANNELS.listFolders, async (event, accountId: unknown, refresh: unknown) => {
