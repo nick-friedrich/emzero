@@ -592,6 +592,22 @@ function conversationWithUnread(
   };
 }
 
+function conversationWithMessage(
+  conversation: MailConversation,
+  message: MailMessageSummary,
+): MailConversation {
+  const key = `${message.folderPath}:${message.uid}`;
+  return {
+    ...conversation,
+    messages: [
+      message,
+      ...conversation.messages.filter(
+        (candidate) => `${candidate.folderPath}:${candidate.uid}` !== key,
+      ),
+    ],
+  };
+}
+
 function ConversationActions({
   unread,
   busy,
@@ -745,10 +761,12 @@ function ReplyComposer({
   account,
   summary,
   message,
+  onSent,
 }: {
   account: AccountSummary;
   summary: MailMessageSummary;
   message: MailMessageDetail;
+  onSent: (message: MailMessageSummary) => void;
 }) {
   const recipients = replyRecipients(account, message);
   const [open, setOpen] = useState(false);
@@ -770,6 +788,7 @@ function ReplyComposer({
         message: result.message ?? (result.ok ? 'Reply sent.' : 'Could not send reply.'),
       });
       if (result.ok) {
+        if (result.sentMessage) onSent(result.sentMessage);
         setText('');
         setOpen(false);
       }
@@ -860,10 +879,12 @@ function ThreadMessageCard({
   selection,
   summary,
   defaultExpanded,
+  onReplySent,
 }: {
   selection: FolderSelection;
   summary: MailMessageSummary;
   defaultExpanded: boolean;
+  onReplySent: (message: MailMessageSummary) => void;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [state, setState] = useState<MessageDetailLoadState>({ status: 'loading' });
@@ -944,6 +965,7 @@ function ThreadMessageCard({
                 account={selection.account}
                 summary={summary}
                 message={state.message}
+                onSent={onReplySent}
               />
             </>
           )}
@@ -961,6 +983,7 @@ function ConversationReader({
   actionError,
   onSetUnread,
   onDelete,
+  onReplySent,
 }: {
   selection: FolderSelection;
   conversation: MailConversation;
@@ -969,6 +992,7 @@ function ConversationReader({
   actionError: string | null;
   onSetUnread: (unread: boolean) => void;
   onDelete: () => void;
+  onReplySent: (message: MailMessageSummary) => void;
 }) {
   const unread = conversation.messages.some(
     (message) => message.folderPath === selection.folder.path && message.unread,
@@ -1016,6 +1040,7 @@ function ConversationReader({
                 selection={selection}
                 summary={message}
                 defaultExpanded={index === 0}
+                onReplySent={onReplySent}
               />
             ))}
           </div>
@@ -1187,6 +1212,36 @@ function MessageList({ selection }: { selection: FolderSelection }) {
           void runAction(selectedConversation, unread ? 'unread' : 'read')
         }
         onDelete={() => void runAction(selectedConversation, 'delete')}
+        onReplySent={(message) => {
+          setSelectedConversation((current) =>
+            current ? conversationWithMessage(current, message) : current,
+          );
+          setState((current) => {
+            if (current.status !== 'loaded') return current;
+            const inSelectedFolder = message.folderPath === selection.folder.path;
+            const target = inSelectedFolder ? current.messages : current.relatedMessages;
+            const alreadyPresent = target.some(
+              (candidate) =>
+                candidate.folderPath === message.folderPath && candidate.uid === message.uid,
+            );
+            return {
+              ...current,
+              messages: inSelectedFolder
+                ? [message, ...current.messages.filter((candidate) => candidate.uid !== message.uid)]
+                : current.messages,
+              relatedMessages: inSelectedFolder
+                ? current.relatedMessages
+                : [
+                    message,
+                    ...current.relatedMessages.filter(
+                      (candidate) =>
+                        candidate.folderPath !== message.folderPath || candidate.uid !== message.uid,
+                    ),
+                  ],
+              total: current.total + (inSelectedFolder && !alreadyPresent ? 1 : 0),
+            };
+          });
+        }}
       />
     );
   }
@@ -1549,6 +1604,28 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
           void runAction(selectedItem, unread ? 'unread' : 'read')
         }
         onDelete={() => void runAction(selectedItem, 'delete')}
+        onReplySent={(message) => {
+          setSelectedItem((current) =>
+            current
+              ? { ...current, conversation: conversationWithMessage(current.conversation, message) }
+              : current,
+          );
+          setState((current) =>
+            current.status === 'loaded'
+              ? {
+                  ...current,
+                  items: current.items.map((candidate) =>
+                    itemKey(candidate) === itemKey(selectedItem)
+                      ? {
+                          ...candidate,
+                          conversation: conversationWithMessage(candidate.conversation, message),
+                        }
+                      : candidate,
+                  ),
+                }
+              : current,
+          );
+        }}
       />
     );
   }

@@ -139,6 +139,7 @@ export interface MailReplyDraft {
 export interface MailSendResult extends MessageOperationResult {
   messageId?: string;
   savedToSent?: boolean;
+  sentMessage?: MailMessageSummary;
 }
 
 export interface AccountOperationResult {

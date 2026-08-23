@@ -686,15 +686,70 @@ async function sendReply(
         { header: { 'message-id': smtpMessageId } },
         { uid: true },
       );
-      if (!existing || existing.length === 0) {
+      let sentUid = existing && existing.length > 0 ? existing.at(-1) : undefined;
+      if (!sentUid) {
         const appended = await imap.append(sentFolder.path, compiled.message, ['\\Seen'], sentAt);
         if (!appended) throw new Error('The mail server did not save the Sent copy.');
+        sentUid = appended.uid;
+      }
+      if (!sentUid) {
+        const saved = await imap.search(
+          { header: { 'message-id': smtpMessageId } },
+          { uid: true },
+        );
+        sentUid = saved && saved.length > 0 ? saved.at(-1) : undefined;
+      }
+
+      const sentMessage: MailMessageSummary | undefined = sentUid
+        ? {
+            folderPath: sentFolder.path,
+            uid: sentUid,
+            messageId: smtpMessageId,
+            inReplyTo: draft.inReplyTo,
+            references: draft.references,
+            subject: draft.subject.trim(),
+            from: [{ name: account.name, address: account.email }],
+            to: draft.to,
+            sentAt: sentAt.toISOString(),
+            receivedAt: null,
+            unread: false,
+            flagged: false,
+            size: compiled.message.length,
+          }
+        : undefined;
+      if (
+        sentMessage &&
+        mailCache().listFolders(account.id).some((folder) => folder.path === sentFolder.path)
+      ) {
+        const cached = mailCache().listMessages(account.id, sentFolder.path);
+        const alreadyCached = cached.messages.some((message) => message.uid === sentMessage.uid);
+        mailCache().replaceRecentMessages(
+          account.id,
+          sentFolder.path,
+          [...cached.messages.filter((message) => message.uid !== sentMessage.uid), sentMessage],
+          Math.max(cached.total, cached.messages.length) + (alreadyCached ? 0 : 1),
+        );
+        mailCache().putMessageBody(account.id, sentFolder.path, {
+          uid: sentMessage.uid,
+          messageId: sentMessage.messageId,
+          subject: sentMessage.subject,
+          from: sentMessage.from,
+          to: sentMessage.to,
+          cc: [],
+          replyTo: [],
+          sentAt: sentMessage.sentAt,
+          text: draft.text.trim(),
+          html: null,
+          htmlHasQuotedText: false,
+          attachments: [],
+        });
       }
       return {
         ok: true,
         message: 'Reply sent and saved to Sent.',
         messageId: smtpMessageId,
         savedToSent: true,
+        sentMessage,
       };
     } catch (error) {
       return {
