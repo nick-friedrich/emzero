@@ -32,6 +32,19 @@ export interface MailFolderSummary {
   selectable: boolean;
 }
 
+export function findInboxFolder(
+  folders: MailFolderSummary[],
+): MailFolderSummary | undefined {
+  return (
+    folders.find((folder) => folder.selectable && folder.specialUse === '\\Inbox') ??
+    folders.find(
+      (folder) =>
+        folder.selectable &&
+        (folder.path.toLowerCase() === 'inbox' || folder.name.toLowerCase() === 'inbox'),
+    )
+  );
+}
+
 export interface FolderListResult {
   ok: boolean;
   folders: MailFolderSummary[];

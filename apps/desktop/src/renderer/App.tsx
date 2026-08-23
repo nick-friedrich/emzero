@@ -31,6 +31,7 @@ import type {
   MailMessageSummary,
   MailProvider,
 } from '../shared/accounts';
+import { findInboxFolder } from '../shared/accounts';
 import {
   groupMessagesWithRelated,
   splitQuotedText,
@@ -471,6 +472,26 @@ type MessageLoadState =
     }
   | { status: 'error'; message: string };
 
+interface UnifiedConversationItem {
+  selection: FolderSelection;
+  conversation: MailConversation;
+}
+
+interface UnifiedAccountFailure {
+  account: AccountSummary;
+  message: string;
+}
+
+type UnifiedInboxLoadState =
+  | { status: 'loading' }
+  | {
+      status: 'loaded';
+      items: UnifiedConversationItem[];
+      failures: UnifiedAccountFailure[];
+      loadedMessages: number;
+      totalMessages: number;
+    };
+
 type MessageDetailLoadState =
   | { status: 'loading' }
   | { status: 'loaded'; message: MailMessageDetail }
@@ -895,6 +916,261 @@ function MessageList({ selection }: { selection: FolderSelection }) {
   );
 }
 
+function conversationTime(conversation: MailConversation): number {
+  const latest = conversation.messages[0];
+  const value = latest?.sentAt ?? latest?.receivedAt;
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
+  const [state, setState] = useState<UnifiedInboxLoadState>({ status: 'loading' });
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedItem, setSelectedItem] = useState<UnifiedConversationItem | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all(
+      accounts.map(async (account) => {
+        try {
+          const folderResult = await window.emzero.folders.list(account.id);
+          if (!folderResult.ok) {
+            return {
+              failure: {
+                account,
+                message: folderResult.message ?? 'Could not load folders.',
+              },
+            };
+          }
+
+          const folder = findInboxFolder(folderResult.folders);
+          if (!folder) {
+            return { failure: { account, message: 'No selectable inbox folder was found.' } };
+          }
+
+          const sentFolder = folderResult.folders.find(
+            (candidate) => candidate.selectable && candidate.specialUse === '\\Sent',
+          );
+          const [inboxResult, sentResult] = await Promise.all([
+            window.emzero.messages.list(account.id, folder.path),
+            sentFolder && sentFolder.path !== folder.path
+              ? window.emzero.messages.list(account.id, sentFolder.path)
+              : Promise.resolve(null),
+          ]);
+          if (!inboxResult.ok) {
+            return {
+              failure: {
+                account,
+                message: inboxResult.message ?? 'Could not load inbox messages.',
+              },
+            };
+          }
+
+          const messages = inboxResult.messages.map((message) => ({
+            ...message,
+            folderPath: folder.path,
+          }));
+          const relatedMessages =
+            sentFolder && sentResult?.ok
+              ? sentResult.messages.map((message) => ({
+                  ...message,
+                  folderPath: sentFolder.path,
+                }))
+              : [];
+          const selection: FolderSelection = { kind: 'folder', account, folder };
+          return {
+            items: groupMessagesWithRelated(messages, relatedMessages).map((conversation) => ({
+              selection,
+              conversation,
+            })),
+            loadedMessages: messages.length,
+            totalMessages: inboxResult.total,
+          };
+        } catch {
+          return { failure: { account, message: 'Could not connect to this account.' } };
+        }
+      }),
+    ).then((results) => {
+      if (!active) return;
+      const items = results
+        .flatMap((result) => ('items' in result && result.items ? result.items : []))
+        .sort(
+          (left, right) =>
+            conversationTime(right.conversation) - conversationTime(left.conversation),
+        );
+      const failures = results.flatMap((result) =>
+        'failure' in result && result.failure ? [result.failure] : [],
+      );
+      setState({
+        status: 'loaded',
+        items,
+        failures,
+        loadedMessages: results.reduce(
+          (total, result) => total + ('loadedMessages' in result ? (result.loadedMessages ?? 0) : 0),
+          0,
+        ),
+        totalMessages: results.reduce(
+          (total, result) => total + ('totalMessages' in result ? (result.totalMessages ?? 0) : 0),
+          0,
+        ),
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [accounts, refreshKey]);
+
+  const refresh = () => {
+    setSelectedItem(null);
+    setState({ status: 'loading' });
+    setRefreshKey((current) => current + 1);
+  };
+
+  if (selectedItem) {
+    return (
+      <ConversationReader
+        key={`${selectedItem.selection.account.id}:${selectedItem.conversation.id}`}
+        selection={selectedItem.selection}
+        conversation={selectedItem.conversation}
+        onBack={() => setSelectedItem(null)}
+      />
+    );
+  }
+
+  return (
+    <section className="flex min-h-0 flex-col overflow-hidden bg-background">
+      <header className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
+        <div className="min-w-0">
+          <h1 className="truncate text-lg font-semibold tracking-tight">Unified inbox</h1>
+          <p className="truncate text-xs text-muted-foreground">
+            {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {state.status === 'loaded' && (
+            <span className="text-xs text-muted-foreground">
+              {state.items.length} {state.items.length === 1 ? 'conversation' : 'conversations'}
+              {' · '}
+              {state.loadedMessages < state.totalMessages
+                ? `newest ${state.loadedMessages} of ${state.totalMessages} messages`
+                : `${state.totalMessages} ${state.totalMessages === 1 ? 'message' : 'messages'}`}
+            </span>
+          )}
+          <Button
+            variant="ghost"
+            className="px-3"
+            aria-label="Refresh unified inbox"
+            title="Refresh unified inbox"
+            disabled={state.status === 'loading'}
+            onClick={refresh}
+          >
+            <RefreshCw className={`size-4 ${state.status === 'loading' ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
+      </header>
+
+      {state.status === 'loading' && (
+        <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <LoaderCircle className="size-4 animate-spin" />
+            Fetching inboxes
+          </div>
+        </div>
+      )}
+
+      {state.status === 'loaded' && state.failures.length > 0 && (
+        <div className="border-b border-danger/20 bg-danger/8 px-6 py-3 text-xs text-danger">
+          <div className="flex items-start gap-2">
+            <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+            <div>
+              {state.failures.map(({ account, message }) => (
+                <p key={account.id} title={message}>
+                  <span className="font-semibold">{account.name}:</span> {message}
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {state.status === 'loaded' && state.items.length === 0 && (
+        <div className="grid flex-1 place-items-center p-8 text-center">
+          <div>
+            <Inbox className="mx-auto size-8 text-muted-foreground" />
+            <h2 className="mt-3 font-semibold">
+              {state.failures.length === accounts.length
+                ? 'Inboxes could not be loaded'
+                : 'Your unified inbox is empty'}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {state.failures.length === accounts.length
+                ? 'Check the account errors above, then try again.'
+                : 'There are no messages to show.'}
+            </p>
+            {state.failures.length === accounts.length && (
+              <Button className="mt-5" variant="secondary" onClick={refresh}>
+                <RefreshCw className="size-4" />
+                Try again
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {state.status === 'loaded' && state.items.length > 0 && (
+        <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Messages">
+          {state.items.map((item) => {
+            const { conversation, selection } = item;
+            const latest = conversation.messages[0];
+            const opponent = conversationOpponent(conversation.messages, selection.account);
+            const date = latest.sentAt ?? latest.receivedAt;
+            const unread = conversation.messages.some((message) => message.unread);
+            const flagged = conversation.messages.some((message) => message.flagged);
+            return (
+              <button
+                type="button"
+                key={`${selection.account.id}:${conversation.id}`}
+                className="grid w-full grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-6 py-3 text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none"
+                role="listitem"
+                onClick={() => setSelectedItem(item)}
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    className={`size-1.5 shrink-0 rounded-full ${unread ? 'bg-primary' : 'bg-transparent'}`}
+                    aria-label={unread ? 'Contains unread messages' : 'Read'}
+                  />
+                  <span className={`truncate text-sm ${unread ? 'font-semibold' : ''}`}>
+                    {opponent}
+                  </span>
+                </div>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="shrink-0 rounded bg-account px-1.5 py-0.5 text-[0.65rem] font-medium text-primary">
+                    {selection.account.name}
+                  </span>
+                  <p className={`truncate text-sm ${unread ? 'font-semibold' : ''}`}>
+                    {conversation.subject}
+                    {conversation.messages.length > 1 && (
+                      <span className="ml-2 font-normal text-muted-foreground">
+                        ({conversation.messages.length})
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  {flagged && (
+                    <Star className="size-3.5 fill-primary text-primary" aria-label="Flagged" />
+                  )}
+                  <time dateTime={date ?? undefined}>{messageDate(date)}</time>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function Sidebar({
   accounts,
   selection,
@@ -1112,21 +1388,7 @@ export function App() {
           selection={selection}
         />
       ) : (
-        <section className="grid place-items-center p-8">
-          <div className="max-w-md text-center">
-            <div className="mx-auto mb-5 grid size-16 place-items-center rounded-2xl border border-border bg-card shadow-sm">
-              <Inbox className="size-7 text-muted-foreground" />
-            </div>
-            <h1 className="text-2xl font-semibold tracking-tight">Unified inbox</h1>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Choose an account folder to fetch its newest messages. Unified cached mail is coming
-              with offline sync.
-            </p>
-            <p className="mt-4 text-xs text-muted-foreground">
-              Desktop shell running on {window.emzero.platform}
-            </p>
-          </div>
-        </section>
+        <UnifiedInbox accounts={accounts} />
       )}
     </main>
   );

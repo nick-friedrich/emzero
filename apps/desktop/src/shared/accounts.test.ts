@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { type AccountDraft, validateAccountDraft } from './accounts.js';
+import {
+  findInboxFolder,
+  type AccountDraft,
+  type MailFolderSummary,
+  validateAccountDraft,
+} from './accounts.js';
 
 const validDraft: AccountDraft = {
   name: 'Personal',
@@ -20,5 +25,32 @@ describe('validateAccountDraft', () => {
     expect(
       validateAccountDraft({ ...validDraft, imap: { ...validDraft.imap, port: 70_000 } }),
     ).toMatch(/valid IMAP port/);
+  });
+});
+
+describe('findInboxFolder', () => {
+  const folder = (
+    path: string,
+    specialUse: string | null = null,
+    selectable = true,
+  ): MailFolderSummary => ({
+    path,
+    name: path,
+    parentPath: '',
+    delimiter: '/',
+    specialUse,
+    selectable,
+  });
+
+  it('prefers the provider-designated inbox', () => {
+    const namedInbox = folder('INBOX');
+    const designatedInbox = folder('Mail/Incoming', '\\Inbox');
+    expect(findInboxFolder([namedInbox, designatedInbox])).toBe(designatedInbox);
+  });
+
+  it('falls back to a selectable folder named inbox', () => {
+    const unavailableInbox = folder('INBOX', null, false);
+    const selectableInbox = folder('Inbox');
+    expect(findInboxFolder([unavailableInbox, selectableInbox])).toBe(selectableInbox);
   });
 });
