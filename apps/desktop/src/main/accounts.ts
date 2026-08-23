@@ -16,7 +16,7 @@ import {
   type MailFolderSummary,
   type MailMessageDetail,
   type MailMessageSummary,
-  type MailReplyDraft,
+  type MailSendDraft,
   type MailSendResult,
   type MailSyncStatus,
   type MessageDetailResult,
@@ -24,7 +24,7 @@ import {
   type MessageOperationResult,
   validateAccountDraft,
 } from '../shared/accounts.js';
-import { validateReplyDraft } from '../shared/replies.js';
+import { validateReplyDraft, validateSendDraft } from '../shared/replies.js';
 import { discoverProvider, listProviders } from './provider-discovery.js';
 import { hasQuotedHtml, sanitizedMessageHtml } from './message-html.js';
 import { MailCache } from './mail-cache.js';
@@ -508,18 +508,24 @@ function validUids(value: unknown): value is number[] {
   );
 }
 
-function validReplyDraft(value: unknown): value is MailReplyDraft {
+function validSendDraft(value: unknown): value is MailSendDraft {
   if (!value || typeof value !== 'object') return false;
-  const draft = value as Partial<MailReplyDraft>;
-  return (
-    Array.isArray(draft.to) &&
-    draft.to.every(
+  const draft = value as Partial<MailSendDraft>;
+  const validAddresses = (addresses: unknown) =>
+    Array.isArray(addresses) &&
+    addresses.every(
       (address) =>
         address !== null &&
         typeof address === 'object' &&
-        (address.name === null || typeof address.name === 'string') &&
-        (address.address === null || typeof address.address === 'string'),
-    ) &&
+        ((address as { name?: unknown }).name === null ||
+          typeof (address as { name?: unknown }).name === 'string') &&
+        ((address as { address?: unknown }).address === null ||
+          typeof (address as { address?: unknown }).address === 'string'),
+    );
+  return (
+    validAddresses(draft.to) &&
+    validAddresses(draft.cc) &&
+    validAddresses(draft.bcc) &&
     typeof draft.subject === 'string' &&
     typeof draft.text === 'string' &&
     (draft.inReplyTo === null || typeof draft.inReplyTo === 'string') &&
@@ -606,12 +612,14 @@ async function deleteFolderMessages(
   }
 }
 
-async function sendReply(
+async function sendMessage(
   account: StoredAccount,
-  draft: MailReplyDraft,
+  draft: MailSendDraft,
+  kind: 'reply' | 'message',
 ): Promise<MailSendResult> {
-  const validationError = validateReplyDraft(draft);
+  const validationError = kind === 'reply' ? validateReplyDraft(draft) : validateSendDraft(draft);
   if (validationError) return { ok: false, message: validationError };
+  const sentLabel = kind === 'reply' ? 'Reply' : 'Message';
 
   let password = '';
   try {
@@ -620,6 +628,8 @@ async function sendReply(
     const messageOptions = {
       from: { name: account.name, address: account.email },
       to: draft.to.map(({ name, address }) => ({ name: name ?? '', address: address! })),
+      cc: draft.cc.map(({ name, address }) => ({ name: name ?? '', address: address! })),
+      bcc: draft.bcc.map(({ name, address }) => ({ name: name ?? '', address: address! })),
       subject: draft.subject.trim(),
       text: draft.text.trim(),
       date: sentAt,
@@ -675,7 +685,7 @@ async function sendReply(
       if (!sentFolder) {
         return {
           ok: true,
-          message: 'Reply sent, but this account has no Sent folder to save a copy in.',
+          message: `${sentLabel} sent, but this account has no Sent folder to save a copy in.`,
           messageId: smtpMessageId,
           savedToSent: false,
         };
@@ -735,7 +745,7 @@ async function sendReply(
           subject: sentMessage.subject,
           from: sentMessage.from,
           to: sentMessage.to,
-          cc: [],
+          cc: draft.cc,
           replyTo: [],
           sentAt: sentMessage.sentAt,
           text: draft.text.trim(),
@@ -746,7 +756,7 @@ async function sendReply(
       }
       return {
         ok: true,
-        message: 'Reply sent and saved to Sent.',
+        message: `${sentLabel} sent and saved to Sent.`,
         messageId: smtpMessageId,
         savedToSent: true,
         sentMessage,
@@ -754,7 +764,7 @@ async function sendReply(
     } catch (error) {
       return {
         ok: true,
-        message: `Reply sent, but the Sent copy could not be saved: ${errorMessage(error, password)}`,
+        message: `${sentLabel} sent, but the Sent copy could not be saved: ${errorMessage(error, password)}`,
         messageId: smtpMessageId,
         savedToSent: false,
       };
@@ -764,7 +774,10 @@ async function sendReply(
       else imap?.close();
     }
   } catch (error) {
-    return { ok: false, message: `Could not send reply: ${errorMessage(error, password)}` };
+    return {
+      ok: false,
+      message: `Could not send ${kind === 'reply' ? 'reply' : 'message'}: ${errorMessage(error, password)}`,
+    };
   }
 }
 
@@ -936,12 +949,25 @@ export function registerAccountHandlers(): void {
     ACCOUNT_CHANNELS.sendReply,
     async (event, accountId: unknown, draft: unknown) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-      if (typeof accountId !== 'string' || !validReplyDraft(draft)) {
+      if (typeof accountId !== 'string' || !validSendDraft(draft)) {
         return { ok: false, message: 'Invalid reply.' } satisfies MailSendResult;
       }
       const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
       if (!account) return { ok: false, message: 'Account not found.' } satisfies MailSendResult;
-      return sendReply(account, draft);
+      return sendMessage(account, draft, 'reply');
+    },
+  );
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.sendMessage,
+    async (event, accountId: unknown, draft: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (typeof accountId !== 'string' || !validSendDraft(draft)) {
+        return { ok: false, message: 'Invalid message.' } satisfies MailSendResult;
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return { ok: false, message: 'Account not found.' } satisfies MailSendResult;
+      return sendMessage(account, draft, 'message');
     },
   );
 

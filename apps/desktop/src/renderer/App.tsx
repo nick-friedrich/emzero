@@ -71,6 +71,7 @@ import type {
   MailMessageDetail,
   MailMessageSummary,
   MailProvider,
+  MailSendDraft,
   MailSyncStatus,
 } from '../shared/accounts';
 import { defaultAccountName, displayFolderName, findInboxFolder } from '../shared/accounts';
@@ -79,7 +80,12 @@ import {
   splitQuotedText,
   type MailConversation,
 } from '../shared/conversations';
-import { createReplyDraft, replyRecipients } from '../shared/replies';
+import {
+  createReplyDraft,
+  parseAddressList,
+  replyRecipients,
+  validateSendDraft,
+} from '../shared/replies';
 
 const initialDraft: AccountDraft = {
   name: '',
@@ -1978,6 +1984,191 @@ function AccountSettingsDialog({
   );
 }
 
+function ComposeDialog({
+  open,
+  accounts,
+  defaultAccountId,
+  onOpenChange,
+  onSent,
+}: {
+  open: boolean;
+  accounts: AccountSummary[];
+  defaultAccountId: string | null;
+  onOpenChange: (open: boolean) => void;
+  onSent: () => void;
+}) {
+  const [accountId, setAccountId] = useState(() =>
+    accounts.some((account) => account.id === defaultAccountId)
+      ? defaultAccountId!
+      : (accounts[0]?.id ?? ''),
+  );
+  const [to, setTo] = useState('');
+  const [cc, setCc] = useState('');
+  const [bcc, setBcc] = useState('');
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<Status | null>(null);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const draft: MailSendDraft = {
+      to: parseAddressList(to),
+      cc: parseAddressList(cc),
+      bcc: parseAddressList(bcc),
+      subject,
+      text: body,
+      inReplyTo: null,
+      references: [],
+    };
+    const validationError = validateSendDraft(draft);
+    if (validationError) {
+      setStatus({ kind: 'error', message: validationError });
+      return;
+    }
+
+    setBusy(true);
+    setStatus(null);
+    try {
+      const result = await window.emzero.messages.send(accountId, draft);
+      if (!result.ok) {
+        setStatus({ kind: 'error', message: result.message ?? 'Could not send message.' });
+        return;
+      }
+      onSent();
+      onOpenChange(false);
+    } catch {
+      setStatus({ kind: 'error', message: 'Could not send message.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!busy) onOpenChange(nextOpen);
+      }}
+    >
+      <DialogContent className="w-[min(44rem,calc(100%-2rem))]">
+        <DialogHeader>
+          <DialogTitle>New message</DialogTitle>
+          <DialogDescription>Send a plain-text email from any connected account.</DialogDescription>
+        </DialogHeader>
+        <form className="space-y-4" onSubmit={submit}>
+          <Field label="From">
+            <div className="relative">
+              <select
+                className="field appearance-none pr-9"
+                value={accountId}
+                disabled={busy}
+                onChange={(event) => {
+                  setAccountId(event.target.value);
+                  setStatus(null);
+                }}
+              >
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name} — {account.email}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-2.5 size-4 text-muted-foreground" />
+            </div>
+          </Field>
+          <Field label="To">
+            <input
+              className="field"
+              type="text"
+              value={to}
+              placeholder="name@example.com, another@example.com"
+              autoFocus
+              disabled={busy}
+              onChange={(event) => {
+                setTo(event.target.value);
+                setStatus(null);
+              }}
+            />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Cc">
+              <input
+                className="field"
+                type="text"
+                value={cc}
+                placeholder="Optional"
+                disabled={busy}
+                onChange={(event) => {
+                  setCc(event.target.value);
+                  setStatus(null);
+                }}
+              />
+            </Field>
+            <Field label="Bcc">
+              <input
+                className="field"
+                type="text"
+                value={bcc}
+                placeholder="Optional"
+                disabled={busy}
+                onChange={(event) => {
+                  setBcc(event.target.value);
+                  setStatus(null);
+                }}
+              />
+            </Field>
+          </div>
+          <Field label="Subject">
+            <input
+              className="field"
+              value={subject}
+              disabled={busy}
+              onChange={(event) => {
+                setSubject(event.target.value);
+                setStatus(null);
+              }}
+            />
+          </Field>
+          <Field label="Message">
+            <textarea
+              className="field min-h-52 resize-y leading-6"
+              value={body}
+              disabled={busy}
+              onChange={(event) => {
+                setBody(event.target.value);
+                setStatus(null);
+              }}
+            />
+          </Field>
+          {status && (
+            <p
+              className={status.kind === 'success' ? 'text-sm text-success' : 'text-sm text-danger'}
+              role="status"
+            >
+              {status.message}
+            </p>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => onOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={busy || !accountId}>
+              {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
+              Send
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function Sidebar({
   accounts,
   selection,
@@ -1986,6 +2177,7 @@ function Sidebar({
   onSelect,
   onAdd,
   onManage,
+  onCompose,
   className,
 }: {
   accounts: AccountSummary[];
@@ -1995,6 +2187,7 @@ function Sidebar({
   onSelect: (selection: MailboxSelection) => void;
   onAdd: () => void;
   onManage: () => void;
+  onCompose: () => void;
   className?: string;
 }) {
   const { theme, setTheme, interfaceFont, setInterfaceFont } = useTheme();
@@ -2090,7 +2283,11 @@ function Sidebar({
         </div>
       </div>
 
-      <Button className="mb-4 w-full justify-start" disabled={accounts.length === 0}>
+      <Button
+        className="mb-4 w-full justify-start"
+        disabled={accounts.length === 0}
+        onClick={onCompose}
+      >
         <PenLine className="size-4" />
         Compose
       </Button>
@@ -2274,6 +2471,7 @@ export function App() {
   const [providers, setProviders] = useState<MailProvider[]>([]);
   const [showSetup, setShowSetup] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selection, setSelection] = useState<MailboxSelection>({ kind: 'unified' });
   const [syncStatus, setSyncStatus] = useState<MailSyncStatus>({
@@ -2332,6 +2530,7 @@ export function App() {
         }}
         onAdd={() => setShowSetup(true)}
         onManage={() => setSettingsOpen(true)}
+        onCompose={() => setComposeOpen(true)}
       />
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetTrigger asChild>
@@ -2368,9 +2567,24 @@ export function App() {
               setSettingsOpen(true);
               setSidebarOpen(false);
             }}
+            onCompose={() => {
+              setComposeOpen(true);
+              setSidebarOpen(false);
+            }}
           />
         </SheetContent>
       </Sheet>
+      {composeOpen && (
+        <ComposeDialog
+          open
+          accounts={accounts}
+          defaultAccountId={
+            selection.kind === 'folder' ? selection.account.id : (accounts[0]?.id ?? null)
+          }
+          onOpenChange={setComposeOpen}
+          onSent={() => setSyncRevision((current) => current + 1)}
+        />
+      )}
       <AccountSettingsDialog
         open={settingsOpen}
         accounts={accounts}

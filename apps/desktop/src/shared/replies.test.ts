@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { AccountSummary, MailMessageDetail, MailMessageSummary } from './accounts.js';
-import { createReplyDraft, replyRecipients, replySubject, validateReplyDraft } from './replies.js';
+import type {
+  AccountSummary,
+  MailMessageDetail,
+  MailMessageSummary,
+  MailSendDraft,
+} from './accounts.js';
+import {
+  createReplyDraft,
+  parseAddressList,
+  replyRecipients,
+  replySubject,
+  validateReplyDraft,
+  validateSendDraft,
+} from './replies.js';
 
 const account: AccountSummary = {
   id: 'account-1',
@@ -80,5 +92,35 @@ describe('reply helpers', () => {
     });
     expect(validateReplyDraft(draft)).toBeNull();
     expect(validateReplyDraft({ ...draft, text: '   ' })).toBe('Write a message before sending.');
+  });
+});
+
+describe('new message helpers', () => {
+  const draft: MailSendDraft = {
+    to: [{ name: null, address: 'person@example.com' }],
+    cc: [],
+    bcc: [],
+    subject: 'Hello',
+    text: 'A new message',
+    inReplyTo: null,
+    references: [],
+  };
+
+  it('parses comma- and semicolon-separated recipients with optional names', () => {
+    expect(parseAddressList('Jane Doe <jane@example.com>, other@example.com; third@example.com'))
+      .toEqual([
+        { name: 'Jane Doe', address: 'jane@example.com' },
+        { name: null, address: 'other@example.com' },
+        { name: null, address: 'third@example.com' },
+      ]);
+  });
+
+  it('validates required fields and every recipient group', () => {
+    expect(validateSendDraft(draft)).toBeNull();
+    expect(validateSendDraft({ ...draft, to: [] })).toBe('Enter at least one recipient.');
+    expect(
+      validateSendDraft({ ...draft, cc: [{ name: null, address: 'not-an-address' }] }),
+    ).toBe('Cc contains an invalid email address.');
+    expect(validateSendDraft({ ...draft, subject: '' })).toBe('Enter a valid subject.');
   });
 });

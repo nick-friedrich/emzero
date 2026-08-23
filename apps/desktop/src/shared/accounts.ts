@@ -128,13 +128,17 @@ export interface MessageOperationResult {
   message?: string;
 }
 
-export interface MailReplyDraft {
+export interface MailSendDraft {
   to: MailAddressSummary[];
+  cc: MailAddressSummary[];
+  bcc: MailAddressSummary[];
   subject: string;
   text: string;
   inReplyTo: string | null;
   references: string[];
 }
+
+export type MailReplyDraft = MailSendDraft;
 
 export interface MailSendResult extends MessageOperationResult {
   messageId?: string;
@@ -187,6 +191,7 @@ export const ACCOUNT_CHANNELS = {
   setMessageUnread: 'messages:set-unread',
   deleteMessages: 'messages:delete',
   sendReply: 'messages:send-reply',
+  sendMessage: 'messages:send',
   syncStatus: 'sync:status',
   syncNow: 'sync:now',
   syncChanged: 'sync:changed',

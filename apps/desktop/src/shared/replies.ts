@@ -4,6 +4,7 @@ import type {
   MailMessageDetail,
   MailMessageSummary,
   MailReplyDraft,
+  MailSendDraft,
 } from './accounts.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -50,6 +51,8 @@ export function createReplyDraft(
 ): MailReplyDraft {
   return {
     to: replyRecipients(account, detail),
+    cc: [],
+    bcc: [],
     subject: replySubject(detail.subject),
     text,
     inReplyTo: detail.messageId,
@@ -57,20 +60,45 @@ export function createReplyDraft(
   };
 }
 
-export function validateReplyDraft(draft: MailReplyDraft): string | null {
-  if (draft.to.length === 0) return 'This message has no valid reply address.';
-  if (
-    draft.to.some(
-      ({ address }) => !address || !emailPattern.test(address.trim()) || /[\r\n]/.test(address),
-    )
-  ) {
-    return 'The reply address is invalid.';
+export function parseAddressList(value: string): MailAddressSummary[] {
+  return value
+    .split(/[;,]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const named = entry.match(/^(?:"([^"]+)"|([^<>]+?))?\s*<([^<>]+)>$/);
+      return named
+        ? { name: (named[1] ?? named[2])?.trim() || null, address: named[3].trim() }
+        : { name: null, address: entry };
+    });
+}
+
+export function validateSendDraft(draft: MailSendDraft): string | null {
+  if (draft.to.length === 0) return 'Enter at least one recipient.';
+  for (const [label, addresses] of [
+    ['To', draft.to],
+    ['Cc', draft.cc],
+    ['Bcc', draft.bcc],
+  ] as const) {
+    if (
+      addresses.some(
+        ({ address }) => !address || !emailPattern.test(address.trim()) || /[\r\n]/.test(address),
+      )
+    ) {
+      return `${label} contains an invalid email address.`;
+    }
   }
-  if (!draft.subject.trim() || /[\r\n]/.test(draft.subject)) return 'The subject is invalid.';
+  if (!draft.subject.trim() || /[\r\n]/.test(draft.subject)) return 'Enter a valid subject.';
   if (!draft.text.trim()) return 'Write a message before sending.';
-  if (draft.inReplyTo && /[\r\n]/.test(draft.inReplyTo)) return 'The reply headers are invalid.';
+  if (draft.inReplyTo && /[\r\n]/.test(draft.inReplyTo)) return 'The message headers are invalid.';
   if (draft.references.some((reference) => /[\r\n]/.test(reference))) {
-    return 'The reply headers are invalid.';
+    return 'The message headers are invalid.';
   }
   return null;
+}
+
+export function validateReplyDraft(draft: MailReplyDraft): string | null {
+  if (draft.to.length === 0) return 'This message has no valid reply address.';
+  const error = validateSendDraft(draft);
+  return error === 'Enter a valid subject.' ? 'The subject is invalid.' : error;
 }
