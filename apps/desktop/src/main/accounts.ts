@@ -3,6 +3,7 @@ import { readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { app, ipcMain, safeStorage } from 'electron';
 import { ImapFlow } from 'imapflow';
+import { simpleParser, type AddressObject } from 'mailparser';
 import nodemailer from 'nodemailer';
 import {
   ACCOUNT_CHANNELS,
@@ -12,11 +13,14 @@ import {
   type FolderListResult,
   type MailAddressSummary,
   type MailFolderSummary,
+  type MailMessageDetail,
   type MailMessageSummary,
+  type MessageDetailResult,
   type MessageListResult,
   validateAccountDraft,
 } from '../shared/accounts.js';
 import { discoverProvider, listProviders } from './provider-discovery.js';
+import { sanitizedMessageHtml } from './message-html.js';
 
 interface StoredAccount extends AccountSummary {
   encryptedPassword: string;
@@ -230,6 +234,79 @@ async function listFolderMessages(
   }
 }
 
+function parsedAddresses(value: AddressObject | AddressObject[] | undefined): MailAddressSummary[] {
+  const entries = (Array.isArray(value) ? value : value ? [value] : []).flatMap(
+    (addressObject) => addressObject.value,
+  );
+  return entries.flatMap((entry) => {
+    if (entry.group) {
+      return entry.group.map(({ name, address }) => ({ name: name || null, address: address ?? null }));
+    }
+    return [{ name: entry.name || null, address: entry.address ?? null }];
+  });
+}
+
+async function getFolderMessage(
+  account: StoredAccount,
+  folderPath: string,
+  uid: number,
+): Promise<MessageDetailResult> {
+  let password = '';
+  let imap: ImapFlow | null = null;
+  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
+
+  try {
+    password = await decryptPassword(account);
+    imap = new ImapFlow({
+      host: account.imap.host,
+      port: account.imap.port,
+      secure: account.imap.secure,
+      auth: { user: account.username, pass: password },
+      logger: false,
+      connectionTimeout: 12_000,
+      greetingTimeout: 12_000,
+      socketTimeout: 30_000,
+    });
+    await imap.connect();
+    lock = await imap.getMailboxLock(folderPath, { readOnly: true });
+
+    const fetched = await imap.fetchOne(uid, { source: true }, { uid: true });
+    if (!fetched || !fetched.source) {
+      return { ok: false, message: 'This message is no longer available.' };
+    }
+
+    const parsed = await simpleParser(fetched.source);
+    const messageDetail: MailMessageDetail = {
+      uid,
+      messageId: parsed.messageId ?? null,
+      subject: parsed.subject?.trim() || '(No subject)',
+      from: parsedAddresses(parsed.from),
+      to: parsedAddresses(parsed.to),
+      cc: parsedAddresses(parsed.cc),
+      replyTo: parsedAddresses(parsed.replyTo),
+      sentAt: dateString(parsed.date),
+      text: parsed.text?.trim() || 'This message has no readable text content.',
+      html: sanitizedMessageHtml(parsed.html),
+      attachments: parsed.attachments.map((attachment) => ({
+        filename: attachment.filename || 'Unnamed attachment',
+        contentType: attachment.contentType,
+        size: attachment.size,
+        related: attachment.related,
+      })),
+    };
+    return { ok: true, messageDetail };
+  } catch (error) {
+    return {
+      ok: false,
+      message: `Could not load message: ${errorMessage(error, password)}`,
+    };
+  } finally {
+    lock?.release();
+    if (imap?.usable) await imap.logout().catch(() => imap?.close());
+    else imap?.close();
+  }
+}
+
 function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
   const senderUrl = event.senderFrame?.url;
   if (!senderUrl) return false;
@@ -289,6 +366,28 @@ export function registerAccountHandlers(): void {
         } satisfies MessageListResult;
       }
       return listFolderMessages(account, folderPath);
+    },
+  );
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.getMessage,
+    async (event, accountId: unknown, folderPath: unknown, uid: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (
+        typeof accountId !== 'string' ||
+        typeof folderPath !== 'string' ||
+        !folderPath ||
+        typeof uid !== 'number' ||
+        !Number.isInteger(uid) ||
+        uid < 1
+      ) {
+        return { ok: false, message: 'Invalid message.' } satisfies MessageDetailResult;
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) {
+        return { ok: false, message: 'Account not found.' } satisfies MessageDetailResult;
+      }
+      return getFolderMessage(account, folderPath, uid);
     },
   );
 

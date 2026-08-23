@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Archive,
+  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -11,6 +12,7 @@ import {
   LoaderCircle,
   LockKeyhole,
   Mail,
+  Paperclip,
   PenLine,
   Plus,
   RefreshCw,
@@ -25,6 +27,7 @@ import type {
   AccountDraft,
   AccountSummary,
   MailFolderSummary,
+  MailMessageDetail,
   MailMessageSummary,
   MailProvider,
 } from '../shared/accounts';
@@ -387,6 +390,26 @@ function addressLabel(addresses: MailMessageSummary['from']): string {
     .join(', ');
 }
 
+function addressDetails(addresses: MailMessageSummary['from']): string {
+  if (addresses.length === 0) return 'Unknown';
+  return addresses
+    .map(({ name, address }) => {
+      if (name && address) return `${name} <${address}>`;
+      return name || address || 'Unknown';
+    })
+    .join(', ');
+}
+
+function fileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function htmlDocument(body: string): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline';"><style>html{color-scheme:light}body{box-sizing:border-box;margin:0;padding:1.5rem;color:#292524;background:#fff;font:14px/1.65 Inter,ui-sans-serif,system-ui,sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}</style></head><body>${body}</body></html>`;
+}
+
 function messageDate(value: string | null): string {
   if (!value) return '';
   const date = new Date(value);
@@ -411,9 +434,177 @@ type MessageLoadState =
   | { status: 'loaded'; messages: MailMessageSummary[]; total: number }
   | { status: 'error'; message: string };
 
+type MessageDetailLoadState =
+  | { status: 'loading' }
+  | { status: 'loaded'; message: MailMessageDetail }
+  | { status: 'error'; message: string };
+
+function MessageReader({
+  selection,
+  summary,
+  onBack,
+}: {
+  selection: FolderSelection;
+  summary: MailMessageSummary;
+  onBack: () => void;
+}) {
+  const [state, setState] = useState<MessageDetailLoadState>({ status: 'loading' });
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [view, setView] = useState<'html' | 'text'>('html');
+
+  useEffect(() => {
+    let active = true;
+    void window.emzero.messages
+      .get(selection.account.id, selection.folder.path, summary.uid)
+      .then((result) => {
+        if (!active) return;
+        setState(
+          result.ok && result.messageDetail
+            ? { status: 'loaded', message: result.messageDetail }
+            : { status: 'error', message: result.message ?? 'Could not load message.' },
+        );
+      })
+      .catch(() => {
+        if (active) setState({ status: 'error', message: 'Could not load message.' });
+      });
+    return () => {
+      active = false;
+    };
+  }, [refreshKey, selection.account.id, selection.folder.path, summary.uid]);
+
+  const retry = () => {
+    setState({ status: 'loading' });
+    setRefreshKey((current) => current + 1);
+  };
+
+  return (
+    <section className="flex min-h-0 flex-col overflow-hidden bg-background">
+      <header className="flex items-center gap-3 border-b border-border bg-card px-4 py-3">
+        <Button variant="ghost" className="px-3" onClick={onBack}>
+          <ArrowLeft className="size-4" />
+          Back
+        </Button>
+        <span className="truncate text-sm text-muted-foreground">
+          {selection.account.name} / {selection.folder.name}
+        </span>
+      </header>
+
+      {state.status === 'loading' && (
+        <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <LoaderCircle className="size-4 animate-spin" />
+            Loading message
+          </div>
+        </div>
+      )}
+
+      {state.status === 'error' && (
+        <div className="grid flex-1 place-items-center p-8">
+          <div className="max-w-md text-center">
+            <CircleAlert className="mx-auto size-8 text-danger" />
+            <h2 className="mt-3 font-semibold">Message could not be loaded</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{state.message}</p>
+            <Button className="mt-5" variant="secondary" onClick={retry}>
+              <RefreshCw className="size-4" />
+              Try again
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {state.status === 'loaded' && (
+        <article className="min-h-0 flex-1 overflow-y-auto px-8 py-7 lg:px-12">
+          <div className="mx-auto max-w-4xl">
+            <h1 className="text-2xl font-semibold leading-tight tracking-tight">
+              {state.message.subject}
+            </h1>
+            <div className="mt-5 flex items-start justify-between gap-6 border-b border-border pb-5">
+              <div className="min-w-0 text-sm leading-6">
+                <p className="truncate font-medium">{addressDetails(state.message.from)}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  To: {addressDetails(state.message.to)}
+                </p>
+                {state.message.cc.length > 0 && (
+                  <p className="truncate text-xs text-muted-foreground">
+                    Cc: {addressDetails(state.message.cc)}
+                  </p>
+                )}
+              </div>
+              <time
+                className="shrink-0 text-xs text-muted-foreground"
+                dateTime={state.message.sentAt ?? undefined}
+              >
+                {messageDate(state.message.sentAt)}
+              </time>
+            </div>
+
+            {state.message.html && (
+              <div className="mt-4 flex justify-end gap-1" aria-label="Message format">
+                <Button
+                  variant={view === 'html' ? 'secondary' : 'ghost'}
+                  className="h-8 px-3 text-xs"
+                  onClick={() => setView('html')}
+                >
+                  HTML
+                </Button>
+                <Button
+                  variant={view === 'text' ? 'secondary' : 'ghost'}
+                  className="h-8 px-3 text-xs"
+                  onClick={() => setView('text')}
+                >
+                  Plain text
+                </Button>
+              </div>
+            )}
+
+            {state.message.html && view === 'html' ? (
+              <iframe
+                className="mt-4 h-[60vh] min-h-96 w-full rounded-md border border-border bg-white"
+                title="Email content"
+                sandbox=""
+                referrerPolicy="no-referrer"
+                srcDoc={htmlDocument(state.message.html)}
+              />
+            ) : (
+              <div className="mt-7 whitespace-pre-wrap break-words text-sm leading-7 text-foreground">
+                {state.message.text}
+              </div>
+            )}
+
+            {state.message.attachments.some(({ related }) => !related) && (
+              <section className="mt-8 border-t border-border pt-5" aria-label="Attachments">
+                <h2 className="flex items-center gap-2 text-sm font-semibold">
+                  <Paperclip className="size-4" />
+                  Attachments
+                </h2>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {state.message.attachments
+                    .filter(({ related }) => !related)
+                    .map((attachment, index) => (
+                      <div
+                        key={`${attachment.filename}:${index}`}
+                        className="rounded-md border border-border bg-card px-3 py-2 text-xs"
+                      >
+                        <span className="font-medium">{attachment.filename}</span>
+                        <span className="ml-2 text-muted-foreground">
+                          {fileSize(attachment.size)}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </section>
+            )}
+          </div>
+        </article>
+      )}
+    </section>
+  );
+}
+
 function MessageList({ selection }: { selection: FolderSelection }) {
   const [state, setState] = useState<MessageLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedMessage, setSelectedMessage] = useState<MailMessageSummary | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -441,6 +632,17 @@ function MessageList({ selection }: { selection: FolderSelection }) {
   };
 
   const showRecipients = selection.folder.specialUse === '\\Sent';
+
+  if (selectedMessage) {
+    return (
+      <MessageReader
+        key={selectedMessage.uid}
+        selection={selection}
+        summary={selectedMessage}
+        onBack={() => setSelectedMessage(null)}
+      />
+    );
+  }
 
   return (
     <section className="flex min-h-0 flex-col overflow-hidden bg-background">
@@ -511,10 +713,12 @@ function MessageList({ selection }: { selection: FolderSelection }) {
             const people = showRecipients ? message.to : message.from;
             const date = message.sentAt ?? message.receivedAt;
             return (
-              <article
+              <button
+                type="button"
                 key={message.uid}
-                className="grid grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-6 py-3 hover:bg-accent/60"
+                className="grid w-full grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-6 py-3 text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none"
                 role="listitem"
+                onClick={() => setSelectedMessage(message)}
               >
                 <div className="flex min-w-0 items-center gap-2">
                   <span
@@ -534,7 +738,7 @@ function MessageList({ selection }: { selection: FolderSelection }) {
                   )}
                   <time dateTime={date ?? undefined}>{messageDate(date)}</time>
                 </div>
-              </article>
+              </button>
             );
           })}
         </div>

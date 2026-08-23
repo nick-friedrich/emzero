@@ -63,6 +63,33 @@ export interface MessageListResult {
   message?: string;
 }
 
+export interface MailAttachmentSummary {
+  filename: string;
+  contentType: string;
+  size: number;
+  related: boolean;
+}
+
+export interface MailMessageDetail {
+  uid: number;
+  messageId: string | null;
+  subject: string;
+  from: MailAddressSummary[];
+  to: MailAddressSummary[];
+  cc: MailAddressSummary[];
+  replyTo: MailAddressSummary[];
+  sentAt: string | null;
+  text: string;
+  html: string | null;
+  attachments: MailAttachmentSummary[];
+}
+
+export interface MessageDetailResult {
+  ok: boolean;
+  messageDetail?: MailMessageDetail;
+  message?: string;
+}
+
 export interface AccountOperationResult {
   ok: boolean;
   message: string;
@@ -92,6 +119,7 @@ export const ACCOUNT_CHANNELS = {
   discoverProvider: 'providers:discover',
   listFolders: 'folders:list',
   listMessages: 'messages:list',
+  getMessage: 'messages:get',
 } as const;
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

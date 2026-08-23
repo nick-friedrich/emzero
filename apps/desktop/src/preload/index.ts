@@ -6,6 +6,7 @@ import {
   type AccountSummary,
   type FolderListResult,
   type MessageListResult,
+  type MessageDetailResult,
   type MailProvider,
   type ProviderDiscoveryResult,
 } from '../shared/accounts.js';
@@ -22,6 +23,7 @@ export interface EmzeroDesktopApi {
   };
   messages: {
     list: (accountId: string, folderPath: string) => Promise<MessageListResult>;
+    get: (accountId: string, folderPath: string, uid: number) => Promise<MessageDetailResult>;
   };
   providers: {
     list: () => Promise<MailProvider[]>;
@@ -42,6 +44,8 @@ contextBridge.exposeInMainWorld('emzero', {
   messages: {
     list: (accountId, folderPath) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.listMessages, accountId, folderPath),
+    get: (accountId, folderPath, uid) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.getMessage, accountId, folderPath, uid),
   },
   providers: {
     list: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.providers),
