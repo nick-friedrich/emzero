@@ -659,7 +659,7 @@ function ConversationReader({
                 key={message.uid}
                 selection={selection}
                 summary={message}
-                defaultExpanded={index === conversation.messages.length - 1}
+                defaultExpanded={index === 0}
               />
             ))}
           </div>
@@ -782,7 +782,7 @@ function MessageList({ selection }: { selection: FolderSelection }) {
       {state.status === 'loaded' && state.messages.length > 0 && (
         <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Messages">
           {conversations.map((conversation) => {
-            const latest = conversation.messages.at(-1)!;
+            const latest = conversation.messages[0];
             const people = conversation.messages.flatMap((message) =>
               showRecipients ? message.to : message.from,
             );

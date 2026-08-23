@@ -61,9 +61,9 @@ export function groupMessagesIntoConversations(
 
   return [...groups.values()]
     .map((group) => {
-      group.sort((left, right) => timestamp(left) - timestamp(right));
-      const latest = group.at(-1)!;
-      const first = group[0];
+      group.sort((left, right) => timestamp(right) - timestamp(left));
+      const latest = group[0];
+      const first = group.at(-1)!;
       return {
         id:
           normalizedMessageId(first.references?.[0] ?? first.inReplyTo ?? first.messageId) ??
@@ -72,7 +72,7 @@ export function groupMessagesIntoConversations(
         messages: group,
       };
     })
-    .sort((left, right) => timestamp(right.messages.at(-1)!) - timestamp(left.messages.at(-1)!));
+    .sort((left, right) => timestamp(right.messages[0]) - timestamp(left.messages[0]));
 }
 
 export interface QuotedTextParts {

@@ -28,7 +28,7 @@ function message(
 }
 
 describe('groupMessagesIntoConversations', () => {
-  it('groups a reply chain by Message-ID references and orders it oldest first', () => {
+  it('groups a reply chain by Message-ID references and orders it newest first', () => {
     const root = message(1);
     const reply = message(2, {
       subject: 'Re: Project update',
@@ -43,8 +43,20 @@ describe('groupMessagesIntoConversations', () => {
 
     const conversations = groupMessagesIntoConversations([laterReply, root, reply]);
     expect(conversations).toHaveLength(1);
-    expect(conversations[0].messages.map(({ uid }) => uid)).toEqual([1, 2, 3]);
+    expect(conversations[0].messages.map(({ uid }) => uid)).toEqual([3, 2, 1]);
     expect(conversations[0].subject).toBe('Project update');
+  });
+
+  it('orders conversations by their newest message first', () => {
+    const older = message(1);
+    const newerRoot = message(2);
+    const newestReply = message(3, {
+      inReplyTo: newerRoot.messageId,
+      references: [newerRoot.messageId!],
+    });
+
+    const conversations = groupMessagesIntoConversations([older, newerRoot, newestReply]);
+    expect(conversations.map(({ messages }) => messages[0].uid)).toEqual([3, 1]);
   });
 
   it('does not merge unrelated messages merely because subjects match', () => {
