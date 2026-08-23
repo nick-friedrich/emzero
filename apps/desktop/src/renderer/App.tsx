@@ -31,6 +31,11 @@ import type {
   MailMessageSummary,
   MailProvider,
 } from '../shared/accounts';
+import {
+  groupMessagesIntoConversations,
+  splitQuotedText,
+  type MailConversation,
+} from '../shared/conversations';
 
 const initialDraft: AccountDraft = {
   name: 'Personal',
@@ -385,7 +390,7 @@ function FolderIcon({ specialUse }: { specialUse: string | null }) {
 
 function addressLabel(addresses: MailMessageSummary['from']): string {
   if (addresses.length === 0) return 'Unknown sender';
-  return addresses
+  return [...new Map(addresses.map((address) => [address.address ?? address.name, address])).values()]
     .map(({ name, address }) => name || address || 'Unknown sender')
     .join(', ');
 }
@@ -406,8 +411,11 @@ function fileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function htmlDocument(body: string): string {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline';"><style>html{color-scheme:light}body{box-sizing:border-box;margin:0;padding:1.5rem;color:#292524;background:#fff;font:14px/1.65 Inter,ui-sans-serif,system-ui,sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}</style></head><body>${body}</body></html>`;
+function htmlDocument(body: string, showQuoted: boolean): string {
+  const quotedStyle = showQuoted
+    ? ''
+    : 'blockquote,.gmail_quote,.yahoo_quoted,.moz-cite-prefix,#divRplyFwdMsg{display:none!important}';
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline';"><style>html{color-scheme:light}body{box-sizing:border-box;margin:0;padding:1.5rem;color:#292524;background:#fff;font:14px/1.65 Inter,ui-sans-serif,system-ui,sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}${quotedStyle}</style></head><body>${body}</body></html>`;
 }
 
 function messageDate(value: string | null): string {
@@ -439,20 +447,108 @@ type MessageDetailLoadState =
   | { status: 'loaded'; message: MailMessageDetail }
   | { status: 'error'; message: string };
 
-function MessageReader({
+function MessageBody({ message }: { message: MailMessageDetail }) {
+  const [view, setView] = useState<'html' | 'text'>('html');
+  const [showQuoted, setShowQuoted] = useState(false);
+  const textParts = splitQuotedText(message.text);
+  const hasQuotedText = view === 'html' ? message.htmlHasQuotedText : Boolean(textParts.quoted);
+
+  return (
+    <>
+      {(message.cc.length > 0 || message.replyTo.length > 0) && (
+        <div className="mb-4 text-xs leading-5 text-muted-foreground">
+          {message.cc.length > 0 && <p>Cc: {addressDetails(message.cc)}</p>}
+          {message.replyTo.length > 0 && <p>Reply-To: {addressDetails(message.replyTo)}</p>}
+        </div>
+      )}
+      {message.html && (
+        <div className="flex justify-end gap-1" aria-label="Message format">
+          <Button
+            variant={view === 'html' ? 'secondary' : 'ghost'}
+            className="h-8 px-3 text-xs"
+            onClick={() => setView('html')}
+          >
+            HTML
+          </Button>
+          <Button
+            variant={view === 'text' ? 'secondary' : 'ghost'}
+            className="h-8 px-3 text-xs"
+            onClick={() => setView('text')}
+          >
+            Plain text
+          </Button>
+        </div>
+      )}
+
+      {message.html && view === 'html' ? (
+        <iframe
+          className="mt-4 h-[55vh] min-h-80 w-full rounded-md border border-border bg-white"
+          title="Email content"
+          sandbox=""
+          referrerPolicy="no-referrer"
+          srcDoc={htmlDocument(message.html, showQuoted)}
+        />
+      ) : (
+        <div className="mt-5 whitespace-pre-wrap break-words text-sm leading-7 text-foreground">
+          {textParts.visible || 'No new text in this reply.'}
+          {showQuoted && textParts.quoted && (
+            <div className="mt-5 border-l-2 border-border pl-4 text-muted-foreground">
+              {textParts.quoted}
+            </div>
+          )}
+        </div>
+      )}
+
+      {hasQuotedText && (
+        <Button
+          variant="ghost"
+          className="mt-4 h-8 px-3 text-xs text-muted-foreground"
+          onClick={() => setShowQuoted((current) => !current)}
+        >
+          {showQuoted ? 'Hide quoted text' : 'Show quoted text'}
+        </Button>
+      )}
+
+      {message.attachments.some(({ related }) => !related) && (
+        <section className="mt-6 border-t border-border pt-5" aria-label="Attachments">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <Paperclip className="size-4" />
+            Attachments
+          </h3>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {message.attachments
+              .filter(({ related }) => !related)
+              .map((attachment, index) => (
+                <div
+                  key={`${attachment.filename}:${index}`}
+                  className="rounded-md border border-border bg-background px-3 py-2 text-xs"
+                >
+                  <span className="font-medium">{attachment.filename}</span>
+                  <span className="ml-2 text-muted-foreground">{fileSize(attachment.size)}</span>
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
+
+function ThreadMessageCard({
   selection,
   summary,
-  onBack,
+  defaultExpanded,
 }: {
   selection: FolderSelection;
   summary: MailMessageSummary;
-  onBack: () => void;
+  defaultExpanded: boolean;
 }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [state, setState] = useState<MessageDetailLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
-  const [view, setView] = useState<'html' | 'text'>('html');
 
   useEffect(() => {
+    if (!expanded || state.status !== 'loading') return;
     let active = true;
     void window.emzero.messages
       .get(selection.account.id, selection.folder.path, summary.uid)
@@ -470,13 +566,71 @@ function MessageReader({
     return () => {
       active = false;
     };
-  }, [refreshKey, selection.account.id, selection.folder.path, summary.uid]);
+  }, [expanded, refreshKey, selection.account.id, selection.folder.path, state.status, summary.uid]);
 
   const retry = () => {
     setState({ status: 'loading' });
     setRefreshKey((current) => current + 1);
   };
 
+  return (
+    <article className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-accent/50 focus-visible:bg-accent focus-visible:outline-none"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-account text-xs font-semibold text-primary">
+            {addressLabel(summary.from).charAt(0).toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{addressLabel(summary.from)}</p>
+            <p className="truncate text-xs text-muted-foreground">To: {addressLabel(summary.to)}</p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+          <time dateTime={summary.sentAt ?? summary.receivedAt ?? undefined}>
+            {messageDate(summary.sentAt ?? summary.receivedAt)}
+          </time>
+          {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-border px-5 py-5">
+          {state.status === 'loading' && (
+            <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+              <LoaderCircle className="size-4 animate-spin" />
+              Loading message
+            </div>
+          )}
+          {state.status === 'error' && (
+            <div className="rounded-md bg-secondary p-4 text-sm">
+              <p className="text-danger">{state.message}</p>
+              <Button className="mt-3" variant="ghost" onClick={retry}>
+                <RefreshCw className="size-4" />
+                Try again
+              </Button>
+            </div>
+          )}
+          {state.status === 'loaded' && <MessageBody message={state.message} />}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function ConversationReader({
+  selection,
+  conversation,
+  onBack,
+}: {
+  selection: FolderSelection;
+  conversation: MailConversation;
+  onBack: () => void;
+}) {
   return (
     <section className="flex min-h-0 flex-col overflow-hidden bg-background">
       <header className="flex items-center gap-3 border-b border-border bg-card px-4 py-3">
@@ -488,115 +642,29 @@ function MessageReader({
           {selection.account.name} / {selection.folder.name}
         </span>
       </header>
-
-      {state.status === 'loading' && (
-        <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <LoaderCircle className="size-4 animate-spin" />
-            Loading message
-          </div>
-        </div>
-      )}
-
-      {state.status === 'error' && (
-        <div className="grid flex-1 place-items-center p-8">
-          <div className="max-w-md text-center">
-            <CircleAlert className="mx-auto size-8 text-danger" />
-            <h2 className="mt-3 font-semibold">Message could not be loaded</h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">{state.message}</p>
-            <Button className="mt-5" variant="secondary" onClick={retry}>
-              <RefreshCw className="size-4" />
-              Try again
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {state.status === 'loaded' && (
-        <article className="min-h-0 flex-1 overflow-y-auto px-8 py-7 lg:px-12">
-          <div className="mx-auto max-w-4xl">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-7 lg:px-10">
+        <div className="mx-auto max-w-4xl">
+          <div className="mb-6 flex items-end justify-between gap-4">
             <h1 className="text-2xl font-semibold leading-tight tracking-tight">
-              {state.message.subject}
+              {conversation.subject}
             </h1>
-            <div className="mt-5 flex items-start justify-between gap-6 border-b border-border pb-5">
-              <div className="min-w-0 text-sm leading-6">
-                <p className="truncate font-medium">{addressDetails(state.message.from)}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  To: {addressDetails(state.message.to)}
-                </p>
-                {state.message.cc.length > 0 && (
-                  <p className="truncate text-xs text-muted-foreground">
-                    Cc: {addressDetails(state.message.cc)}
-                  </p>
-                )}
-              </div>
-              <time
-                className="shrink-0 text-xs text-muted-foreground"
-                dateTime={state.message.sentAt ?? undefined}
-              >
-                {messageDate(state.message.sentAt)}
-              </time>
-            </div>
-
-            {state.message.html && (
-              <div className="mt-4 flex justify-end gap-1" aria-label="Message format">
-                <Button
-                  variant={view === 'html' ? 'secondary' : 'ghost'}
-                  className="h-8 px-3 text-xs"
-                  onClick={() => setView('html')}
-                >
-                  HTML
-                </Button>
-                <Button
-                  variant={view === 'text' ? 'secondary' : 'ghost'}
-                  className="h-8 px-3 text-xs"
-                  onClick={() => setView('text')}
-                >
-                  Plain text
-                </Button>
-              </div>
-            )}
-
-            {state.message.html && view === 'html' ? (
-              <iframe
-                className="mt-4 h-[60vh] min-h-96 w-full rounded-md border border-border bg-white"
-                title="Email content"
-                sandbox=""
-                referrerPolicy="no-referrer"
-                srcDoc={htmlDocument(state.message.html)}
-              />
-            ) : (
-              <div className="mt-7 whitespace-pre-wrap break-words text-sm leading-7 text-foreground">
-                {state.message.text}
-              </div>
-            )}
-
-            {state.message.attachments.some(({ related }) => !related) && (
-              <section className="mt-8 border-t border-border pt-5" aria-label="Attachments">
-                <h2 className="flex items-center gap-2 text-sm font-semibold">
-                  <Paperclip className="size-4" />
-                  Attachments
-                </h2>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {state.message.attachments
-                    .filter(({ related }) => !related)
-                    .map((attachment, index) => (
-                      <div
-                        key={`${attachment.filename}:${index}`}
-                        className="rounded-md border border-border bg-card px-3 py-2 text-xs"
-                      >
-                        <span className="font-medium">{attachment.filename}</span>
-                        <span className="ml-2 text-muted-foreground">
-                          {fileSize(attachment.size)}
-                        </span>
-                      </div>
-                    ))}
-                </div>
-              </section>
-            )}
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {conversation.messages.length}{' '}
+              {conversation.messages.length === 1 ? 'message' : 'messages'}
+            </span>
           </div>
-        </article>
-      )}
+          <div className="space-y-3">
+            {conversation.messages.map((message, index) => (
+              <ThreadMessageCard
+                key={message.uid}
+                selection={selection}
+                summary={message}
+                defaultExpanded={index === conversation.messages.length - 1}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
@@ -604,7 +672,7 @@ function MessageReader({
 function MessageList({ selection }: { selection: FolderSelection }) {
   const [state, setState] = useState<MessageLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
-  const [selectedMessage, setSelectedMessage] = useState<MailMessageSummary | null>(null);
+  const [selectedConversation, setSelectedConversation] = useState<MailConversation | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -632,14 +700,16 @@ function MessageList({ selection }: { selection: FolderSelection }) {
   };
 
   const showRecipients = selection.folder.specialUse === '\\Sent';
+  const conversations =
+    state.status === 'loaded' ? groupMessagesIntoConversations(state.messages) : [];
 
-  if (selectedMessage) {
+  if (selectedConversation) {
     return (
-      <MessageReader
-        key={selectedMessage.uid}
+      <ConversationReader
+        key={selectedConversation.id}
         selection={selection}
-        summary={selectedMessage}
-        onBack={() => setSelectedMessage(null)}
+        conversation={selectedConversation}
+        onBack={() => setSelectedConversation(null)}
       />
     );
   }
@@ -656,8 +726,10 @@ function MessageList({ selection }: { selection: FolderSelection }) {
         <div className="flex items-center gap-3">
           {state.status === 'loaded' && (
             <span className="text-xs text-muted-foreground">
+              {conversations.length} {conversations.length === 1 ? 'conversation' : 'conversations'}
+              {' · '}
               {state.messages.length < state.total
-                ? `Newest ${state.messages.length} of ${state.total}`
+                ? `newest ${state.messages.length} of ${state.total} messages`
                 : `${state.total} ${state.total === 1 ? 'message' : 'messages'}`}
             </span>
           )}
@@ -709,31 +781,41 @@ function MessageList({ selection }: { selection: FolderSelection }) {
 
       {state.status === 'loaded' && state.messages.length > 0 && (
         <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Messages">
-          {state.messages.map((message) => {
-            const people = showRecipients ? message.to : message.from;
-            const date = message.sentAt ?? message.receivedAt;
+          {conversations.map((conversation) => {
+            const latest = conversation.messages.at(-1)!;
+            const people = conversation.messages.flatMap((message) =>
+              showRecipients ? message.to : message.from,
+            );
+            const date = latest.sentAt ?? latest.receivedAt;
+            const unread = conversation.messages.some((message) => message.unread);
+            const flagged = conversation.messages.some((message) => message.flagged);
             return (
               <button
                 type="button"
-                key={message.uid}
+                key={conversation.id}
                 className="grid w-full grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-6 py-3 text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none"
                 role="listitem"
-                onClick={() => setSelectedMessage(message)}
+                onClick={() => setSelectedConversation(conversation)}
               >
                 <div className="flex min-w-0 items-center gap-2">
                   <span
-                    className={`size-1.5 shrink-0 rounded-full ${message.unread ? 'bg-primary' : 'bg-transparent'}`}
-                    aria-label={message.unread ? 'Unread' : 'Read'}
+                    className={`size-1.5 shrink-0 rounded-full ${unread ? 'bg-primary' : 'bg-transparent'}`}
+                    aria-label={unread ? 'Contains unread messages' : 'Read'}
                   />
-                  <span className={`truncate text-sm ${message.unread ? 'font-semibold' : ''}`}>
+                  <span className={`truncate text-sm ${unread ? 'font-semibold' : ''}`}>
                     {showRecipients ? `To: ${addressLabel(people)}` : addressLabel(people)}
                   </span>
                 </div>
-                <p className={`truncate text-sm ${message.unread ? 'font-semibold' : ''}`}>
-                  {message.subject}
+                <p className={`truncate text-sm ${unread ? 'font-semibold' : ''}`}>
+                  {conversation.subject}
+                  {conversation.messages.length > 1 && (
+                    <span className="ml-2 font-normal text-muted-foreground">
+                      ({conversation.messages.length})
+                    </span>
+                  )}
                 </p>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  {message.flagged && (
+                  {flagged && (
                     <Star className="size-3.5 fill-primary text-primary" aria-label="Flagged" />
                   )}
                   <time dateTime={date ?? undefined}>{messageDate(date)}</time>

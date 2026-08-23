@@ -46,6 +46,8 @@ export interface MailAddressSummary {
 export interface MailMessageSummary {
   uid: number;
   messageId: string | null;
+  inReplyTo: string | null;
+  references: string[];
   subject: string;
   from: MailAddressSummary[];
   to: MailAddressSummary[];
@@ -81,6 +83,7 @@ export interface MailMessageDetail {
   sentAt: string | null;
   text: string;
   html: string | null;
+  htmlHasQuotedText: boolean;
   attachments: MailAttachmentSummary[];
 }
 

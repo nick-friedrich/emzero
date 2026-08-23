@@ -19,6 +19,8 @@ export function sanitizedMessageHtml(value: string | false): string | null {
     ],
     allowedAttributes: {
       '*': ['style'],
+      blockquote: ['type', 'class'],
+      div: ['class', 'id'],
       img: ['src', 'alt', 'width', 'height'],
       table: ['cellpadding', 'cellspacing', 'width'],
       td: ['colspan', 'rowspan', 'width', 'height'],
@@ -57,4 +59,11 @@ export function sanitizedMessageHtml(value: string | false): string | null {
       },
     },
   }).trim();
+}
+
+export function hasQuotedHtml(value: string | false): boolean {
+  if (!value) return false;
+  return /<blockquote\b|\b(?:gmail_quote|yahoo_quoted|moz-cite-prefix|divRplyFwdMsg)\b/i.test(
+    value,
+  );
 }

@@ -20,7 +20,7 @@ import {
   validateAccountDraft,
 } from '../shared/accounts.js';
 import { discoverProvider, listProviders } from './provider-discovery.js';
-import { sanitizedMessageHtml } from './message-html.js';
+import { hasQuotedHtml, sanitizedMessageHtml } from './message-html.js';
 
 interface StoredAccount extends AccountSummary {
   encryptedPassword: string;
@@ -169,6 +169,12 @@ function dateString(value: Date | string | undefined): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function referenceIds(value: string | string[] | undefined): string[] {
+  return (Array.isArray(value) ? value : value ? [value] : []).flatMap(
+    (entry) => entry.match(/<[^>]+>/g) ?? entry.split(/\s+/).filter(Boolean),
+  );
+}
+
 async function listFolderMessages(
   account: StoredAccount,
   folderPath: string,
@@ -203,10 +209,16 @@ async function listFolderMessages(
       flags: true,
       internalDate: true,
       size: true,
+      headers: ['references'],
     })) {
+      const parsedHeaders = message.headers
+        ? await simpleParser(message.headers, { skipHtmlToText: true, skipTextToHtml: true })
+        : null;
       messages.push({
         uid: message.uid,
         messageId: message.envelope?.messageId ?? null,
+        inReplyTo: message.envelope?.inReplyTo ?? null,
+        references: referenceIds(parsedHeaders?.references),
         subject: message.envelope?.subject?.trim() || '(No subject)',
         from: addresses(message.envelope?.from),
         to: addresses(message.envelope?.to),
@@ -287,6 +299,7 @@ async function getFolderMessage(
       sentAt: dateString(parsed.date),
       text: parsed.text?.trim() || 'This message has no readable text content.',
       html: sanitizedMessageHtml(parsed.html),
+      htmlHasQuotedText: hasQuotedHtml(parsed.html),
       attachments: parsed.attachments.map((attachment) => ({
         filename: attachment.filename || 'Unnamed attachment',
         contentType: attachment.contentType,

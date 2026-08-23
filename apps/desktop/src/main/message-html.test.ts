@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizedMessageHtml } from './message-html.js';
+import { hasQuotedHtml, sanitizedMessageHtml } from './message-html.js';
 
 describe('sanitizedMessageHtml', () => {
   it('removes scripts, event handlers, forms, and navigable links', () => {
@@ -33,5 +33,11 @@ describe('sanitizedMessageHtml', () => {
     expect(result).toContain('color:#123456');
     expect(result).toContain('font-weight:bold');
     expect(result).not.toMatch(/position|background-image|tracker/i);
+  });
+
+  it('recognizes common quoted-reply containers', () => {
+    expect(hasQuotedHtml('<blockquote type="cite">previous</blockquote>')).toBe(true);
+    expect(hasQuotedHtml('<div class="gmail_quote">previous</div>')).toBe(true);
+    expect(hasQuotedHtml('<blockquote>previous</blockquote>')).toBe(true);
   });
 });
