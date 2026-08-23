@@ -38,6 +38,31 @@ export interface FolderListResult {
   message?: string;
 }
 
+export interface MailAddressSummary {
+  name: string | null;
+  address: string | null;
+}
+
+export interface MailMessageSummary {
+  uid: number;
+  messageId: string | null;
+  subject: string;
+  from: MailAddressSummary[];
+  to: MailAddressSummary[];
+  sentAt: string | null;
+  receivedAt: string | null;
+  unread: boolean;
+  flagged: boolean;
+  size: number | null;
+}
+
+export interface MessageListResult {
+  ok: boolean;
+  messages: MailMessageSummary[];
+  total: number;
+  message?: string;
+}
+
 export interface AccountOperationResult {
   ok: boolean;
   message: string;
@@ -66,6 +91,7 @@ export const ACCOUNT_CHANNELS = {
   providers: 'providers:list',
   discoverProvider: 'providers:discover',
   listFolders: 'folders:list',
+  listMessages: 'messages:list',
 } as const;
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

@@ -13,8 +13,10 @@ import {
   Mail,
   PenLine,
   Plus,
+  RefreshCw,
   Send,
   Server,
+  Star,
   Trash2,
   XCircle,
 } from 'lucide-react';
@@ -23,6 +25,7 @@ import type {
   AccountDraft,
   AccountSummary,
   MailFolderSummary,
+  MailMessageSummary,
   MailProvider,
 } from '../shared/accounts';
 
@@ -352,6 +355,8 @@ type MailboxSelection =
   | { kind: 'unified' }
   | { kind: 'folder'; account: AccountSummary; folder: MailFolderSummary };
 
+type FolderSelection = Extract<MailboxSelection, { kind: 'folder' }>;
+
 type FolderLoadState =
   | { status: 'loading' }
   | { status: 'loaded'; folders: MailFolderSummary[] }
@@ -373,6 +378,169 @@ function FolderIcon({ specialUse }: { specialUse: string | null }) {
     default:
       return <Folder className="size-3.5" />;
   }
+}
+
+function addressLabel(addresses: MailMessageSummary['from']): string {
+  if (addresses.length === 0) return 'Unknown sender';
+  return addresses
+    .map(({ name, address }) => name || address || 'Unknown sender')
+    .join(', ');
+}
+
+function messageDate(value: string | null): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) {
+    return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(date);
+  }
+  if (date.getFullYear() === now.getFullYear()) {
+    return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date);
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+}
+
+type MessageLoadState =
+  | { status: 'loading' }
+  | { status: 'loaded'; messages: MailMessageSummary[]; total: number }
+  | { status: 'error'; message: string };
+
+function MessageList({ selection }: { selection: FolderSelection }) {
+  const [state, setState] = useState<MessageLoadState>({ status: 'loading' });
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    void window.emzero.messages
+      .list(selection.account.id, selection.folder.path)
+      .then((result) => {
+        if (!active) return;
+        setState(
+          result.ok
+            ? { status: 'loaded', messages: result.messages, total: result.total }
+            : { status: 'error', message: result.message ?? 'Could not load messages.' },
+        );
+      })
+      .catch(() => {
+        if (active) setState({ status: 'error', message: 'Could not load messages.' });
+      });
+    return () => {
+      active = false;
+    };
+  }, [refreshKey, selection.account.id, selection.folder.path]);
+
+  const refresh = () => {
+    setState({ status: 'loading' });
+    setRefreshKey((current) => current + 1);
+  };
+
+  const showRecipients = selection.folder.specialUse === '\\Sent';
+
+  return (
+    <section className="flex min-h-0 flex-col overflow-hidden bg-background">
+      <header className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
+        <div className="min-w-0">
+          <h1 className="truncate text-lg font-semibold tracking-tight">{selection.folder.name}</h1>
+          <p className="truncate text-xs text-muted-foreground">
+            {selection.account.name} · {selection.account.email}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {state.status === 'loaded' && (
+            <span className="text-xs text-muted-foreground">
+              {state.messages.length < state.total
+                ? `Newest ${state.messages.length} of ${state.total}`
+                : `${state.total} ${state.total === 1 ? 'message' : 'messages'}`}
+            </span>
+          )}
+          <Button
+            variant="ghost"
+            className="px-3"
+            aria-label="Refresh messages"
+            title="Refresh messages"
+            disabled={state.status === 'loading'}
+            onClick={refresh}
+          >
+            <RefreshCw className={`size-4 ${state.status === 'loading' ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
+      </header>
+
+      {state.status === 'loading' && (
+        <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <LoaderCircle className="size-4 animate-spin" />
+            Fetching messages
+          </div>
+        </div>
+      )}
+
+      {state.status === 'error' && (
+        <div className="grid flex-1 place-items-center p-8">
+          <div className="max-w-md text-center">
+            <CircleAlert className="mx-auto size-8 text-danger" />
+            <h2 className="mt-3 font-semibold">Messages could not be loaded</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{state.message}</p>
+            <Button className="mt-5" variant="secondary" onClick={refresh}>
+              <RefreshCw className="size-4" />
+              Try again
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {state.status === 'loaded' && state.messages.length === 0 && (
+        <div className="grid flex-1 place-items-center p-8 text-center">
+          <div>
+            <Mail className="mx-auto size-8 text-muted-foreground" />
+            <h2 className="mt-3 font-semibold">This folder is empty</h2>
+            <p className="mt-1 text-sm text-muted-foreground">There are no messages to show.</p>
+          </div>
+        </div>
+      )}
+
+      {state.status === 'loaded' && state.messages.length > 0 && (
+        <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Messages">
+          {state.messages.map((message) => {
+            const people = showRecipients ? message.to : message.from;
+            const date = message.sentAt ?? message.receivedAt;
+            return (
+              <article
+                key={message.uid}
+                className="grid grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-6 py-3 hover:bg-accent/60"
+                role="listitem"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    className={`size-1.5 shrink-0 rounded-full ${message.unread ? 'bg-primary' : 'bg-transparent'}`}
+                    aria-label={message.unread ? 'Unread' : 'Read'}
+                  />
+                  <span className={`truncate text-sm ${message.unread ? 'font-semibold' : ''}`}>
+                    {showRecipients ? `To: ${addressLabel(people)}` : addressLabel(people)}
+                  </span>
+                </div>
+                <p className={`truncate text-sm ${message.unread ? 'font-semibold' : ''}`}>
+                  {message.subject}
+                </p>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  {message.flagged && (
+                    <Star className="size-3.5 fill-primary text-primary" aria-label="Flagged" />
+                  )}
+                  <time dateTime={date ?? undefined}>{messageDate(date)}</time>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
 }
 
 function Sidebar({
@@ -566,7 +734,7 @@ export function App() {
   }
 
   return (
-    <main className="grid min-h-screen grid-cols-[15rem_1fr] bg-background text-foreground">
+    <main className="grid h-screen grid-cols-[15rem_1fr] overflow-hidden bg-background text-foreground">
       <Sidebar
         accounts={accounts}
         selection={selection}
@@ -586,19 +754,21 @@ export function App() {
             setShowSetup(false);
           }}
         />
+      ) : selection.kind === 'folder' ? (
+        <MessageList
+          key={`${selection.account.id}:${selection.folder.path}`}
+          selection={selection}
+        />
       ) : (
         <section className="grid place-items-center p-8">
           <div className="max-w-md text-center">
             <div className="mx-auto mb-5 grid size-16 place-items-center rounded-2xl border border-border bg-card shadow-sm">
               <Inbox className="size-7 text-muted-foreground" />
             </div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {selection.kind === 'folder' ? selection.folder.name : 'Unified inbox'}
-            </h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Unified inbox</h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {selection.kind === 'folder'
-                ? `${selection.account.name} · Message sync is the next milestone.`
-                : 'Choose an account folder, or wait for unified message sync in the next milestone.'}
+              Choose an account folder to fetch its newest messages. Unified cached mail is coming
+              with offline sync.
             </p>
             <p className="mt-4 text-xs text-muted-foreground">
               Desktop shell running on {window.emzero.platform}

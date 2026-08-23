@@ -10,7 +10,10 @@ import {
   type AccountOperationResult,
   type AccountSummary,
   type FolderListResult,
+  type MailAddressSummary,
   type MailFolderSummary,
+  type MailMessageSummary,
+  type MessageListResult,
   validateAccountDraft,
 } from '../shared/accounts.js';
 import { discoverProvider, listProviders } from './provider-discovery.js';
@@ -147,6 +150,86 @@ async function listAccountFolders(account: StoredAccount): Promise<FolderListRes
   }
 }
 
+function addresses(
+  value: Array<{ name?: string; address?: string }> | undefined,
+): MailAddressSummary[] {
+  return (value ?? []).map(({ name, address }) => ({
+    name: name ?? null,
+    address: address ?? null,
+  }));
+}
+
+function dateString(value: Date | string | undefined): string | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+async function listFolderMessages(
+  account: StoredAccount,
+  folderPath: string,
+): Promise<MessageListResult> {
+  let password = '';
+  let imap: ImapFlow | null = null;
+  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
+
+  try {
+    password = await decryptPassword(account);
+    imap = new ImapFlow({
+      host: account.imap.host,
+      port: account.imap.port,
+      secure: account.imap.secure,
+      auth: { user: account.username, pass: password },
+      logger: false,
+      connectionTimeout: 12_000,
+      greetingTimeout: 12_000,
+      socketTimeout: 20_000,
+    });
+    await imap.connect();
+    lock = await imap.getMailboxLock(folderPath, { readOnly: true });
+
+    const total = imap.mailbox ? imap.mailbox.exists : 0;
+    if (total === 0) return { ok: true, messages: [], total: 0 };
+
+    const start = Math.max(1, total - 49);
+    const messages: MailMessageSummary[] = [];
+    for await (const message of imap.fetch(`${start}:*`, {
+      uid: true,
+      envelope: true,
+      flags: true,
+      internalDate: true,
+      size: true,
+    })) {
+      messages.push({
+        uid: message.uid,
+        messageId: message.envelope?.messageId ?? null,
+        subject: message.envelope?.subject?.trim() || '(No subject)',
+        from: addresses(message.envelope?.from),
+        to: addresses(message.envelope?.to),
+        sentAt: dateString(message.envelope?.date),
+        receivedAt: dateString(message.internalDate),
+        unread: !message.flags?.has('\\Seen'),
+        flagged: message.flags?.has('\\Flagged') ?? false,
+        size: message.size ?? null,
+      });
+    }
+
+    messages.reverse();
+    return { ok: true, messages, total };
+  } catch (error) {
+    return {
+      ok: false,
+      messages: [],
+      total: 0,
+      message: `Could not load messages: ${errorMessage(error, password)}`,
+    };
+  } finally {
+    lock?.release();
+    if (imap?.usable) await imap.logout().catch(() => imap?.close());
+    else imap?.close();
+  }
+}
+
 function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
   const senderUrl = event.senderFrame?.url;
   if (!senderUrl) return false;
@@ -183,6 +266,31 @@ export function registerAccountHandlers(): void {
     }
     return listAccountFolders(account);
   });
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.listMessages,
+    async (event, accountId: unknown, folderPath: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (typeof accountId !== 'string' || typeof folderPath !== 'string' || !folderPath) {
+        return {
+          ok: false,
+          messages: [],
+          total: 0,
+          message: 'Invalid mailbox.',
+        } satisfies MessageListResult;
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) {
+        return {
+          ok: false,
+          messages: [],
+          total: 0,
+          message: 'Account not found.',
+        } satisfies MessageListResult;
+      }
+      return listFolderMessages(account, folderPath);
+    },
+  );
 
   ipcMain.handle(ACCOUNT_CHANNELS.test, async (event, draft: AccountDraft) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
