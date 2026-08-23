@@ -469,6 +469,7 @@ type MessageLoadState =
       messages: MailMessageSummary[];
       relatedMessages: MailMessageSummary[];
       total: number;
+      notice?: string;
     }
   | { status: 'error'; message: string };
 
@@ -488,6 +489,7 @@ type UnifiedInboxLoadState =
       status: 'loaded';
       items: UnifiedConversationItem[];
       failures: UnifiedAccountFailure[];
+      notices: UnifiedAccountFailure[];
       loadedMessages: number;
       totalMessages: number;
     };
@@ -730,6 +732,7 @@ function MessageList({ selection }: { selection: FolderSelection }) {
       const result = await window.emzero.messages.list(
         selection.account.id,
         selection.folder.path,
+        refreshKey > 0,
       );
       if (!result.ok) {
         if (active) {
@@ -743,19 +746,26 @@ function MessageList({ selection }: { selection: FolderSelection }) {
       }));
 
       let relatedMessages: MailMessageSummary[] = [];
+      const notices = [result.message];
       if (selection.folder.specialUse !== '\\Sent') {
-        const folderResult = await window.emzero.folders.list(selection.account.id);
+        const folderResult = await window.emzero.folders.list(
+          selection.account.id,
+          refreshKey > 0,
+        );
         const sentFolder = folderResult.ok
           ? folderResult.folders.find(
               (folder) => folder.selectable && folder.specialUse === '\\Sent',
             )
           : undefined;
+        notices.push(folderResult.message);
         if (sentFolder && sentFolder.path !== selection.folder.path) {
           const sentResult = await window.emzero.messages.list(
             selection.account.id,
             sentFolder.path,
+            refreshKey > 0,
           );
           if (sentResult.ok) {
+            notices.push(sentResult.message);
             relatedMessages = sentResult.messages.map((message) => ({
               ...message,
               folderPath: sentFolder.path,
@@ -770,6 +780,7 @@ function MessageList({ selection }: { selection: FolderSelection }) {
           messages,
           relatedMessages,
           total: result.total,
+          notice: notices.filter(Boolean).join(' '),
         });
       }
     })()
@@ -868,6 +879,15 @@ function MessageList({ selection }: { selection: FolderSelection }) {
         </div>
       )}
 
+      {state.status === 'loaded' && state.notice && (
+        <div className="border-b border-border bg-secondary px-6 py-3 text-xs text-muted-foreground">
+          <div className="flex items-start gap-2">
+            <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+            <p>{state.notice}</p>
+          </div>
+        </div>
+      )}
+
       {state.status === 'loaded' && state.messages.length > 0 && (
         <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Messages">
           {conversations.map((conversation) => {
@@ -933,7 +953,7 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
     void Promise.all(
       accounts.map(async (account) => {
         try {
-          const folderResult = await window.emzero.folders.list(account.id);
+          const folderResult = await window.emzero.folders.list(account.id, refreshKey > 0);
           if (!folderResult.ok) {
             return {
               failure: {
@@ -952,9 +972,9 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
             (candidate) => candidate.selectable && candidate.specialUse === '\\Sent',
           );
           const [inboxResult, sentResult] = await Promise.all([
-            window.emzero.messages.list(account.id, folder.path),
+            window.emzero.messages.list(account.id, folder.path, refreshKey > 0),
             sentFolder && sentFolder.path !== folder.path
-              ? window.emzero.messages.list(account.id, sentFolder.path)
+              ? window.emzero.messages.list(account.id, sentFolder.path, refreshKey > 0)
               : Promise.resolve(null),
           ]);
           if (!inboxResult.ok) {
@@ -979,12 +999,16 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
               : [];
           const selection: FolderSelection = { kind: 'folder', account, folder };
           return {
+            account,
             items: groupMessagesWithRelated(messages, relatedMessages).map((conversation) => ({
               selection,
               conversation,
             })),
             loadedMessages: messages.length,
             totalMessages: inboxResult.total,
+            notices: [folderResult.message, inboxResult.message, sentResult?.message].filter(
+              (message): message is string => Boolean(message),
+            ),
           };
         } catch {
           return { failure: { account, message: 'Could not connect to this account.' } };
@@ -1001,10 +1025,16 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
       const failures = results.flatMap((result) =>
         'failure' in result && result.failure ? [result.failure] : [],
       );
+      const notices = results.flatMap((result) =>
+        'notices' in result && result.notices
+          ? result.notices.map((message) => ({ account: result.account, message }))
+          : [],
+      );
       setState({
         status: 'loaded',
         items,
         failures,
+        notices,
         loadedMessages: results.reduce(
           (total, result) => total + ('loadedMessages' in result ? (result.loadedMessages ?? 0) : 0),
           0,
@@ -1085,6 +1115,21 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
             <div>
               {state.failures.map(({ account, message }) => (
                 <p key={account.id} title={message}>
+                  <span className="font-semibold">{account.name}:</span> {message}
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {state.status === 'loaded' && state.notices.length > 0 && (
+        <div className="border-b border-border bg-secondary px-6 py-3 text-xs text-muted-foreground">
+          <div className="flex items-start gap-2">
+            <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+            <div>
+              {state.notices.map(({ account, message }) => (
+                <p key={`${account.id}:${message}`}>
                   <span className="font-semibold">{account.name}:</span> {message}
                 </p>
               ))}

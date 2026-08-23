@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { app, BrowserWindow } from 'electron';
-import { registerAccountHandlers } from './accounts.js';
+import { closeMailCache, registerAccountHandlers } from './accounts.js';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -61,3 +61,5 @@ void app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
+
+app.on('will-quit', closeMailCache);

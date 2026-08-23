@@ -19,10 +19,10 @@ export interface EmzeroDesktopApi {
     save: (draft: AccountDraft) => Promise<AccountOperationResult>;
   };
   folders: {
-    list: (accountId: string) => Promise<FolderListResult>;
+    list: (accountId: string, refresh?: boolean) => Promise<FolderListResult>;
   };
   messages: {
-    list: (accountId: string, folderPath: string) => Promise<MessageListResult>;
+    list: (accountId: string, folderPath: string, refresh?: boolean) => Promise<MessageListResult>;
     get: (accountId: string, folderPath: string, uid: number) => Promise<MessageDetailResult>;
   };
   providers: {
@@ -39,11 +39,12 @@ contextBridge.exposeInMainWorld('emzero', {
     save: (draft) => ipcRenderer.invoke(ACCOUNT_CHANNELS.save, draft),
   },
   folders: {
-    list: (accountId) => ipcRenderer.invoke(ACCOUNT_CHANNELS.listFolders, accountId),
+    list: (accountId, refresh = false) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.listFolders, accountId, refresh),
   },
   messages: {
-    list: (accountId, folderPath) =>
-      ipcRenderer.invoke(ACCOUNT_CHANNELS.listMessages, accountId, folderPath),
+    list: (accountId, folderPath, refresh = false) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.listMessages, accountId, folderPath, refresh),
     get: (accountId, folderPath, uid) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.getMessage, accountId, folderPath, uid),
   },

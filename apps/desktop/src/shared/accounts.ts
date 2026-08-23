@@ -48,6 +48,7 @@ export function findInboxFolder(
 export interface FolderListResult {
   ok: boolean;
   folders: MailFolderSummary[];
+  source?: 'server' | 'cache';
   message?: string;
 }
 
@@ -76,6 +77,8 @@ export interface MessageListResult {
   ok: boolean;
   messages: MailMessageSummary[];
   total: number;
+  source?: 'server' | 'cache';
+  syncedAt?: string | null;
   message?: string;
 }
 

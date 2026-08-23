@@ -21,12 +21,24 @@ import {
 } from '../shared/accounts.js';
 import { discoverProvider, listProviders } from './provider-discovery.js';
 import { hasQuotedHtml, sanitizedMessageHtml } from './message-html.js';
+import { MailCache } from './mail-cache.js';
 
 interface StoredAccount extends AccountSummary {
   encryptedPassword: string;
 }
 
 const accountsPath = () => path.join(app.getPath('userData'), 'accounts.json');
+let cache: MailCache | null = null;
+
+function mailCache(): MailCache {
+  cache ??= new MailCache(path.join(app.getPath('userData'), 'mail-cache.sqlite'));
+  return cache;
+}
+
+export function closeMailCache(): void {
+  cache?.close();
+  cache = null;
+}
 
 async function readAccounts(): Promise<StoredAccount[]> {
   try {
@@ -116,9 +128,17 @@ async function decryptPassword(account: StoredAccount): Promise<string> {
   return result;
 }
 
-async function listAccountFolders(account: StoredAccount): Promise<FolderListResult> {
+async function listAccountFolders(
+  account: StoredAccount,
+  refresh = false,
+): Promise<FolderListResult> {
   let password = '';
   let imap: ImapFlow | null = null;
+  const cachedFolders = mailCache().listFolders(account.id);
+
+  if (cachedFolders.length > 0 && !refresh) {
+    return { ok: true, folders: cachedFolders, source: 'cache' };
+  }
 
   try {
     password = await decryptPassword(account);
@@ -141,8 +161,17 @@ async function listAccountFolders(account: StoredAccount): Promise<FolderListRes
       specialUse: folder.specialUse ?? null,
       selectable: !folder.flags.has('\\Noselect'),
     }));
-    return { ok: true, folders };
+    mailCache().replaceFolders(account.id, folders);
+    return { ok: true, folders, source: 'server' };
   } catch (error) {
+    if (cachedFolders.length > 0) {
+      return {
+        ok: true,
+        folders: cachedFolders,
+        source: 'cache',
+        message: `Could not refresh folders. Showing saved data. ${errorMessage(error, password)}`,
+      };
+    }
     return {
       ok: false,
       folders: [],
@@ -178,10 +207,16 @@ function referenceIds(value: string | string[] | undefined): string[] {
 async function listFolderMessages(
   account: StoredAccount,
   folderPath: string,
+  refresh = false,
 ): Promise<MessageListResult> {
   let password = '';
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
+  const cached = mailCache().listMessages(account.id, folderPath);
+
+  if (cached.syncedAt && !refresh) {
+    return { ok: true, ...cached, source: 'cache' };
+  }
 
   try {
     password = await decryptPassword(account);
@@ -199,7 +234,11 @@ async function listFolderMessages(
     lock = await imap.getMailboxLock(folderPath, { readOnly: true });
 
     const total = imap.mailbox ? imap.mailbox.exists : 0;
-    if (total === 0) return { ok: true, messages: [], total: 0 };
+    if (total === 0) {
+      mailCache().replaceRecentMessages(account.id, folderPath, [], 0);
+      const empty = mailCache().listMessages(account.id, folderPath);
+      return { ok: true, ...empty, source: 'server' };
+    }
 
     const start = Math.max(1, total - 49);
     const messages: MailMessageSummary[] = [];
@@ -232,8 +271,17 @@ async function listFolderMessages(
     }
 
     messages.reverse();
-    return { ok: true, messages, total };
+    mailCache().replaceRecentMessages(account.id, folderPath, messages, total);
+    return { ok: true, ...mailCache().listMessages(account.id, folderPath), source: 'server' };
   } catch (error) {
+    if (cached.syncedAt) {
+      return {
+        ok: true,
+        ...cached,
+        source: 'cache',
+        message: `Could not refresh messages. Showing saved data. ${errorMessage(error, password)}`,
+      };
+    }
     return {
       ok: false,
       messages: [],
@@ -346,7 +394,7 @@ export function registerAccountHandlers(): void {
     return (await readAccounts()).map(toSummary);
   });
 
-  ipcMain.handle(ACCOUNT_CHANNELS.listFolders, async (event, accountId: unknown) => {
+  ipcMain.handle(ACCOUNT_CHANNELS.listFolders, async (event, accountId: unknown, refresh: unknown) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     if (typeof accountId !== 'string') {
       return { ok: false, folders: [], message: 'Invalid account.' } satisfies FolderListResult;
@@ -355,12 +403,12 @@ export function registerAccountHandlers(): void {
     if (!account) {
       return { ok: false, folders: [], message: 'Account not found.' } satisfies FolderListResult;
     }
-    return listAccountFolders(account);
+    return listAccountFolders(account, refresh === true);
   });
 
   ipcMain.handle(
     ACCOUNT_CHANNELS.listMessages,
-    async (event, accountId: unknown, folderPath: unknown) => {
+    async (event, accountId: unknown, folderPath: unknown, refresh: unknown) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
       if (typeof accountId !== 'string' || typeof folderPath !== 'string' || !folderPath) {
         return {
@@ -379,7 +427,7 @@ export function registerAccountHandlers(): void {
           message: 'Account not found.',
         } satisfies MessageListResult;
       }
-      return listFolderMessages(account, folderPath);
+      return listFolderMessages(account, folderPath, refresh === true);
     },
   );
 
