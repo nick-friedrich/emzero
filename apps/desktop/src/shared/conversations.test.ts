@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { MailMessageSummary } from './accounts.js';
 import {
   groupMessagesIntoConversations,
+  groupMessagesWithRelated,
   normalizedSubject,
   splitQuotedText,
 } from './conversations.js';
@@ -11,6 +12,7 @@ function message(
   overrides: Partial<MailMessageSummary> = {},
 ): MailMessageSummary {
   return {
+    folderPath: 'INBOX',
     uid,
     messageId: `<${uid}@example.com>`,
     inReplyTo: null,
@@ -61,6 +63,31 @@ describe('groupMessagesIntoConversations', () => {
 
   it('does not merge unrelated messages merely because subjects match', () => {
     expect(groupMessagesIntoConversations([message(1), message(2)])).toHaveLength(2);
+  });
+
+  it('adds related sent messages without adding sent-only conversations', () => {
+    const inboxRoot = message(1);
+    const sentReply = message(2, {
+      folderPath: 'Sent',
+      inReplyTo: inboxRoot.messageId,
+      references: [inboxRoot.messageId!],
+    });
+    const sentOnly = message(3, { folderPath: 'Sent' });
+
+    const conversations = groupMessagesWithRelated([inboxRoot], [sentReply, sentOnly]);
+    expect(conversations).toHaveLength(1);
+    expect(conversations[0].messages.map(({ uid }) => uid)).toEqual([2, 1]);
+  });
+
+  it('does not duplicate a message copied into both folders', () => {
+    const inboxCopy = message(1);
+    const sentCopy = message(2, {
+      folderPath: 'Sent',
+      messageId: inboxCopy.messageId,
+    });
+
+    const conversations = groupMessagesWithRelated([inboxCopy], [sentCopy]);
+    expect(conversations[0].messages).toEqual([inboxCopy]);
   });
 });
 

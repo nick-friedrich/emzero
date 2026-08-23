@@ -44,6 +44,7 @@ export interface MailAddressSummary {
 }
 
 export interface MailMessageSummary {
+  folderPath: string;
   uid: number;
   messageId: string | null;
   inReplyTo: string | null;

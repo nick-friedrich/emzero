@@ -32,7 +32,7 @@ import type {
   MailProvider,
 } from '../shared/accounts';
 import {
-  groupMessagesIntoConversations,
+  groupMessagesWithRelated,
   splitQuotedText,
   type MailConversation,
 } from '../shared/conversations';
@@ -405,6 +405,30 @@ function addressDetails(addresses: MailMessageSummary['from']): string {
     .join(', ');
 }
 
+function conversationOpponent(
+  messages: MailMessageSummary[],
+  account: AccountSummary,
+): string {
+  const ownAddresses = new Set(
+    [account.email, account.username, account.name]
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const opponents = messages
+    .flatMap((message) => [...message.from, ...message.to])
+    .filter(({ name, address }) => {
+      const identity = (address || name)?.trim().toLowerCase();
+      return identity ? !ownAddresses.has(identity) : false;
+    });
+
+  if (opponents.length > 0) return addressLabel(opponents);
+
+  const fallback = messages.flatMap((message) =>
+    message.from.length > 0 ? message.from : message.to,
+  );
+  return addressLabel(fallback);
+}
+
 function fileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -439,7 +463,12 @@ function messageDate(value: string | null): string {
 
 type MessageLoadState =
   | { status: 'loading' }
-  | { status: 'loaded'; messages: MailMessageSummary[]; total: number }
+  | {
+      status: 'loaded';
+      messages: MailMessageSummary[];
+      relatedMessages: MailMessageSummary[];
+      total: number;
+    }
   | { status: 'error'; message: string };
 
 type MessageDetailLoadState =
@@ -551,7 +580,7 @@ function ThreadMessageCard({
     if (!expanded || state.status !== 'loading') return;
     let active = true;
     void window.emzero.messages
-      .get(selection.account.id, selection.folder.path, summary.uid)
+      .get(selection.account.id, summary.folderPath, summary.uid)
       .then((result) => {
         if (!active) return;
         setState(
@@ -566,7 +595,7 @@ function ThreadMessageCard({
     return () => {
       active = false;
     };
-  }, [expanded, refreshKey, selection.account.id, selection.folder.path, state.status, summary.uid]);
+  }, [expanded, refreshKey, selection.account.id, state.status, summary.folderPath, summary.uid]);
 
   const retry = () => {
     setState({ status: 'loading' });
@@ -656,7 +685,7 @@ function ConversationReader({
           <div className="space-y-3">
             {conversation.messages.map((message, index) => (
               <ThreadMessageCard
-                key={message.uid}
+                key={`${message.folderPath}:${message.uid}`}
                 selection={selection}
                 summary={message}
                 defaultExpanded={index === 0}
@@ -676,23 +705,60 @@ function MessageList({ selection }: { selection: FolderSelection }) {
 
   useEffect(() => {
     let active = true;
-    void window.emzero.messages
-      .list(selection.account.id, selection.folder.path)
-      .then((result) => {
-        if (!active) return;
-        setState(
-          result.ok
-            ? { status: 'loaded', messages: result.messages, total: result.total }
-            : { status: 'error', message: result.message ?? 'Could not load messages.' },
-        );
-      })
+    void (async () => {
+      const result = await window.emzero.messages.list(
+        selection.account.id,
+        selection.folder.path,
+      );
+      if (!result.ok) {
+        if (active) {
+          setState({ status: 'error', message: result.message ?? 'Could not load messages.' });
+        }
+        return;
+      }
+      const messages = result.messages.map((message) => ({
+        ...message,
+        folderPath: selection.folder.path,
+      }));
+
+      let relatedMessages: MailMessageSummary[] = [];
+      if (selection.folder.specialUse !== '\\Sent') {
+        const folderResult = await window.emzero.folders.list(selection.account.id);
+        const sentFolder = folderResult.ok
+          ? folderResult.folders.find(
+              (folder) => folder.selectable && folder.specialUse === '\\Sent',
+            )
+          : undefined;
+        if (sentFolder && sentFolder.path !== selection.folder.path) {
+          const sentResult = await window.emzero.messages.list(
+            selection.account.id,
+            sentFolder.path,
+          );
+          if (sentResult.ok) {
+            relatedMessages = sentResult.messages.map((message) => ({
+              ...message,
+              folderPath: sentFolder.path,
+            }));
+          }
+        }
+      }
+
+      if (active) {
+        setState({
+          status: 'loaded',
+          messages,
+          relatedMessages,
+          total: result.total,
+        });
+      }
+    })()
       .catch(() => {
         if (active) setState({ status: 'error', message: 'Could not load messages.' });
       });
     return () => {
       active = false;
     };
-  }, [refreshKey, selection.account.id, selection.folder.path]);
+  }, [refreshKey, selection.account.id, selection.folder.path, selection.folder.specialUse]);
 
   const refresh = () => {
     setState({ status: 'loading' });
@@ -701,7 +767,9 @@ function MessageList({ selection }: { selection: FolderSelection }) {
 
   const showRecipients = selection.folder.specialUse === '\\Sent';
   const conversations =
-    state.status === 'loaded' ? groupMessagesIntoConversations(state.messages) : [];
+    state.status === 'loaded'
+      ? groupMessagesWithRelated(state.messages, state.relatedMessages)
+      : [];
 
   if (selectedConversation) {
     return (
@@ -783,9 +851,7 @@ function MessageList({ selection }: { selection: FolderSelection }) {
         <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Messages">
           {conversations.map((conversation) => {
             const latest = conversation.messages[0];
-            const people = conversation.messages.flatMap((message) =>
-              showRecipients ? message.to : message.from,
-            );
+            const opponent = conversationOpponent(conversation.messages, selection.account);
             const date = latest.sentAt ?? latest.receivedAt;
             const unread = conversation.messages.some((message) => message.unread);
             const flagged = conversation.messages.some((message) => message.flagged);
@@ -803,7 +869,7 @@ function MessageList({ selection }: { selection: FolderSelection }) {
                     aria-label={unread ? 'Contains unread messages' : 'Read'}
                   />
                   <span className={`truncate text-sm ${unread ? 'font-semibold' : ''}`}>
-                    {showRecipients ? `To: ${addressLabel(people)}` : addressLabel(people)}
+                    {showRecipients ? `To: ${opponent}` : opponent}
                   </span>
                 </div>
                 <p className={`truncate text-sm ${unread ? 'font-semibold' : ''}`}>

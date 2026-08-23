@@ -215,6 +215,7 @@ async function listFolderMessages(
         ? await simpleParser(message.headers, { skipHtmlToText: true, skipTextToHtml: true })
         : null;
       messages.push({
+        folderPath,
         uid: message.uid,
         messageId: message.envelope?.messageId ?? null,
         inReplyTo: message.envelope?.inReplyTo ?? null,

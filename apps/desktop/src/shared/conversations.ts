@@ -67,12 +67,32 @@ export function groupMessagesIntoConversations(
       return {
         id:
           normalizedMessageId(first.references?.[0] ?? first.inReplyTo ?? first.messageId) ??
-          `uid:${first.uid}`,
+          `${first.folderPath}:uid:${first.uid}`,
         subject: normalizedSubject(latest.subject),
         messages: group,
       };
     })
     .sort((left, right) => timestamp(right.messages[0]) - timestamp(left.messages[0]));
+}
+
+export function groupMessagesWithRelated(
+  primaryMessages: MailMessageSummary[],
+  relatedMessages: MailMessageSummary[],
+): MailConversation[] {
+  const primaryMessageIds = new Set(
+    primaryMessages
+      .map(({ messageId }) => normalizedMessageId(messageId))
+      .filter((value): value is string => Boolean(value)),
+  );
+  const additionalMessages = relatedMessages.filter((message) => {
+    const messageId = normalizedMessageId(message.messageId);
+    return !messageId || !primaryMessageIds.has(messageId);
+  });
+  const primarySet = new Set(primaryMessages);
+
+  return groupMessagesIntoConversations([...primaryMessages, ...additionalMessages]).filter(
+    ({ messages }) => messages.some((message) => primarySet.has(message)),
+  );
 }
 
 export interface QuotedTextParts {
