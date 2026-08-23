@@ -23,6 +23,21 @@ export interface AccountSummary {
   createdAt: string;
 }
 
+export interface MailFolderSummary {
+  path: string;
+  name: string;
+  parentPath: string;
+  delimiter: string;
+  specialUse: string | null;
+  selectable: boolean;
+}
+
+export interface FolderListResult {
+  ok: boolean;
+  folders: MailFolderSummary[];
+  message?: string;
+}
+
 export interface AccountOperationResult {
   ok: boolean;
   message: string;
@@ -50,6 +65,7 @@ export const ACCOUNT_CHANNELS = {
   save: 'accounts:save',
   providers: 'providers:list',
   discoverProvider: 'providers:discover',
+  listFolders: 'folders:list',
 } as const;
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

@@ -9,6 +9,8 @@ import {
   type AccountDraft,
   type AccountOperationResult,
   type AccountSummary,
+  type FolderListResult,
+  type MailFolderSummary,
   validateAccountDraft,
 } from '../shared/accounts.js';
 import { discoverProvider, listProviders } from './provider-discovery.js';
@@ -50,7 +52,7 @@ function toSummary(account: StoredAccount): AccountSummary {
 
 function errorMessage(error: unknown, password: string): string {
   const message = error instanceof Error ? error.message : 'Unknown connection error';
-  return message.replaceAll(password, '••••••••');
+  return password ? message.replaceAll(password, '••••••••') : message;
 }
 
 async function verifyConnections(draft: AccountDraft): Promise<AccountOperationResult> {
@@ -101,6 +103,50 @@ async function verifyConnections(draft: AccountDraft): Promise<AccountOperationR
   return { ok: true, message: 'IMAP and SMTP connections succeeded.' };
 }
 
+async function decryptPassword(account: StoredAccount): Promise<string> {
+  const encrypted = Buffer.from(account.encryptedPassword, 'base64');
+  const { result } = await safeStorage.decryptStringAsync(encrypted);
+  return result;
+}
+
+async function listAccountFolders(account: StoredAccount): Promise<FolderListResult> {
+  let password = '';
+  let imap: ImapFlow | null = null;
+
+  try {
+    password = await decryptPassword(account);
+    imap = new ImapFlow({
+      host: account.imap.host,
+      port: account.imap.port,
+      secure: account.imap.secure,
+      auth: { user: account.username, pass: password },
+      logger: false,
+      connectionTimeout: 12_000,
+      greetingTimeout: 12_000,
+      socketTimeout: 15_000,
+    });
+    await imap.connect();
+    const folders: MailFolderSummary[] = (await imap.list()).map((folder) => ({
+      path: folder.path,
+      name: folder.name,
+      parentPath: folder.parentPath,
+      delimiter: folder.delimiter,
+      specialUse: folder.specialUse ?? null,
+      selectable: !folder.flags.has('\\Noselect'),
+    }));
+    return { ok: true, folders };
+  } catch (error) {
+    return {
+      ok: false,
+      folders: [],
+      message: `Could not load folders: ${errorMessage(error, password)}`,
+    };
+  } finally {
+    if (imap?.usable) await imap.logout().catch(() => imap?.close());
+    else imap?.close();
+  }
+}
+
 function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
   const senderUrl = event.senderFrame?.url;
   if (!senderUrl) return false;
@@ -124,6 +170,18 @@ export function registerAccountHandlers(): void {
   ipcMain.handle(ACCOUNT_CHANNELS.list, async (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return (await readAccounts()).map(toSummary);
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.listFolders, async (event, accountId: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (typeof accountId !== 'string') {
+      return { ok: false, folders: [], message: 'Invalid account.' } satisfies FolderListResult;
+    }
+    const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+    if (!account) {
+      return { ok: false, folders: [], message: 'Account not found.' } satisfies FolderListResult;
+    }
+    return listAccountFolders(account);
   });
 
   ipcMain.handle(ACCOUNT_CHANNELS.test, async (event, draft: AccountDraft) => {

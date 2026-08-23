@@ -1,18 +1,30 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
+  Archive,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  FileText,
+  Folder,
   Inbox,
   LoaderCircle,
   LockKeyhole,
   Mail,
   PenLine,
   Plus,
+  Send,
   Server,
+  Trash2,
   XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { AccountDraft, AccountSummary, MailProvider } from '../shared/accounts';
+import type {
+  AccountDraft,
+  AccountSummary,
+  MailFolderSummary,
+  MailProvider,
+} from '../shared/accounts';
 
 const initialDraft: AccountDraft = {
   name: 'Personal',
@@ -336,7 +348,78 @@ function AccountSetup({
   );
 }
 
-function Sidebar({ accounts, onAdd }: { accounts: AccountSummary[]; onAdd: () => void }) {
+type MailboxSelection =
+  | { kind: 'unified' }
+  | { kind: 'folder'; account: AccountSummary; folder: MailFolderSummary };
+
+type FolderLoadState =
+  | { status: 'loading' }
+  | { status: 'loaded'; folders: MailFolderSummary[] }
+  | { status: 'error'; message: string };
+
+function FolderIcon({ specialUse }: { specialUse: string | null }) {
+  switch (specialUse) {
+    case '\\Inbox':
+      return <Inbox className="size-3.5" />;
+    case '\\Sent':
+      return <Send className="size-3.5" />;
+    case '\\Drafts':
+      return <FileText className="size-3.5" />;
+    case '\\Archive':
+      return <Archive className="size-3.5" />;
+    case '\\Trash':
+    case '\\Junk':
+      return <Trash2 className="size-3.5" />;
+    default:
+      return <Folder className="size-3.5" />;
+  }
+}
+
+function Sidebar({
+  accounts,
+  selection,
+  onSelect,
+  onAdd,
+}: {
+  accounts: AccountSummary[];
+  selection: MailboxSelection;
+  onSelect: (selection: MailboxSelection) => void;
+  onAdd: () => void;
+}) {
+  const [expanded, setExpanded] = useState(() => new Set<string>());
+  const [folderStates, setFolderStates] = useState<Record<string, FolderLoadState>>({});
+
+  const loadFolders = useCallback((accountId: string) => {
+    setFolderStates((current) => ({ ...current, [accountId]: { status: 'loading' } }));
+    void window.emzero.folders
+      .list(accountId)
+      .then((result) => {
+        setFolderStates((current) => ({
+          ...current,
+          [accountId]: result.ok
+            ? { status: 'loaded', folders: result.folders }
+            : { status: 'error', message: result.message ?? 'Could not load folders.' },
+        }));
+      })
+      .catch(() => {
+        setFolderStates((current) => ({
+          ...current,
+          [accountId]: { status: 'error', message: 'Could not load folders.' },
+        }));
+      });
+  }, []);
+
+  const toggleAccount = (accountId: string) => {
+    const isOpening = !expanded.has(accountId);
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(accountId)) next.delete(accountId);
+      else next.add(accountId);
+      return next;
+    });
+    if (isOpening && !folderStates[accountId]) loadFolders(accountId);
+  };
+
   return (
     <aside className="flex flex-col border-r border-border bg-sidebar p-4">
       <div className="mb-8 flex items-center gap-3 px-2">
@@ -355,7 +438,11 @@ function Sidebar({ accounts, onAdd }: { accounts: AccountSummary[]; onAdd: () =>
       </Button>
 
       <nav aria-label="Mailboxes" className="space-y-1">
-        <Button variant="secondary" className="w-full justify-start">
+        <Button
+          variant={selection.kind === 'unified' ? 'secondary' : 'ghost'}
+          className="w-full justify-start"
+          onClick={() => onSelect({ kind: 'unified' })}
+        >
           <Inbox className="size-4" />
           Unified inbox
         </Button>
@@ -364,19 +451,81 @@ function Sidebar({ accounts, onAdd }: { accounts: AccountSummary[]; onAdd: () =>
             <p className="mb-2 px-3 text-[0.68rem] font-semibold uppercase tracking-wider text-muted-foreground">
               Accounts
             </p>
-            {accounts.map((account) => (
-              <Button key={account.id} variant="ghost" className="h-auto w-full justify-start py-2">
-                <span className="grid size-6 shrink-0 place-items-center rounded-md bg-account text-xs font-semibold text-primary">
-                  {account.name.charAt(0).toUpperCase()}
-                </span>
-                <span className="min-w-0 text-left">
-                  <span className="block truncate text-sm">{account.name}</span>
-                  <span className="block truncate text-[0.68rem] font-normal text-muted-foreground">
-                    {account.email}
-                  </span>
-                </span>
-              </Button>
-            ))}
+            {accounts.map((account) => {
+              const isExpanded = expanded.has(account.id);
+              const folderState = folderStates[account.id];
+              return (
+                <div key={account.id}>
+                  <Button
+                    variant="ghost"
+                    className="h-auto w-full justify-start gap-2 py-2"
+                    aria-expanded={isExpanded}
+                    onClick={() => toggleAccount(account.id)}
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="size-3.5 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="size-3.5 text-muted-foreground" />
+                    )}
+                    <span className="grid size-6 shrink-0 place-items-center rounded-md bg-account text-xs font-semibold text-primary">
+                      {account.name.charAt(0).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 text-left">
+                      <span className="block truncate text-sm">{account.name}</span>
+                      <span className="block truncate text-[0.68rem] font-normal text-muted-foreground">
+                        {account.email}
+                      </span>
+                    </span>
+                  </Button>
+
+                  {isExpanded && (
+                    <div className="mb-2 ml-5 border-l border-border pl-2">
+                      {(!folderState || folderState.status === 'loading') && (
+                        <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+                          <LoaderCircle className="size-3.5 animate-spin" />
+                          Loading folders
+                        </div>
+                      )}
+                      {folderState?.status === 'error' && (
+                        <button
+                          type="button"
+                          className="flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-xs text-danger hover:bg-accent"
+                          title={folderState.message}
+                          onClick={() => loadFolders(account.id)}
+                        >
+                          <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+                          <span>Could not load folders. Click to retry.</span>
+                        </button>
+                      )}
+                      {folderState?.status === 'loaded' &&
+                        folderState.folders.map((folder) => {
+                          const depth = folder.parentPath
+                            ? folder.parentPath.split(folder.delimiter).length
+                            : 0;
+                          const isSelected =
+                            selection.kind === 'folder' &&
+                            selection.account.id === account.id &&
+                            selection.folder.path === folder.path;
+                          return (
+                            <Button
+                              key={folder.path}
+                              variant={isSelected ? 'secondary' : 'ghost'}
+                              className="h-8 w-full justify-start px-2 text-xs font-normal"
+                              style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
+                              disabled={!folder.selectable}
+                              title={folder.path}
+                              onClick={() => onSelect({ kind: 'folder', account, folder })}
+                            >
+                              <FolderIcon specialUse={folder.specialUse} />
+                              <span className="truncate">{folder.name}</span>
+                            </Button>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </nav>
@@ -395,6 +544,7 @@ export function App() {
   const [accounts, setAccounts] = useState<AccountSummary[] | null>(null);
   const [providers, setProviders] = useState<MailProvider[]>([]);
   const [showSetup, setShowSetup] = useState(false);
+  const [selection, setSelection] = useState<MailboxSelection>({ kind: 'unified' });
 
   useEffect(() => {
     void Promise.allSettled([window.emzero.accounts.list(), window.emzero.providers.list()]).then(
@@ -417,7 +567,15 @@ export function App() {
 
   return (
     <main className="grid min-h-screen grid-cols-[15rem_1fr] bg-background text-foreground">
-      <Sidebar accounts={accounts} onAdd={() => setShowSetup(true)} />
+      <Sidebar
+        accounts={accounts}
+        selection={selection}
+        onSelect={(nextSelection) => {
+          setSelection(nextSelection);
+          setShowSetup(false);
+        }}
+        onAdd={() => setShowSetup(true)}
+      />
       {showSetup ? (
         <AccountSetup
           providers={providers}
@@ -434,9 +592,13 @@ export function App() {
             <div className="mx-auto mb-5 grid size-16 place-items-center rounded-2xl border border-border bg-card shadow-sm">
               <Inbox className="size-7 text-muted-foreground" />
             </div>
-            <h1 className="text-2xl font-semibold tracking-tight">Your inbox is connected</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {selection.kind === 'folder' ? selection.folder.name : 'Unified inbox'}
+            </h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Message sync and folder navigation are coming in the next milestone.
+              {selection.kind === 'folder'
+                ? `${selection.account.name} · Message sync is the next milestone.`
+                : 'Choose an account folder, or wait for unified message sync in the next milestone.'}
             </p>
             <p className="mt-4 text-xs text-muted-foreground">
               Desktop shell running on {window.emzero.platform}
