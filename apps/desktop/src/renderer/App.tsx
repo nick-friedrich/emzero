@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Archive,
   ArrowLeft,
@@ -73,6 +73,7 @@ import type {
   MailProvider,
   MailSendDraft,
   MailSyncStatus,
+  RecipientSuggestion,
 } from '../shared/accounts';
 import { defaultAccountName, displayFolderName, findInboxFolder } from '../shared/accounts';
 import {
@@ -1984,6 +1985,145 @@ function AccountSettingsDialog({
   );
 }
 
+function recipientQuery(value: string): string {
+  return value.slice(Math.max(value.lastIndexOf(','), value.lastIndexOf(';')) + 1).trim();
+}
+
+function insertRecipient(value: string, suggestion: RecipientSuggestion): string {
+  const separator = Math.max(value.lastIndexOf(','), value.lastIndexOf(';'));
+  const prefix = value.slice(0, separator + 1);
+  const safeName = suggestion.name && !/[,;]/.test(suggestion.name) ? suggestion.name : null;
+  const formatted = safeName ? `${safeName} <${suggestion.address}>` : suggestion.address;
+  return `${prefix}${prefix && !/\s$/.test(prefix) ? ' ' : ''}${formatted}, `;
+}
+
+function RecipientField({
+  label,
+  accountId,
+  value,
+  placeholder,
+  disabled,
+  autoFocus,
+  onChange,
+}: {
+  label: string;
+  accountId: string;
+  value: string;
+  placeholder: string;
+  disabled: boolean;
+  autoFocus?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const listId = useId();
+  const [focused, setFocused] = useState(false);
+  const [suggestions, setSuggestions] = useState<RecipientSuggestion[]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const query = recipientQuery(value);
+
+  useEffect(() => {
+    if (!focused || !accountId || !query) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void window.emzero.messages
+        .suggestRecipients(accountId, query)
+        .then((result) => {
+          if (active) setSuggestions(result);
+        })
+        .catch(() => {
+          if (active) setSuggestions([]);
+        });
+    }, 120);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [accountId, focused, query]);
+
+  const choose = (suggestion: RecipientSuggestion) => {
+    onChange(insertRecipient(value, suggestion));
+    setSuggestions([]);
+    setActiveIndex(0);
+  };
+  const open = focused && query.length > 0 && suggestions.length > 0;
+
+  return (
+    <Field label={label}>
+      <div className="relative">
+        <input
+          className="field"
+          type="text"
+          value={value}
+          placeholder={placeholder}
+          autoFocus={autoFocus}
+          disabled={disabled}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={open}
+          aria-controls={open ? listId : undefined}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onChange={(event) => {
+            onChange(event.target.value);
+            setSuggestions([]);
+            setActiveIndex(0);
+          }}
+          onKeyDown={(event) => {
+            if (!open) return;
+            if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              setActiveIndex((current) => (current + 1) % suggestions.length);
+            } else if (event.key === 'ArrowUp') {
+              event.preventDefault();
+              setActiveIndex((current) =>
+                current === 0 ? suggestions.length - 1 : current - 1,
+              );
+            } else if (event.key === 'Enter' || event.key === 'Tab') {
+              event.preventDefault();
+              choose(suggestions[activeIndex]);
+            } else if (event.key === 'Escape') {
+              setSuggestions([]);
+            }
+          }}
+        />
+        {open && (
+          <div
+            id={listId}
+            className="absolute left-0 right-0 top-[calc(100%+0.25rem)] z-20 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg"
+            role="listbox"
+          >
+            {suggestions.map((suggestion, index) => (
+              <button
+                key={suggestion.address}
+                type="button"
+                className={cn(
+                  'flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left hover:bg-accent',
+                  index === activeIndex && 'bg-accent',
+                )}
+                role="option"
+                aria-selected={index === activeIndex}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => choose(suggestion)}
+              >
+                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-account text-xs font-semibold text-primary">
+                  {(suggestion.name || suggestion.address).charAt(0).toUpperCase()}
+                </span>
+                <span className="min-w-0">
+                  {suggestion.name && (
+                    <span className="block truncate text-sm font-medium">{suggestion.name}</span>
+                  )}
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {suggestion.address}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </Field>
+  );
+}
+
 function ComposeDialog({
   open,
   accounts,
@@ -2077,47 +2217,41 @@ function ComposeDialog({
               <ChevronDown className="pointer-events-none absolute right-3 top-2.5 size-4 text-muted-foreground" />
             </div>
           </Field>
-          <Field label="To">
-            <input
-              className="field"
-              type="text"
-              value={to}
-              placeholder="name@example.com, another@example.com"
-              autoFocus
+          <RecipientField
+            label="To"
+            accountId={accountId}
+            value={to}
+            placeholder="Start typing a name or email address"
+            autoFocus
+            disabled={busy}
+            onChange={(value) => {
+              setTo(value);
+              setStatus(null);
+            }}
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <RecipientField
+              label="Cc"
+              accountId={accountId}
+              value={cc}
+              placeholder="Optional"
               disabled={busy}
-              onChange={(event) => {
-                setTo(event.target.value);
+              onChange={(value) => {
+                setCc(value);
                 setStatus(null);
               }}
             />
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Cc">
-              <input
-                className="field"
-                type="text"
-                value={cc}
-                placeholder="Optional"
-                disabled={busy}
-                onChange={(event) => {
-                  setCc(event.target.value);
-                  setStatus(null);
-                }}
-              />
-            </Field>
-            <Field label="Bcc">
-              <input
-                className="field"
-                type="text"
-                value={bcc}
-                placeholder="Optional"
-                disabled={busy}
-                onChange={(event) => {
-                  setBcc(event.target.value);
-                  setStatus(null);
-                }}
-              />
-            </Field>
+            <RecipientField
+              label="Bcc"
+              accountId={accountId}
+              value={bcc}
+              placeholder="Optional"
+              disabled={busy}
+              onChange={(value) => {
+                setBcc(value);
+                setStatus(null);
+              }}
+            />
           </div>
           <Field label="Subject">
             <input

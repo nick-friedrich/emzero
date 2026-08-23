@@ -76,6 +76,44 @@ describe('MailCache', () => {
     });
   });
 
+  it('suggests cached senders and sent-mail recipients by name or address', () => {
+    cache = new MailCache(':memory:');
+    const sent = { ...inbox, path: 'Sent', name: 'Sent', specialUse: '\\Sent', unreadCount: 0 };
+    cache.replaceFolders('account-1', [inbox, sent]);
+    cache.replaceRecentMessages(
+      'account-1',
+      'INBOX',
+      [
+        {
+          ...message(1),
+          from: [{ name: 'Alice Example', address: 'alice@example.com' }],
+        },
+      ],
+      1,
+    );
+    cache.replaceRecentMessages(
+      'account-1',
+      'Sent',
+      [
+        {
+          ...message(2),
+          folderPath: 'Sent',
+          from: [{ name: 'Me', address: 'me@example.com' }],
+          to: [{ name: 'Bob Example', address: 'bob@example.com' }],
+        },
+      ],
+      1,
+    );
+
+    expect(cache.searchRecipients('account-1', 'ali')).toEqual([
+      { name: 'Alice Example', address: 'alice@example.com' },
+    ]);
+    expect(cache.searchRecipients('account-1', 'bob')).toEqual([
+      { name: 'Bob Example', address: 'bob@example.com' },
+    ]);
+    expect(cache.searchRecipients('account-1', 'bob', ['BOB@example.com'])).toEqual([]);
+  });
+
   it('replaces the synced UID window while retaining older cached messages', () => {
     cache = new MailCache(':memory:');
     cache.replaceFolders('account-1', [inbox]);

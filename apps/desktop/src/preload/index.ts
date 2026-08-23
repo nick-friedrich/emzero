@@ -15,6 +15,7 @@ import {
   type MailSendResult,
   type MailSyncStatus,
   type ProviderDiscoveryResult,
+  type RecipientSuggestion,
 } from '../shared/accounts.js';
 
 export interface EmzeroDesktopApi {
@@ -45,6 +46,7 @@ export interface EmzeroDesktopApi {
     ) => Promise<MessageOperationResult>;
     sendReply: (accountId: string, draft: MailReplyDraft) => Promise<MailSendResult>;
     send: (accountId: string, draft: MailSendDraft) => Promise<MailSendResult>;
+    suggestRecipients: (accountId: string, query: string) => Promise<RecipientSuggestion[]>;
   };
   sync: {
     status: () => Promise<MailSyncStatus>;
@@ -82,6 +84,8 @@ contextBridge.exposeInMainWorld('emzero', {
     sendReply: (accountId, draft) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.sendReply, accountId, draft),
     send: (accountId, draft) => ipcRenderer.invoke(ACCOUNT_CHANNELS.sendMessage, accountId, draft),
+    suggestRecipients: (accountId, query) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.suggestRecipients, accountId, query),
   },
   sync: {
     status: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.syncStatus),

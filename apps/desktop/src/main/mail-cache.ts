@@ -5,6 +5,7 @@ import type {
   MailFolderSummary,
   MailMessageDetail,
   MailMessageSummary,
+  RecipientSuggestion,
 } from '../shared/accounts.js';
 
 interface FolderRow {
@@ -51,6 +52,13 @@ interface MessageBodyRow {
   body_html: string | null;
   html_has_quoted_text: number;
   attachments: string;
+}
+
+interface CorrespondentRow {
+  name: string | null;
+  address: string | null;
+  observed_at: string | null;
+  outgoing: number;
 }
 
 export interface CachedFolderMessages {
@@ -370,6 +378,87 @@ export class MailCache {
       total: folder?.message_count ?? 0,
       syncedAt: folder?.synced_at ?? null,
     };
+  }
+
+  searchRecipients(
+    accountId: string,
+    query: string,
+    excludedAddresses: string[] = [],
+    limit = 8,
+  ): RecipientSuggestion[] {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return [];
+    const rows = this.#database
+      .prepare(`
+        SELECT json_extract(address.value, '$.name') AS name,
+               json_extract(address.value, '$.address') AS address,
+               COALESCE(messages.sent_at, messages.received_at) AS observed_at,
+               1 AS outgoing
+        FROM messages
+        JOIN folders ON folders.account_id = messages.account_id
+                    AND folders.path = messages.folder_path
+        JOIN json_each(messages.recipient_addresses) AS address
+        WHERE messages.account_id = ?
+          AND folders.special_use = '\\Sent'
+          AND (instr(lower(COALESCE(json_extract(address.value, '$.address'), '')), ?) > 0
+            OR instr(lower(COALESCE(json_extract(address.value, '$.name'), '')), ?) > 0)
+        UNION ALL
+        SELECT json_extract(address.value, '$.name') AS name,
+               json_extract(address.value, '$.address') AS address,
+               COALESCE(messages.received_at, messages.sent_at) AS observed_at,
+               0 AS outgoing
+        FROM messages
+        JOIN folders ON folders.account_id = messages.account_id
+                    AND folders.path = messages.folder_path
+        JOIN json_each(messages.sender_addresses) AS address
+        WHERE messages.account_id = ?
+          AND COALESCE(folders.special_use, '') != '\\Sent'
+          AND (instr(lower(COALESCE(json_extract(address.value, '$.address'), '')), ?) > 0
+            OR instr(lower(COALESCE(json_extract(address.value, '$.name'), '')), ?) > 0)
+      `)
+      .all(
+        accountId,
+        normalizedQuery,
+        normalizedQuery,
+        accountId,
+        normalizedQuery,
+        normalizedQuery,
+      ) as unknown as CorrespondentRow[];
+    const excluded = new Set(excludedAddresses.map((address) => address.trim().toLowerCase()));
+    const correspondents = new Map<
+      string,
+      { name: string | null; lastUsedAt: number; outgoing: number; incoming: number }
+    >();
+    for (const row of rows) {
+      const address = row.address?.trim().toLowerCase() ?? '';
+      if (!address || excluded.has(address)) continue;
+      const observedAt = row.observed_at ? Date.parse(row.observed_at) : 0;
+      const current = correspondents.get(address) ?? {
+        name: null,
+        lastUsedAt: 0,
+        outgoing: 0,
+        incoming: 0,
+      };
+      if (row.name?.trim() && (!current.name || observedAt >= current.lastUsedAt)) {
+        current.name = row.name.trim();
+      }
+      current.lastUsedAt = Math.max(current.lastUsedAt, observedAt || 0);
+      if (row.outgoing) current.outgoing += 1;
+      else current.incoming += 1;
+      correspondents.set(address, current);
+    }
+
+    return [...correspondents.entries()]
+      .sort(([leftAddress, left], [rightAddress, right]) => {
+        const score = (address: string, value: typeof left) =>
+          (address.startsWith(normalizedQuery) ? 1_000 : 0) +
+          (value.name?.toLowerCase().startsWith(normalizedQuery) ? 700 : 0) +
+          Math.min(value.outgoing, 20) * 20 +
+          Math.min(value.incoming, 20) * 5;
+        return score(rightAddress, right) - score(leftAddress, left) || right.lastUsedAt - left.lastUsedAt;
+      })
+      .slice(0, Math.max(1, Math.min(limit, 20)))
+      .map(([address, value]) => ({ name: value.name, address }));
   }
 
   getFolderSyncState(accountId: string, folderPath: string): FolderSyncState {

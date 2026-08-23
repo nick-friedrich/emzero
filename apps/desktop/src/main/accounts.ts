@@ -971,6 +971,20 @@ export function registerAccountHandlers(): void {
     },
   );
 
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.suggestRecipients,
+    async (event, accountId: unknown, query: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (typeof accountId !== 'string' || typeof query !== 'string') return [];
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return [];
+      return mailCache().searchRecipients(account.id, query.slice(0, 200), [
+        account.email,
+        account.username,
+      ]);
+    },
+  );
+
   ipcMain.handle(ACCOUNT_CHANNELS.test, async (event, draft: AccountDraft) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return verifyConnections(draft);

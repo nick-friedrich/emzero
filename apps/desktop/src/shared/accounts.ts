@@ -146,6 +146,10 @@ export interface MailSendResult extends MessageOperationResult {
   sentMessage?: MailMessageSummary;
 }
 
+export interface RecipientSuggestion extends MailAddressSummary {
+  address: string;
+}
+
 export interface AccountOperationResult {
   ok: boolean;
   message: string;
@@ -192,6 +196,7 @@ export const ACCOUNT_CHANNELS = {
   deleteMessages: 'messages:delete',
   sendReply: 'messages:send-reply',
   sendMessage: 'messages:send',
+  suggestRecipients: 'messages:suggest-recipients',
   syncStatus: 'sync:status',
   syncNow: 'sync:now',
   syncChanged: 'sync:changed',
