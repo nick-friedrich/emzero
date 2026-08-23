@@ -85,6 +85,7 @@ import {
   createReplyDraft,
   parseAddressList,
   replyRecipients,
+  validateReplyDraft,
   validateSendDraft,
 } from '../shared/replies';
 
@@ -96,6 +97,16 @@ const initialDraft: AccountDraft = {
   imap: { host: '', port: 993, secure: true },
   smtp: { host: '', port: 465, secure: true },
 };
+
+const skipSendConfirmationStorageKey = 'emzero-skip-send-confirmation';
+
+function storedSkipSendConfirmation(): boolean {
+  try {
+    return window.localStorage.getItem(skipSendConfirmationStorageKey) === 'true';
+  } catch {
+    return false;
+  }
+}
 
 interface Status {
   kind: 'success' | 'error';
@@ -780,16 +791,15 @@ function ReplyComposer({
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState<MailSendDraft | null>(null);
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
+  const deliver = async (draft: MailSendDraft) => {
     setBusy(true);
     setStatus(null);
     try {
-      const result = await window.emzero.messages.sendReply(
-        account.id,
-        createReplyDraft(account, summary, message, text),
-      );
+      const result = await window.emzero.messages.sendReply(account.id, draft);
       setStatus({
         kind: result.ok ? 'success' : 'error',
         message: result.message ?? (result.ok ? 'Reply sent.' : 'Could not send reply.'),
@@ -804,6 +814,23 @@ function ReplyComposer({
     } finally {
       setBusy(false);
     }
+  };
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const draft = createReplyDraft(account, summary, message, text);
+    const validationError = validateReplyDraft(draft);
+    if (validationError) {
+      setStatus({ kind: 'error', message: validationError });
+      return;
+    }
+    if (storedSkipSendConfirmation()) {
+      void deliver(draft);
+      return;
+    }
+    setPendingDraft(draft);
+    setDontShowAgain(false);
+    setConfirmationOpen(true);
   };
 
   if (!open) {
@@ -837,48 +864,127 @@ function ReplyComposer({
   }
 
   return (
-    <form className="mt-6 border-t border-border pt-5" onSubmit={submit}>
-      <div className="mb-3 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+    <>
+      <form
+        className="mt-6 border-t border-border pt-5"
+        onSubmit={submit}
+        onKeyDown={(event) => {
+          if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !busy) {
+            event.preventDefault();
+            event.currentTarget.requestSubmit();
+          }
+        }}
+      >
+        <div className="mb-3 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
         <Reply className="size-4 shrink-0" />
         <span className="shrink-0">Reply to</span>
         <span className="truncate font-medium text-foreground">{addressDetails(recipients)}</span>
-      </div>
-      <textarea
-        className="field min-h-36 resize-y leading-6"
-        value={text}
-        placeholder="Write a reply…"
-        aria-label="Reply message"
-        autoFocus
-        disabled={busy}
-        onChange={(event) => {
-          setText(event.target.value);
-          setStatus(null);
-        }}
-      />
-      {status?.kind === 'error' && (
-        <p className="mt-2 text-xs text-danger" role="status">
-          {status.message}
-        </p>
-      )}
-      <div className="mt-3 flex justify-end gap-2">
-        <Button
-          type="button"
-          variant="ghost"
+        </div>
+        <textarea
+          className="field min-h-36 resize-y leading-6"
+          value={text}
+          placeholder="Write a reply…"
+          aria-label="Reply message"
+          autoFocus
           disabled={busy}
-          onClick={() => {
-            setOpen(false);
-            setText('');
+          onChange={(event) => {
+            setText(event.target.value);
             setStatus(null);
           }}
-        >
-          Cancel
-        </Button>
-        <Button type="submit" disabled={busy || !text.trim()}>
-          {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
-          Send reply
-        </Button>
-      </div>
-    </form>
+        />
+        {status?.kind === 'error' && (
+          <p className="mt-2 text-xs text-danger" role="status">
+            {status.message}
+          </p>
+        )}
+        <div className="mt-3 flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => {
+              setOpen(false);
+              setText('');
+              setStatus(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            disabled={busy || !text.trim()}
+            title="Send reply (Ctrl+Enter)"
+            aria-keyshortcuts="Control+Enter Meta+Enter"
+          >
+            {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
+            Send reply
+          </Button>
+        </div>
+      </form>
+      <AlertDialog
+        open={confirmationOpen}
+        onOpenChange={(nextOpen) => {
+          setConfirmationOpen(nextOpen);
+          if (!nextOpen) setPendingDraft(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send this reply?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will send the reply immediately and cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {pendingDraft && (
+            <div className="rounded-lg border border-border bg-background px-4 py-3 text-sm">
+              <p className="truncate">
+                <span className="text-muted-foreground">From: </span>
+                {account.email}
+              </p>
+              <p className="mt-1 truncate">
+                <span className="text-muted-foreground">To: </span>
+                {addressDetails(pendingDraft.to)}
+              </p>
+              <p className="mt-1 truncate">
+                <span className="text-muted-foreground">Subject: </span>
+                {pendingDraft.subject}
+              </p>
+            </div>
+          )}
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              className="size-4 accent-primary"
+              type="checkbox"
+              checked={dontShowAgain}
+              onChange={(event) => setDontShowAgain(event.target.checked)}
+            />
+            Don’t show this confirmation again
+          </label>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="default"
+              onClick={() => {
+                if (!pendingDraft) return;
+                const draft = pendingDraft;
+                if (dontShowAgain) {
+                  try {
+                    window.localStorage.setItem(skipSendConfirmationStorageKey, 'true');
+                  } catch {
+                    // Sending should still work if preferences cannot be persisted.
+                  }
+                }
+                setPendingDraft(null);
+                void deliver(draft);
+              }}
+            >
+              <Send className="size-4" />
+              Send reply
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
@@ -2149,24 +2255,14 @@ function ComposeDialog({
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
+  const [skipSendConfirmation, setSkipSendConfirmation] = useState(
+    storedSkipSendConfirmation,
+  );
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState<MailSendDraft | null>(null);
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    const draft: MailSendDraft = {
-      to: parseAddressList(to),
-      cc: parseAddressList(cc),
-      bcc: parseAddressList(bcc),
-      subject,
-      text: body,
-      inReplyTo: null,
-      references: [],
-    };
-    const validationError = validateSendDraft(draft);
-    if (validationError) {
-      setStatus({ kind: 'error', message: validationError });
-      return;
-    }
-
+  const deliver = async (draft: MailSendDraft) => {
     setBusy(true);
     setStatus(null);
     try {
@@ -2184,6 +2280,31 @@ function ComposeDialog({
     }
   };
 
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const draft: MailSendDraft = {
+      to: parseAddressList(to),
+      cc: parseAddressList(cc),
+      bcc: parseAddressList(bcc),
+      subject,
+      text: body,
+      inReplyTo: null,
+      references: [],
+    };
+    const validationError = validateSendDraft(draft);
+    if (validationError) {
+      setStatus({ kind: 'error', message: validationError });
+      return;
+    }
+    if (skipSendConfirmation) {
+      void deliver(draft);
+      return;
+    }
+    setPendingDraft(draft);
+    setDontShowAgain(false);
+    setConfirmationOpen(true);
+  };
+
   return (
     <Dialog
       open={open}
@@ -2196,7 +2317,16 @@ function ComposeDialog({
           <DialogTitle>New message</DialogTitle>
           <DialogDescription>Send a plain-text email from any connected account.</DialogDescription>
         </DialogHeader>
-        <form className="space-y-4" onSubmit={submit}>
+        <form
+          className="space-y-4"
+          onSubmit={submit}
+          onKeyDown={(event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !busy) {
+              event.preventDefault();
+              event.currentTarget.requestSubmit();
+            }
+          }}
+        >
           <Field label="From">
             <div className="relative">
               <select
@@ -2292,13 +2422,82 @@ function ComposeDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={busy || !accountId}>
+            <Button
+              type="submit"
+              disabled={busy || !accountId}
+              title="Send (Ctrl+Enter)"
+              aria-keyshortcuts="Control+Enter Meta+Enter"
+            >
               {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
               Send
             </Button>
           </div>
         </form>
       </DialogContent>
+      <AlertDialog
+        open={confirmationOpen}
+        onOpenChange={(nextOpen) => {
+          setConfirmationOpen(nextOpen);
+          if (!nextOpen) setPendingDraft(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send this email?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will send the message immediately and cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {pendingDraft && (
+            <div className="rounded-lg border border-border bg-background px-4 py-3 text-sm">
+              <p className="truncate">
+                <span className="text-muted-foreground">From: </span>
+                {accounts.find((account) => account.id === accountId)?.email}
+              </p>
+              <p className="mt-1 truncate">
+                <span className="text-muted-foreground">To: </span>
+                {addressDetails(pendingDraft.to)}
+              </p>
+              <p className="mt-1 truncate">
+                <span className="text-muted-foreground">Subject: </span>
+                {pendingDraft.subject}
+              </p>
+            </div>
+          )}
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              className="size-4 accent-primary"
+              type="checkbox"
+              checked={dontShowAgain}
+              onChange={(event) => setDontShowAgain(event.target.checked)}
+            />
+            Don’t show this confirmation again
+          </label>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="default"
+              onClick={() => {
+                if (!pendingDraft) return;
+                const draft = pendingDraft;
+                if (dontShowAgain) {
+                  try {
+                    window.localStorage.setItem(skipSendConfirmationStorageKey, 'true');
+                  } catch {
+                    // Sending should still work if preferences cannot be persisted.
+                  }
+                  setSkipSendConfirmation(true);
+                }
+                setPendingDraft(null);
+                void deliver(draft);
+              }}
+            >
+              <Send className="size-4" />
+              Send email
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
