@@ -30,6 +30,7 @@ export interface MailFolderSummary {
   delimiter: string;
   specialUse: string | null;
   selectable: boolean;
+  unreadCount: number;
 }
 
 export function findInboxFolder(

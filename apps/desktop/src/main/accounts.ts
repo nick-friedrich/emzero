@@ -220,13 +220,16 @@ async function listAccountFolders(
       socketTimeout: 15_000,
     });
     await imap.connect();
-    const folders: MailFolderSummary[] = (await imap.list()).map((folder) => ({
+    const folders: MailFolderSummary[] = (
+      await imap.list({ statusQuery: { unseen: true } })
+    ).map((folder) => ({
       path: folder.path,
       name: folder.name,
       parentPath: folder.parentPath,
       delimiter: folder.delimiter,
       specialUse: folder.specialUse ?? null,
       selectable: !folder.flags.has('\\Noselect'),
+      unreadCount: folder.status?.unseen ?? 0,
     }));
     mailCache().replaceFolders(account.id, folders);
     return { ok: true, folders, source: 'server' };

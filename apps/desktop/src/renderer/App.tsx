@@ -12,6 +12,7 @@ import {
   LoaderCircle,
   LockKeyhole,
   Mail,
+  Menu,
   Paperclip,
   PenLine,
   Plus,
@@ -23,6 +24,14 @@ import {
   XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import { cn } from '@/lib/utils';
 import type {
   AccountDraft,
   AccountSummary,
@@ -205,7 +214,7 @@ function AccountSetup({
   };
 
   return (
-    <section className="overflow-y-auto bg-background p-8 lg:p-12">
+    <section className="min-w-0 overflow-y-auto bg-background px-4 pb-8 pt-20 sm:px-8 lg:p-12">
       <form className="mx-auto max-w-3xl" onSubmit={submit}>
         <div className="mb-8">
           <div className="mb-4 grid size-11 place-items-center rounded-xl border border-border bg-card shadow-sm">
@@ -388,6 +397,18 @@ function FolderIcon({ specialUse }: { specialUse: string | null }) {
     default:
       return <Folder className="size-3.5" />;
   }
+}
+
+function UnreadBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className="ml-auto min-w-5 shrink-0 rounded-full bg-primary px-1.5 py-0.5 text-center text-[0.62rem] font-semibold tabular-nums leading-none text-primary-foreground"
+      aria-label={`${count} unread ${count === 1 ? 'message' : 'messages'}`}
+    >
+      {count > 999 ? '999+' : count}
+    </span>
+  );
 }
 
 function addressLabel(addresses: MailMessageSummary['from']): string {
@@ -685,8 +706,8 @@ function ConversationReader({
   onBack: () => void;
 }) {
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden bg-background">
-      <header className="flex items-center gap-3 border-b border-border bg-card px-4 py-3">
+    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+      <header className="flex items-center gap-3 border-b border-border bg-card py-3 pl-16 pr-4 lg:px-4">
         <Button variant="ghost" className="px-3" onClick={onBack}>
           <ArrowLeft className="size-4" />
           Back
@@ -695,10 +716,10 @@ function ConversationReader({
           {selection.account.name} / {displayFolderName(selection.folder)}
         </span>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-7 lg:px-10">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-7 lg:px-10">
         <div className="mx-auto max-w-4xl">
           <div className="mb-6 flex items-end justify-between gap-4">
-            <h1 className="text-2xl font-semibold leading-tight tracking-tight">
+            <h1 className="min-w-0 text-xl font-semibold leading-tight tracking-tight sm:text-2xl">
               {conversation.subject}
             </h1>
             <span className="shrink-0 text-xs text-muted-foreground">
@@ -816,8 +837,8 @@ function MessageList({ selection }: { selection: FolderSelection }) {
   }
 
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden bg-background">
-      <header className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
+    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+      <header className="flex min-w-0 items-center justify-between gap-3 border-b border-border bg-card py-4 pl-16 pr-4 lg:px-6">
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold tracking-tight">
             {displayFolderName(selection.folder)}
@@ -828,7 +849,7 @@ function MessageList({ selection }: { selection: FolderSelection }) {
         </div>
         <div className="flex items-center gap-3">
           {state.status === 'loaded' && (
-            <span className="text-xs text-muted-foreground">
+            <span className="hidden whitespace-nowrap text-xs text-muted-foreground lg:inline">
               {conversations.length} {conversations.length === 1 ? 'conversation' : 'conversations'}
               {' · '}
               {state.messages.length < state.total
@@ -883,7 +904,7 @@ function MessageList({ selection }: { selection: FolderSelection }) {
       )}
 
       {state.status === 'loaded' && state.notice && (
-        <div className="border-b border-border bg-secondary px-6 py-3 text-xs text-muted-foreground">
+        <div className="border-b border-border bg-secondary px-4 py-3 text-xs text-muted-foreground lg:px-6">
           <div className="flex items-start gap-2">
             <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
             <p>{state.notice}</p>
@@ -903,7 +924,7 @@ function MessageList({ selection }: { selection: FolderSelection }) {
               <button
                 type="button"
                 key={conversation.id}
-                className="grid w-full grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-6 py-3 text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none"
+                className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-border px-4 py-3 text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6"
                 role="listitem"
                 onClick={() => setSelectedConversation(conversation)}
               >
@@ -916,7 +937,9 @@ function MessageList({ selection }: { selection: FolderSelection }) {
                     {showRecipients ? `To: ${opponent}` : opponent}
                   </span>
                 </div>
-                <p className={`truncate text-sm ${unread ? 'font-semibold' : ''}`}>
+                <p
+                  className={`col-span-2 col-start-1 row-start-2 min-w-0 truncate pl-3.5 text-sm lg:col-auto lg:row-auto lg:pl-0 ${unread ? 'font-semibold' : ''}`}
+                >
                   {conversation.subject}
                   {conversation.messages.length > 1 && (
                     <span className="ml-2 font-normal text-muted-foreground">
@@ -924,7 +947,7 @@ function MessageList({ selection }: { selection: FolderSelection }) {
                     </span>
                   )}
                 </p>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="col-start-2 row-start-1 flex items-center gap-3 text-xs text-muted-foreground lg:col-auto lg:row-auto">
                   {flagged && (
                     <Star className="size-3.5 fill-primary text-primary" aria-label="Flagged" />
                   )}
@@ -1071,8 +1094,8 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
   }
 
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden bg-background">
-      <header className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
+    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+      <header className="flex min-w-0 items-center justify-between gap-3 border-b border-border bg-card py-4 pl-16 pr-4 lg:px-6">
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold tracking-tight">Unified inbox</h1>
           <p className="truncate text-xs text-muted-foreground">
@@ -1081,7 +1104,7 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
         </div>
         <div className="flex items-center gap-3">
           {state.status === 'loaded' && (
-            <span className="text-xs text-muted-foreground">
+            <span className="hidden whitespace-nowrap text-xs text-muted-foreground lg:inline">
               {state.items.length} {state.items.length === 1 ? 'conversation' : 'conversations'}
               {' · '}
               {state.loadedMessages < state.totalMessages
@@ -1112,7 +1135,7 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
       )}
 
       {state.status === 'loaded' && state.failures.length > 0 && (
-        <div className="border-b border-danger/20 bg-danger/8 px-6 py-3 text-xs text-danger">
+        <div className="border-b border-danger/20 bg-danger/8 px-4 py-3 text-xs text-danger lg:px-6">
           <div className="flex items-start gap-2">
             <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
             <div>
@@ -1127,7 +1150,7 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
       )}
 
       {state.status === 'loaded' && state.notices.length > 0 && (
-        <div className="border-b border-border bg-secondary px-6 py-3 text-xs text-muted-foreground">
+        <div className="border-b border-border bg-secondary px-4 py-3 text-xs text-muted-foreground lg:px-6">
           <div className="flex items-start gap-2">
             <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
             <div>
@@ -1178,7 +1201,7 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
               <button
                 type="button"
                 key={`${selection.account.id}:${conversation.id}`}
-                className="grid w-full grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-6 py-3 text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none"
+                className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-border px-4 py-3 text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6"
                 role="listitem"
                 onClick={() => setSelectedItem(item)}
               >
@@ -1191,7 +1214,7 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
                     {opponent}
                   </span>
                 </div>
-                <div className="flex min-w-0 items-center gap-2">
+                <div className="col-span-2 col-start-1 row-start-2 flex min-w-0 items-center gap-2 pl-3.5 lg:col-auto lg:row-auto lg:pl-0">
                   <span className="shrink-0 rounded bg-account px-1.5 py-0.5 text-[0.65rem] font-medium text-primary">
                     {selection.account.name}
                   </span>
@@ -1204,7 +1227,7 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
                     )}
                   </p>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="col-start-2 row-start-1 flex items-center gap-3 text-xs text-muted-foreground lg:col-auto lg:row-auto">
                   {flagged && (
                     <Star className="size-3.5 fill-primary text-primary" aria-label="Flagged" />
                   )}
@@ -1223,14 +1246,18 @@ function Sidebar({
   accounts,
   selection,
   syncStatus,
+  syncRevision,
   onSelect,
   onAdd,
+  className,
 }: {
   accounts: AccountSummary[];
   selection: MailboxSelection;
   syncStatus: MailSyncStatus;
+  syncRevision: number;
   onSelect: (selection: MailboxSelection) => void;
   onAdd: () => void;
+  className?: string;
 }) {
   const [expanded, setExpanded] = useState(() => new Set<string>());
   const [folderStates, setFolderStates] = useState<Record<string, FolderLoadState>>({});
@@ -1255,6 +1282,35 @@ function Sidebar({
       });
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    void Promise.allSettled(accounts.map((account) => window.emzero.folders.list(account.id))).then(
+      (results) => {
+        if (!active) return;
+        setFolderStates((current) => {
+          const next = { ...current };
+          results.forEach((result, index) => {
+            const accountId = accounts[index].id;
+            next[accountId] =
+              result.status === 'fulfilled' && result.value.ok
+                ? { status: 'loaded', folders: result.value.folders }
+                : {
+                    status: 'error',
+                    message:
+                      result.status === 'fulfilled'
+                        ? (result.value.message ?? 'Could not load folders.')
+                        : 'Could not load folders.',
+                  };
+          });
+          return next;
+        });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [accounts, syncRevision]);
+
   const toggleAccount = (accountId: string) => {
     const isOpening = !expanded.has(accountId);
     setExpanded((current) => {
@@ -1267,7 +1323,12 @@ function Sidebar({
   };
 
   return (
-    <aside className="flex flex-col border-r border-border bg-sidebar p-4">
+    <aside
+      className={cn(
+        'flex min-h-0 flex-col overflow-y-auto border-r border-border bg-sidebar p-4',
+        className,
+      )}
+    >
       <div className="mb-8 flex items-center gap-3 px-2">
         <div className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
           <Mail className="size-4" />
@@ -1300,6 +1361,14 @@ function Sidebar({
             {accounts.map((account) => {
               const isExpanded = expanded.has(account.id);
               const folderState = folderStates[account.id];
+              const accountUnread =
+                folderState?.status === 'loaded'
+                  ? folderState.folders.reduce(
+                      (total, folder) =>
+                        total + (folder.selectable ? (folder.unreadCount ?? 0) : 0),
+                      0,
+                    )
+                  : 0;
               return (
                 <div key={account.id}>
                   <Button
@@ -1316,12 +1385,13 @@ function Sidebar({
                     <span className="grid size-6 shrink-0 place-items-center rounded-md bg-account text-xs font-semibold text-primary">
                       {account.name.charAt(0).toUpperCase()}
                     </span>
-                    <span className="min-w-0 text-left">
+                    <span className="min-w-0 flex-1 text-left">
                       <span className="block truncate text-sm">{account.name}</span>
                       <span className="block truncate text-[0.68rem] font-normal text-muted-foreground">
                         {account.email}
                       </span>
                     </span>
+                    {!isExpanded && <UnreadBadge count={accountUnread} />}
                   </Button>
 
                   {isExpanded && (
@@ -1356,14 +1426,17 @@ function Sidebar({
                             <Button
                               key={folder.path}
                               variant={isSelected ? 'secondary' : 'ghost'}
-                              className="h-8 w-full justify-start px-2 text-xs font-normal"
+                              className="h-7 w-full justify-start gap-1.5 px-2 text-[0.7rem] font-normal"
                               style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
                               disabled={!folder.selectable}
                               title={folder.path}
                               onClick={() => onSelect({ kind: 'folder', account, folder })}
                             >
                               <FolderIcon specialUse={folder.specialUse} />
-                              <span className="truncate">{displayFolderName(folder)}</span>
+                              <span className="min-w-0 flex-1 truncate text-left">
+                                {displayFolderName(folder)}
+                              </span>
+                              <UnreadBadge count={folder.unreadCount ?? 0} />
                             </Button>
                           );
                         })}
@@ -1408,6 +1481,7 @@ export function App() {
   const [accounts, setAccounts] = useState<AccountSummary[] | null>(null);
   const [providers, setProviders] = useState<MailProvider[]>([]);
   const [showSetup, setShowSetup] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selection, setSelection] = useState<MailboxSelection>({ kind: 'unified' });
   const [syncStatus, setSyncStatus] = useState<MailSyncStatus>({
     state: 'idle',
@@ -1434,6 +1508,15 @@ export function App() {
     });
   }, []);
 
+  useEffect(() => {
+    const desktopLayout = window.matchMedia('(min-width: 64rem)');
+    const closeCompactSidebar = (event: MediaQueryListEvent) => {
+      if (event.matches) setSidebarOpen(false);
+    };
+    desktopLayout.addEventListener('change', closeCompactSidebar);
+    return () => desktopLayout.removeEventListener('change', closeCompactSidebar);
+  }, []);
+
   if (accounts === null) {
     return (
       <main className="grid min-h-screen place-items-center bg-background text-muted-foreground">
@@ -1443,17 +1526,53 @@ export function App() {
   }
 
   return (
-    <main className="grid h-screen grid-cols-[15rem_1fr] overflow-hidden bg-background text-foreground">
+    <main className="grid h-screen grid-cols-1 overflow-hidden bg-background text-foreground lg:grid-cols-[15rem_minmax(0,1fr)]">
       <Sidebar
+        className="hidden lg:flex"
         accounts={accounts}
         selection={selection}
         syncStatus={syncStatus}
+        syncRevision={syncRevision}
         onSelect={(nextSelection) => {
           setSelection(nextSelection);
           setShowSetup(false);
         }}
         onAdd={() => setShowSetup(true)}
       />
+      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+        <SheetTrigger asChild>
+          <Button
+            variant="secondary"
+            className="fixed left-3 top-3 z-40 size-10 border border-border bg-card px-0 shadow-sm lg:hidden"
+            aria-label="Open navigation"
+            title="Open navigation"
+          >
+            <Menu className="size-5" />
+          </Button>
+        </SheetTrigger>
+        <SheetContent className="p-0 lg:hidden">
+          <div className="sr-only">
+            <SheetTitle>Mail navigation</SheetTitle>
+            <SheetDescription>Choose an inbox, folder, or account action.</SheetDescription>
+          </div>
+          <Sidebar
+            className="h-full border-r-0"
+            accounts={accounts}
+            selection={selection}
+            syncStatus={syncStatus}
+            syncRevision={syncRevision}
+            onSelect={(nextSelection) => {
+              setSelection(nextSelection);
+              setShowSetup(false);
+              setSidebarOpen(false);
+            }}
+            onAdd={() => {
+              setShowSetup(true);
+              setSidebarOpen(false);
+            }}
+          />
+        </SheetContent>
+      </Sheet>
       {showSetup ? (
         <AccountSetup
           providers={providers}

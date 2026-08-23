@@ -13,6 +13,7 @@ const inbox: MailFolderSummary = {
   delimiter: '/',
   specialUse: '\\Inbox',
   selectable: true,
+  unreadCount: 2,
 };
 
 function message(uid: number, subject = `Message ${uid}`): MailMessageSummary {

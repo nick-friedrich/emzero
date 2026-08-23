@@ -38,6 +38,7 @@ describe('displayFolderName', () => {
       delimiter: '/',
       specialUse: '\\Inbox',
       selectable: true,
+      unreadCount: 0,
     };
     expect(displayFolderName(inbox)).toBe('Inbox');
     expect(displayFolderName({ ...inbox, path: 'Receipts', name: 'RECEIPTS', specialUse: null })).toBe(
@@ -58,6 +59,7 @@ describe('findInboxFolder', () => {
     delimiter: '/',
     specialUse,
     selectable,
+    unreadCount: 0,
   });
 
   it('prefers the provider-designated inbox', () => {

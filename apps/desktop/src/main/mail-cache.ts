@@ -14,6 +14,7 @@ interface FolderRow {
   delimiter: string;
   special_use: string | null;
   selectable: number;
+  unread_count: number;
   message_count: number;
   synced_at: string | null;
   uid_validity: string | null;
@@ -164,6 +165,24 @@ export class MailCache {
         PRAGMA user_version = 2;
         COMMIT;
       `);
+      version = 2;
+    }
+
+    if (version < 3) {
+      this.#database.exec(`
+        BEGIN;
+        ALTER TABLE folders ADD COLUMN unread_count INTEGER NOT NULL DEFAULT 0;
+        UPDATE folders
+        SET unread_count = (
+          SELECT COUNT(*)
+          FROM messages
+          WHERE messages.account_id = folders.account_id
+            AND messages.folder_path = folders.path
+            AND messages.unread = 1
+        );
+        PRAGMA user_version = 3;
+        COMMIT;
+      `);
     }
   }
 
@@ -174,14 +193,15 @@ export class MailCache {
   replaceFolders(accountId: string, folders: MailFolderSummary[]): void {
     const upsert = this.#database.prepare(`
       INSERT INTO folders (
-        account_id, path, name, parent_path, delimiter, special_use, selectable, position
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        account_id, path, name, parent_path, delimiter, special_use, selectable, unread_count, position
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (account_id, path) DO UPDATE SET
         name = excluded.name,
         parent_path = excluded.parent_path,
         delimiter = excluded.delimiter,
         special_use = excluded.special_use,
         selectable = excluded.selectable,
+        unread_count = excluded.unread_count,
         position = excluded.position
     `);
     const existing = this.#database
@@ -203,6 +223,7 @@ export class MailCache {
           folder.delimiter,
           folder.specialUse,
           folder.selectable ? 1 : 0,
+          folder.unreadCount,
           position,
         );
       });
@@ -219,7 +240,7 @@ export class MailCache {
   listFolders(accountId: string): MailFolderSummary[] {
     const rows = this.#database
       .prepare(`
-        SELECT path, name, parent_path, delimiter, special_use, selectable,
+        SELECT path, name, parent_path, delimiter, special_use, selectable, unread_count,
                message_count, synced_at
         FROM folders
         WHERE account_id = ?
@@ -233,6 +254,7 @@ export class MailCache {
       delimiter: row.delimiter,
       specialUse: row.special_use,
       selectable: Boolean(row.selectable),
+      unreadCount: row.unread_count,
     }));
   }
 
