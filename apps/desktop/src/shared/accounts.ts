@@ -107,6 +107,7 @@ export interface MailMessageDetail {
 export interface MessageDetailResult {
   ok: boolean;
   messageDetail?: MailMessageDetail;
+  source?: 'server' | 'cache';
   message?: string;
 }
 
@@ -114,6 +115,12 @@ export interface AccountOperationResult {
   ok: boolean;
   message: string;
   account?: AccountSummary;
+}
+
+export interface MailSyncStatus {
+  state: 'idle' | 'syncing' | 'error';
+  lastSyncedAt: string | null;
+  message?: string;
 }
 
 export interface MailProvider {
@@ -140,6 +147,9 @@ export const ACCOUNT_CHANNELS = {
   listFolders: 'folders:list',
   listMessages: 'messages:list',
   getMessage: 'messages:get',
+  syncStatus: 'sync:status',
+  syncNow: 'sync:now',
+  syncChanged: 'sync:changed',
 } as const;
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

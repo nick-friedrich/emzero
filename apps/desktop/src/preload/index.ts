@@ -8,6 +8,7 @@ import {
   type MessageListResult,
   type MessageDetailResult,
   type MailProvider,
+  type MailSyncStatus,
   type ProviderDiscoveryResult,
 } from '../shared/accounts.js';
 
@@ -24,6 +25,11 @@ export interface EmzeroDesktopApi {
   messages: {
     list: (accountId: string, folderPath: string, refresh?: boolean) => Promise<MessageListResult>;
     get: (accountId: string, folderPath: string, uid: number) => Promise<MessageDetailResult>;
+  };
+  sync: {
+    status: () => Promise<MailSyncStatus>;
+    now: () => Promise<MailSyncStatus>;
+    onStatus: (listener: (status: MailSyncStatus) => void) => () => void;
   };
   providers: {
     list: () => Promise<MailProvider[]>;
@@ -47,6 +53,15 @@ contextBridge.exposeInMainWorld('emzero', {
       ipcRenderer.invoke(ACCOUNT_CHANNELS.listMessages, accountId, folderPath, refresh),
     get: (accountId, folderPath, uid) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.getMessage, accountId, folderPath, uid),
+  },
+  sync: {
+    status: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.syncStatus),
+    now: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.syncNow),
+    onStatus: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, status: MailSyncStatus) => listener(status);
+      ipcRenderer.on(ACCOUNT_CHANNELS.syncChanged, handler);
+      return () => ipcRenderer.removeListener(ACCOUNT_CHANNELS.syncChanged, handler);
+    },
   },
   providers: {
     list: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.providers),

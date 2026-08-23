@@ -1,6 +1,11 @@
 import path from 'node:path';
 import { app, BrowserWindow } from 'electron';
-import { closeMailCache, registerAccountHandlers } from './accounts.js';
+import {
+  closeMailCache,
+  registerAccountHandlers,
+  startBackgroundSync,
+  stopBackgroundSync,
+} from './accounts.js';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -52,6 +57,7 @@ const createWindow = (): void => {
 void app.whenReady().then(() => {
   registerAccountHandlers();
   createWindow();
+  startBackgroundSync();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -62,4 +68,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('will-quit', closeMailCache);
+app.on('will-quit', () => {
+  stopBackgroundSync();
+  closeMailCache();
+});

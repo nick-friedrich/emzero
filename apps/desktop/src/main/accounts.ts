@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { app, ipcMain, safeStorage } from 'electron';
-import { ImapFlow } from 'imapflow';
+import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
+import { ImapFlow, type FetchMessageObject, type FetchQueryObject } from 'imapflow';
 import { simpleParser, type AddressObject } from 'mailparser';
 import nodemailer from 'nodemailer';
 import {
@@ -15,6 +15,7 @@ import {
   type MailFolderSummary,
   type MailMessageDetail,
   type MailMessageSummary,
+  type MailSyncStatus,
   type MessageDetailResult,
   type MessageListResult,
   validateAccountDraft,
@@ -29,6 +30,16 @@ interface StoredAccount extends AccountSummary {
 
 const accountsPath = () => path.join(app.getPath('userData'), 'accounts.json');
 let cache: MailCache | null = null;
+let backgroundSyncTimer: NodeJS.Timeout | null = null;
+let activeSync: Promise<MailSyncStatus> | null = null;
+let syncStatus: MailSyncStatus = { state: 'idle', lastSyncedAt: null };
+
+function publishSyncStatus(status: MailSyncStatus): void {
+  syncStatus = status;
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send(ACCOUNT_CHANNELS.syncChanged, status);
+  }
+}
 
 function mailCache(): MailCache {
   cache ??= new MailCache(path.join(app.getPath('userData'), 'mail-cache.sqlite'));
@@ -38,6 +49,62 @@ function mailCache(): MailCache {
 export function closeMailCache(): void {
   cache?.close();
   cache = null;
+}
+
+async function syncAccount(account: StoredAccount): Promise<void> {
+  const folderResult = await listAccountFolders(account, true);
+  if (!folderResult.ok || folderResult.source === 'cache') {
+    throw new Error(folderResult.message ?? 'Could not refresh folders.');
+  }
+  const selectable = folderResult.folders.filter((folder) => folder.selectable);
+  const prioritized = [
+    ...selectable.filter((folder) => folder.specialUse === '\\Inbox'),
+    ...selectable.filter((folder) => folder.specialUse === '\\Sent'),
+    ...selectable.filter(
+      (folder) => folder.specialUse !== '\\Inbox' && folder.specialUse !== '\\Sent',
+    ),
+  ].slice(0, 6);
+
+  for (const folder of prioritized) {
+    const result = await listFolderMessages(account, folder.path, true);
+    if (!result.ok || result.source === 'cache') {
+      throw new Error(result.message ?? `Could not sync ${folder.name}.`);
+    }
+  }
+}
+
+export function runBackgroundSync(): Promise<MailSyncStatus> {
+  if (activeSync) return activeSync;
+  publishSyncStatus({ state: 'syncing', lastSyncedAt: syncStatus.lastSyncedAt });
+  activeSync = (async () => {
+    const accounts = await readAccounts();
+    const results = await Promise.allSettled(accounts.map(syncAccount));
+    const failures = results.flatMap((result, index) =>
+      result.status === 'rejected'
+        ? [`${accounts[index].name}: ${errorMessage(result.reason, '')}`]
+        : [],
+    );
+    const completedAt = new Date().toISOString();
+    const nextStatus: MailSyncStatus = failures.length
+      ? { state: 'error', lastSyncedAt: syncStatus.lastSyncedAt, message: failures.join(' · ') }
+      : { state: 'idle', lastSyncedAt: completedAt };
+    publishSyncStatus(nextStatus);
+    return nextStatus;
+  })().finally(() => {
+    activeSync = null;
+  });
+  return activeSync;
+}
+
+export function startBackgroundSync(): void {
+  if (backgroundSyncTimer) return;
+  setTimeout(() => void runBackgroundSync(), 5_000);
+  backgroundSyncTimer = setInterval(() => void runBackgroundSync(), 5 * 60_000);
+}
+
+export function stopBackgroundSync(): void {
+  if (backgroundSyncTimer) clearInterval(backgroundSyncTimer);
+  backgroundSyncTimer = null;
 }
 
 async function readAccounts(): Promise<StoredAccount[]> {
@@ -204,6 +271,56 @@ function referenceIds(value: string | string[] | undefined): string[] {
   );
 }
 
+async function messageSummary(
+  folderPath: string,
+  message: FetchMessageObject,
+): Promise<MailMessageSummary> {
+  const parsedHeaders = message.headers
+    ? await simpleParser(message.headers, { skipHtmlToText: true, skipTextToHtml: true })
+    : null;
+  return {
+    folderPath,
+    uid: message.uid,
+    messageId: message.envelope?.messageId ?? null,
+    inReplyTo: message.envelope?.inReplyTo ?? null,
+    references: referenceIds(parsedHeaders?.references),
+    subject: message.envelope?.subject?.trim() || '(No subject)',
+    from: addresses(message.envelope?.from),
+    to: addresses(message.envelope?.to),
+    sentAt: dateString(message.envelope?.date),
+    receivedAt: dateString(message.internalDate),
+    unread: !message.flags?.has('\\Seen'),
+    flagged: message.flags?.has('\\Flagged') ?? false,
+    size: message.size ?? null,
+  };
+}
+
+const summaryFetchQuery: FetchQueryObject = {
+  uid: true,
+  envelope: true,
+  flags: true,
+  internalDate: true,
+  size: true,
+  headers: ['references'],
+};
+
+async function fetchSummaries(
+  imap: ImapFlow,
+  folderPath: string,
+  range: string | number[],
+  changedSince?: bigint,
+): Promise<MailMessageSummary[]> {
+  if (Array.isArray(range) && range.length === 0) return [];
+  const messages: MailMessageSummary[] = [];
+  for await (const message of imap.fetch(range, summaryFetchQuery, {
+    uid: true,
+    changedSince,
+  })) {
+    messages.push(await messageSummary(folderPath, message));
+  }
+  return messages;
+}
+
 async function listFolderMessages(
   account: StoredAccount,
   folderPath: string,
@@ -212,7 +329,7 @@ async function listFolderMessages(
   let password = '';
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
-  const cached = mailCache().listMessages(account.id, folderPath);
+  const cached = mailCache().getFolderSyncState(account.id, folderPath);
 
   if (cached.syncedAt && !refresh) {
     return { ok: true, ...cached, source: 'cache' };
@@ -233,45 +350,47 @@ async function listFolderMessages(
     await imap.connect();
     lock = await imap.getMailboxLock(folderPath, { readOnly: true });
 
-    const total = imap.mailbox ? imap.mailbox.exists : 0;
-    if (total === 0) {
-      mailCache().replaceRecentMessages(account.id, folderPath, [], 0);
-      const empty = mailCache().listMessages(account.id, folderPath);
-      return { ok: true, ...empty, source: 'server' };
-    }
+    if (!imap.mailbox) throw new Error('Mailbox did not open.');
+    const mailbox = imap.mailbox;
+    const remoteUids = (await imap.search({ all: true }, { uid: true })) || [];
+    const uidValidity = mailbox.uidValidity.toString();
+    const validityChanged = cached.uidValidity !== null && cached.uidValidity !== uidValidity;
+    const cachedUids = new Set(validityChanged ? [] : mailCache().listMessageUids(account.id, folderPath));
+    const missingUids = remoteUids.filter((uid) => !cachedUids.has(uid)).slice(-250);
+    const recentUids = remoteUids.slice(-100);
+    const summaries = new Map<number, MailMessageSummary>();
 
-    const start = Math.max(1, total - 49);
-    const messages: MailMessageSummary[] = [];
-    for await (const message of imap.fetch(`${start}:*`, {
-      uid: true,
-      envelope: true,
-      flags: true,
-      internalDate: true,
-      size: true,
-      headers: ['references'],
-    })) {
-      const parsedHeaders = message.headers
-        ? await simpleParser(message.headers, { skipHtmlToText: true, skipTextToHtml: true })
-        : null;
-      messages.push({
+    if (
+      !validityChanged &&
+      cached.highestModseq &&
+      mailbox.highestModseq &&
+      mailbox.highestModseq > BigInt(cached.highestModseq)
+    ) {
+      for (const message of await fetchSummaries(
+        imap,
         folderPath,
-        uid: message.uid,
-        messageId: message.envelope?.messageId ?? null,
-        inReplyTo: message.envelope?.inReplyTo ?? null,
-        references: referenceIds(parsedHeaders?.references),
-        subject: message.envelope?.subject?.trim() || '(No subject)',
-        from: addresses(message.envelope?.from),
-        to: addresses(message.envelope?.to),
-        sentAt: dateString(message.envelope?.date),
-        receivedAt: dateString(message.internalDate),
-        unread: !message.flags?.has('\\Seen'),
-        flagged: message.flags?.has('\\Flagged') ?? false,
-        size: message.size ?? null,
-      });
+        '1:*',
+        BigInt(cached.highestModseq),
+      )) {
+        summaries.set(message.uid, message);
+      }
+    }
+    const requestedUids = [...new Set([...missingUids, ...recentUids])];
+    for (const message of await fetchSummaries(imap, folderPath, requestedUids)) {
+      summaries.set(message.uid, message);
     }
 
-    messages.reverse();
-    mailCache().replaceRecentMessages(account.id, folderPath, messages, total);
+    mailCache().applyIncrementalSync(
+      account.id,
+      folderPath,
+      [...summaries.values()],
+      remoteUids,
+      {
+        uidValidity,
+        uidNext: mailbox.uidNext,
+        highestModseq: mailbox.highestModseq?.toString() ?? null,
+      },
+    );
     return { ok: true, ...mailCache().listMessages(account.id, folderPath), source: 'server' };
   } catch (error) {
     if (cached.syncedAt) {
@@ -312,6 +431,9 @@ async function getFolderMessage(
   folderPath: string,
   uid: number,
 ): Promise<MessageDetailResult> {
+  const cachedBody = mailCache().getMessageBody(account.id, folderPath, uid);
+  if (cachedBody) return { ok: true, messageDetail: cachedBody, source: 'cache' };
+
   let password = '';
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
@@ -356,7 +478,8 @@ async function getFolderMessage(
         related: attachment.related,
       })),
     };
-    return { ok: true, messageDetail };
+    mailCache().putMessageBody(account.id, folderPath, messageDetail);
+    return { ok: true, messageDetail, source: 'server' };
   } catch (error) {
     return {
       ok: false,
@@ -379,6 +502,16 @@ function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
 }
 
 export function registerAccountHandlers(): void {
+  ipcMain.handle(ACCOUNT_CHANNELS.syncStatus, (event) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    return syncStatus;
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.syncNow, async (event) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    return runBackgroundSync();
+  });
+
   ipcMain.handle(ACCOUNT_CHANNELS.providers, (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return listProviders();
@@ -490,6 +623,7 @@ export function registerAccountHandlers(): void {
     };
 
     await writeAccounts([...accounts, account]);
+    void runBackgroundSync();
     return {
       ok: true,
       message: 'Account connected and saved securely.',

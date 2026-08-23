@@ -30,6 +30,7 @@ import type {
   MailMessageDetail,
   MailMessageSummary,
   MailProvider,
+  MailSyncStatus,
 } from '../shared/accounts';
 import { findInboxFolder } from '../shared/accounts';
 import {
@@ -1219,11 +1220,13 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
 function Sidebar({
   accounts,
   selection,
+  syncStatus,
   onSelect,
   onAdd,
 }: {
   accounts: AccountSummary[];
   selection: MailboxSelection;
+  syncStatus: MailSyncStatus;
   onSelect: (selection: MailboxSelection) => void;
   onAdd: () => void;
 }) {
@@ -1372,6 +1375,24 @@ function Sidebar({
       </nav>
 
       <div className="mt-auto border-t border-border pt-4">
+        <Button
+          variant="ghost"
+          className="mb-1 w-full justify-start text-muted-foreground"
+          disabled={syncStatus.state === 'syncing' || accounts.length === 0}
+          title={syncStatus.message}
+          onClick={() => void window.emzero.sync.now()}
+        >
+          <RefreshCw
+            className={`size-4 ${syncStatus.state === 'syncing' ? 'animate-spin' : ''}`}
+          />
+          {syncStatus.state === 'syncing'
+            ? 'Syncing mail'
+            : syncStatus.state === 'error'
+              ? 'Sync needs attention'
+              : syncStatus.lastSyncedAt
+                ? `Synced ${messageDate(syncStatus.lastSyncedAt)}`
+                : 'Sync mail'}
+        </Button>
         <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={onAdd}>
           <Plus className="size-4" />
           Add account
@@ -1386,6 +1407,11 @@ export function App() {
   const [providers, setProviders] = useState<MailProvider[]>([]);
   const [showSetup, setShowSetup] = useState(false);
   const [selection, setSelection] = useState<MailboxSelection>({ kind: 'unified' });
+  const [syncStatus, setSyncStatus] = useState<MailSyncStatus>({
+    state: 'idle',
+    lastSyncedAt: null,
+  });
+  const [syncRevision, setSyncRevision] = useState(0);
 
   useEffect(() => {
     void Promise.allSettled([window.emzero.accounts.list(), window.emzero.providers.list()]).then(
@@ -1396,6 +1422,14 @@ export function App() {
         if (providersResult.status === 'fulfilled') setProviders(providersResult.value);
       },
     );
+  }, []);
+
+  useEffect(() => {
+    void window.emzero.sync.status().then(setSyncStatus).catch(() => undefined);
+    return window.emzero.sync.onStatus((status) => {
+      setSyncStatus(status);
+      if (status.state !== 'syncing') setSyncRevision((current) => current + 1);
+    });
   }, []);
 
   if (accounts === null) {
@@ -1411,6 +1445,7 @@ export function App() {
       <Sidebar
         accounts={accounts}
         selection={selection}
+        syncStatus={syncStatus}
         onSelect={(nextSelection) => {
           setSelection(nextSelection);
           setShowSetup(false);
@@ -1429,11 +1464,11 @@ export function App() {
         />
       ) : selection.kind === 'folder' ? (
         <MessageList
-          key={`${selection.account.id}:${selection.folder.path}`}
+          key={`${selection.account.id}:${selection.folder.path}:${syncRevision}`}
           selection={selection}
         />
       ) : (
-        <UnifiedInbox accounts={accounts} />
+        <UnifiedInbox key={syncRevision} accounts={accounts} />
       )}
     </main>
   );

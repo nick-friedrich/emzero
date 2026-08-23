@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { MailFolderSummary, MailMessageSummary } from '../shared/accounts.js';
+import type {
+  MailFolderSummary,
+  MailMessageDetail,
+  MailMessageSummary,
+} from '../shared/accounts.js';
 import { MailCache } from './mail-cache.js';
 
 const inbox: MailFolderSummary = {
@@ -28,6 +32,21 @@ function message(uid: number, subject = `Message ${uid}`): MailMessageSummary {
     size: 100 + uid,
   };
 }
+
+const detail: MailMessageDetail = {
+  uid: 2,
+  messageId: '<2@example.com>',
+  subject: 'Message 2',
+  from: [{ name: 'Sender', address: 'sender@example.com' }],
+  to: [{ name: null, address: 'me@example.com' }],
+  cc: [],
+  replyTo: [],
+  sentAt: '2026-08-02T10:00:00.000Z',
+  text: 'Cached body',
+  html: '<p>Cached body</p>',
+  htmlHasQuotedText: false,
+  attachments: [{ filename: 'note.txt', contentType: 'text/plain', size: 12, related: false }],
+};
 
 describe('MailCache', () => {
   let cache: MailCache | undefined;
@@ -83,5 +102,57 @@ describe('MailCache', () => {
     cache.replaceRecentMessages('account-1', 'INBOX', [], 0);
 
     expect(cache.listMessages('account-1', 'INBOX')).toMatchObject({ messages: [], total: 0 });
+  });
+
+  it('reconciles deleted UIDs and records incremental sync state', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox]);
+    cache.replaceRecentMessages('account-1', 'INBOX', [message(1), message(2)], 2);
+
+    cache.applyIncrementalSync('account-1', 'INBOX', [message(2, 'Updated'), message(3)], [2, 3], {
+      uidValidity: '99',
+      uidNext: 4,
+      highestModseq: '120',
+      syncedAt: 'later',
+    });
+
+    expect(cache.getFolderSyncState('account-1', 'INBOX')).toEqual({
+      messages: [message(3), message(2, 'Updated')],
+      total: 2,
+      syncedAt: 'later',
+      uidValidity: '99',
+      uidNext: 4,
+      highestModseq: '120',
+    });
+  });
+
+  it('invalidates messages and bodies when UIDVALIDITY changes', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox]);
+    cache.applyIncrementalSync('account-1', 'INBOX', [message(2)], [2], {
+      uidValidity: '1',
+      uidNext: 3,
+      highestModseq: null,
+    });
+    cache.putMessageBody('account-1', 'INBOX', detail);
+
+    cache.applyIncrementalSync('account-1', 'INBOX', [message(1)], [1], {
+      uidValidity: '2',
+      uidNext: 2,
+      highestModseq: null,
+    });
+
+    expect(cache.listMessageUids('account-1', 'INBOX')).toEqual([1]);
+    expect(cache.getMessageBody('account-1', 'INBOX', 2)).toBeNull();
+  });
+
+  it('stores parsed message bodies for offline reading', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox]);
+    cache.replaceRecentMessages('account-1', 'INBOX', [message(2)], 1);
+
+    cache.putMessageBody('account-1', 'INBOX', detail);
+
+    expect(cache.getMessageBody('account-1', 'INBOX', 2)).toEqual(detail);
   });
 });
