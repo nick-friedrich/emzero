@@ -16,12 +16,15 @@ import {
   type MailFolderSummary,
   type MailMessageDetail,
   type MailMessageSummary,
+  type MailReplyDraft,
+  type MailSendResult,
   type MailSyncStatus,
   type MessageDetailResult,
   type MessageListResult,
   type MessageOperationResult,
   validateAccountDraft,
 } from '../shared/accounts.js';
+import { validateReplyDraft } from '../shared/replies.js';
 import { discoverProvider, listProviders } from './provider-discovery.js';
 import { hasQuotedHtml, sanitizedMessageHtml } from './message-html.js';
 import { MailCache } from './mail-cache.js';
@@ -505,6 +508,26 @@ function validUids(value: unknown): value is number[] {
   );
 }
 
+function validReplyDraft(value: unknown): value is MailReplyDraft {
+  if (!value || typeof value !== 'object') return false;
+  const draft = value as Partial<MailReplyDraft>;
+  return (
+    Array.isArray(draft.to) &&
+    draft.to.every(
+      (address) =>
+        address !== null &&
+        typeof address === 'object' &&
+        (address.name === null || typeof address.name === 'string') &&
+        (address.address === null || typeof address.address === 'string'),
+    ) &&
+    typeof draft.subject === 'string' &&
+    typeof draft.text === 'string' &&
+    (draft.inReplyTo === null || typeof draft.inReplyTo === 'string') &&
+    Array.isArray(draft.references) &&
+    draft.references.every((reference) => typeof reference === 'string')
+  );
+}
+
 async function changeMessageUnread(
   account: StoredAccount,
   folderPath: string,
@@ -580,6 +603,113 @@ async function deleteFolderMessages(
     lock?.release();
     if (imap?.usable) await imap.logout().catch(() => imap?.close());
     else imap?.close();
+  }
+}
+
+async function sendReply(
+  account: StoredAccount,
+  draft: MailReplyDraft,
+): Promise<MailSendResult> {
+  const validationError = validateReplyDraft(draft);
+  if (validationError) return { ok: false, message: validationError };
+
+  let password = '';
+  try {
+    password = await decryptPassword(account);
+    const sentAt = new Date();
+    const messageOptions = {
+      from: { name: account.name, address: account.email },
+      to: draft.to.map(({ name, address }) => ({ name: name ?? '', address: address! })),
+      subject: draft.subject.trim(),
+      text: draft.text.trim(),
+      date: sentAt,
+      inReplyTo: draft.inReplyTo ?? undefined,
+      references: draft.references,
+    };
+    const compiler = nodemailer.createTransport({
+      streamTransport: true,
+      buffer: true,
+      newline: 'windows',
+    });
+    const compiled = await compiler.sendMail(messageOptions);
+    if (!Buffer.isBuffer(compiled.message)) throw new Error('Could not create the email message.');
+
+    const smtp = nodemailer.createTransport({
+      host: account.smtp.host,
+      port: account.smtp.port,
+      secure: account.smtp.secure,
+      auth: { user: account.username, pass: password },
+      connectionTimeout: 12_000,
+      greetingTimeout: 12_000,
+      socketTimeout: 30_000,
+    });
+    let smtpMessageId = compiled.messageId;
+    try {
+      const result = await smtp.sendMail({
+        raw: compiled.message,
+        envelope: compiled.envelope,
+      });
+      smtpMessageId = result.messageId || smtpMessageId;
+    } finally {
+      smtp.close();
+    }
+
+    let imap: ImapFlow | null = null;
+    let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
+    try {
+      imap = new ImapFlow({
+        host: account.imap.host,
+        port: account.imap.port,
+        secure: account.imap.secure,
+        auth: { user: account.username, pass: password },
+        logger: false,
+        connectionTimeout: 12_000,
+        greetingTimeout: 12_000,
+        socketTimeout: 30_000,
+      });
+      await imap.connect();
+      const folders = await imap.list();
+      const sentFolder = folders.find(
+        (folder) => !folder.flags.has('\\Noselect') && folder.specialUse === '\\Sent',
+      );
+      if (!sentFolder) {
+        return {
+          ok: true,
+          message: 'Reply sent, but this account has no Sent folder to save a copy in.',
+          messageId: smtpMessageId,
+          savedToSent: false,
+        };
+      }
+
+      lock = await imap.getMailboxLock(sentFolder.path);
+      const existing = await imap.search(
+        { header: { 'message-id': smtpMessageId } },
+        { uid: true },
+      );
+      if (!existing || existing.length === 0) {
+        const appended = await imap.append(sentFolder.path, compiled.message, ['\\Seen'], sentAt);
+        if (!appended) throw new Error('The mail server did not save the Sent copy.');
+      }
+      return {
+        ok: true,
+        message: 'Reply sent and saved to Sent.',
+        messageId: smtpMessageId,
+        savedToSent: true,
+      };
+    } catch (error) {
+      return {
+        ok: true,
+        message: `Reply sent, but the Sent copy could not be saved: ${errorMessage(error, password)}`,
+        messageId: smtpMessageId,
+        savedToSent: false,
+      };
+    } finally {
+      lock?.release();
+      if (imap?.usable) await imap.logout().catch(() => imap?.close());
+      else imap?.close();
+    }
+  } catch (error) {
+    return { ok: false, message: `Could not send reply: ${errorMessage(error, password)}` };
   }
 }
 
@@ -744,6 +874,19 @@ export function registerAccountHandlers(): void {
       const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
       if (!account) return { ok: false, message: 'Account not found.' } satisfies MessageOperationResult;
       return deleteFolderMessages(account, folderPath, uids);
+    },
+  );
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.sendReply,
+    async (event, accountId: unknown, draft: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (typeof accountId !== 'string' || !validReplyDraft(draft)) {
+        return { ok: false, message: 'Invalid reply.' } satisfies MailSendResult;
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return { ok: false, message: 'Account not found.' } satisfies MailSendResult;
+      return sendReply(account, draft);
     },
   );
 

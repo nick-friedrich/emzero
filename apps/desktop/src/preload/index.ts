@@ -10,6 +10,8 @@ import {
   type MessageDetailResult,
   type MessageOperationResult,
   type MailProvider,
+  type MailReplyDraft,
+  type MailSendResult,
   type MailSyncStatus,
   type ProviderDiscoveryResult,
 } from '../shared/accounts.js';
@@ -40,6 +42,7 @@ export interface EmzeroDesktopApi {
       folderPath: string,
       uids: number[],
     ) => Promise<MessageOperationResult>;
+    sendReply: (accountId: string, draft: MailReplyDraft) => Promise<MailSendResult>;
   };
   sync: {
     status: () => Promise<MailSyncStatus>;
@@ -74,6 +77,8 @@ contextBridge.exposeInMainWorld('emzero', {
       ipcRenderer.invoke(ACCOUNT_CHANNELS.setMessageUnread, accountId, folderPath, uids, unread),
     delete: (accountId, folderPath, uids) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.deleteMessages, accountId, folderPath, uids),
+    sendReply: (accountId, draft) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.sendReply, accountId, draft),
   },
   sync: {
     status: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.syncStatus),

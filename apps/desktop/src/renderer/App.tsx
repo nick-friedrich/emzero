@@ -19,6 +19,7 @@ import {
   PenLine,
   Plus,
   RefreshCw,
+  Reply,
   Send,
   Server,
   Settings2,
@@ -78,6 +79,7 @@ import {
   splitQuotedText,
   type MailConversation,
 } from '../shared/conversations';
+import { createReplyDraft, replyRecipients } from '../shared/replies';
 
 const initialDraft: AccountDraft = {
   name: '',
@@ -739,6 +741,121 @@ function MessageBody({ message }: { message: MailMessageDetail }) {
   );
 }
 
+function ReplyComposer({
+  account,
+  summary,
+  message,
+}: {
+  account: AccountSummary;
+  summary: MailMessageSummary;
+  message: MailMessageDetail;
+}) {
+  const recipients = replyRecipients(account, message);
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<Status | null>(null);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setStatus(null);
+    try {
+      const result = await window.emzero.messages.sendReply(
+        account.id,
+        createReplyDraft(account, summary, message, text),
+      );
+      setStatus({
+        kind: result.ok ? 'success' : 'error',
+        message: result.message ?? (result.ok ? 'Reply sent.' : 'Could not send reply.'),
+      });
+      if (result.ok) {
+        setText('');
+        setOpen(false);
+      }
+    } catch {
+      setStatus({ kind: 'error', message: 'Could not send reply.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <div className="mt-6 border-t border-border pt-5">
+        <Button
+          variant="secondary"
+          disabled={recipients.length === 0}
+          title={recipients.length === 0 ? 'This message has no valid reply address.' : undefined}
+          onClick={() => {
+            setOpen(true);
+            setStatus(null);
+          }}
+        >
+          <Reply className="size-4" />
+          Reply
+        </Button>
+        {status && (
+          <span
+            className={cn(
+              'ml-3 text-xs',
+              status.kind === 'success' ? 'text-success' : 'text-danger',
+            )}
+            role="status"
+          >
+            {status.message}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <form className="mt-6 border-t border-border pt-5" onSubmit={submit}>
+      <div className="mb-3 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+        <Reply className="size-4 shrink-0" />
+        <span className="shrink-0">Reply to</span>
+        <span className="truncate font-medium text-foreground">{addressDetails(recipients)}</span>
+      </div>
+      <textarea
+        className="field min-h-36 resize-y leading-6"
+        value={text}
+        placeholder="Write a reply…"
+        aria-label="Reply message"
+        autoFocus
+        disabled={busy}
+        onChange={(event) => {
+          setText(event.target.value);
+          setStatus(null);
+        }}
+      />
+      {status?.kind === 'error' && (
+        <p className="mt-2 text-xs text-danger" role="status">
+          {status.message}
+        </p>
+      )}
+      <div className="mt-3 flex justify-end gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => {
+            setOpen(false);
+            setText('');
+            setStatus(null);
+          }}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={busy || !text.trim()}>
+          {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
+          Send reply
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function ThreadMessageCard({
   selection,
   summary,
@@ -820,7 +937,16 @@ function ThreadMessageCard({
               </Button>
             </div>
           )}
-          {state.status === 'loaded' && <MessageBody message={state.message} />}
+          {state.status === 'loaded' && (
+            <>
+              <MessageBody message={state.message} />
+              <ReplyComposer
+                account={selection.account}
+                summary={summary}
+                message={state.message}
+              />
+            </>
+          )}
         </div>
       )}
     </article>
@@ -1887,7 +2013,7 @@ function Sidebar({
         </div>
       </div>
 
-      <Button className="mb-6 w-full justify-start" size="lg" disabled={accounts.length === 0}>
+      <Button className="mb-4 w-full justify-start" disabled={accounts.length === 0}>
         <PenLine className="size-4" />
         Compose
       </Button>
