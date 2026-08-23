@@ -1,0 +1,119 @@
+[
+  {
+    "id": "ionos-de",
+    "name": "IONOS Germany",
+    "domains": ["ionos.de", "1und1.de"],
+    "mxPatterns": ["ionos.de", "1und1.de"],
+    "imap": { "host": "imap.ionos.de", "port": 993, "secure": true },
+    "smtp": { "host": "smtp.ionos.de", "port": 465, "secure": true },
+    "documentationUrl": "https://www.ionos.de/hilfe/e-mail/allgemeine-themen/serverinformationen-fuer-imap-pop3-und-smtp/"
+  },
+  {
+    "id": "ionos",
+    "name": "IONOS International",
+    "domains": ["ionos.com", "1and1.com"],
+    "mxPatterns": ["ionos.com", "1and1.com"],
+    "imap": { "host": "imap.ionos.com", "port": 993, "secure": true },
+    "smtp": { "host": "smtp.ionos.com", "port": 465, "secure": true },
+    "documentationUrl": "https://www.ionos.com/help/email/general-topics/ionos-mail-server-details-for-imap-pop3-and-smtp/"
+  },
+  {
+    "id": "gmail",
+    "name": "Gmail / Google Workspace",
+    "domains": ["gmail.com", "googlemail.com"],
+    "mxPatterns": ["google.com", "googlemail.com"],
+    "imap": { "host": "imap.gmail.com", "port": 993, "secure": true },
+    "smtp": { "host": "smtp.gmail.com", "port": 465, "secure": true },
+    "documentationUrl": "https://support.google.com/mail/answer/7126229"
+  },
+  {
+    "id": "outlook",
+    "name": "Outlook / Microsoft 365",
+    "domains": ["outlook.com", "hotmail.com", "hotmail.de", "hotmail.co.uk", "live.com", "live.de", "msn.com"],
+    "mxPatterns": ["mail.protection.outlook.com", "olc.protection.outlook.com"],
+    "imap": { "host": "outlook.office365.com", "port": 993, "secure": true },
+    "smtp": { "host": "smtp-mail.outlook.com", "port": 587, "secure": false },
+    "documentationUrl": "https://support.microsoft.com/office/pop-imap-and-smtp-settings-for-outlook-com-d088b986-291d-42b8-9564-9c414e2aa040"
+  },
+  {
+    "id": "icloud",
+    "name": "iCloud Mail",
+    "domains": ["icloud.com", "me.com", "mac.com"],
+    "mxPatterns": ["icloud.com"],
+    "imap": { "host": "imap.mail.me.com", "port": 993, "secure": true },
+    "smtp": { "host": "smtp.mail.me.com", "port": 587, "secure": false },
+    "documentationUrl": "https://support.apple.com/102525"
+  },
+  {
+    "id": "gmx",
+    "name": "GMX",
+    "domains": ["gmx.com", "gmx.de", "gmx.net", "gmx.at", "gmx.ch", "gmx.fr", "gmx.es"],
+    "mxPatterns": ["gmx.net", "gmx.com"],
+    "imap": { "host": "imap.gmx.com", "port": 993, "secure": true },
+    "smtp": { "host": "mail.gmx.com", "port": 465, "secure": true },
+    "documentationUrl": "https://support.gmx.com/pop-imap/imap/server.html"
+  },
+  {
+    "id": "webde",
+    "name": "WEB.DE",
+    "domains": ["web.de"],
+    "mxPatterns": ["web.de"],
+    "imap": { "host": "imap.web.de", "port": 993, "secure": true },
+    "smtp": { "host": "smtp.web.de", "port": 587, "secure": false },
+    "documentationUrl": "https://hilfe.web.de/pop-imap/imap/imap-serverdaten.html"
+  },
+  {
+    "id": "yahoo",
+    "name": "Yahoo Mail",
+    "domains": ["yahoo.com", "yahoo.de", "yahoo.co.uk", "yahoo.fr", "yahoo.it", "yahoo.es", "yahoo.ca", "yahoo.com.au", "ymail.com", "rocketmail.com"],
+    "mxPatterns": ["yahoodns.net", "yahoo.com"],
+    "imap": { "host": "imap.mail.yahoo.com", "port": 993, "secure": true },
+    "smtp": { "host": "smtp.mail.yahoo.com", "port": 465, "secure": true },
+    "documentationUrl": "https://help.yahoo.com/kb/imap-server-settings-yahoo-mail-sln4075.html"
+  },
+  {
+    "id": "fastmail",
+    "name": "Fastmail",
+    "domains": ["fastmail.com", "fastmail.fm"],
+    "mxPatterns": ["messagingengine.com"],
+    "imap": { "host": "imap.fastmail.com", "port": 993, "secure": true },
+    "smtp": { "host": "smtp.fastmail.com", "port": 465, "secure": true },
+    "documentationUrl": "https://www.fastmail.help/hc/en-us/articles/1500000279921-IMAP-POP-and-SMTP"
+  },
+  {
+    "id": "mailcom",
+    "name": "mail.com",
+    "domains": ["mail.com", "email.com", "usa.com", "myself.com", "consultant.com", "post.com"],
+    "mxPatterns": ["mail.com"],
+    "imap": { "host": "imap.mail.com", "port": 993, "secure": true },
+    "smtp": { "host": "smtp.mail.com", "port": 465, "secure": true },
+    "documentationUrl": "https://support.mail.com/premium/imap/server.html"
+  },
+  {
+    "id": "tonline",
+    "name": "Telekom Mail",
+    "domains": ["t-online.de", "magenta.de"],
+    "mxPatterns": ["t-online.de"],
+    "imap": { "host": "secureimap.t-online.de", "port": 993, "secure": true },
+    "smtp": { "host": "securesmtp.t-online.de", "port": 465, "secure": true },
+    "documentationUrl": "https://homepagecenter.telekom.de/hilfe/uebersicht-der-server"
+  },
+  {
+    "id": "orange-fr",
+    "name": "Orange France",
+    "domains": ["orange.fr", "wanadoo.fr"],
+    "mxPatterns": [],
+    "imap": { "host": "imap.orange.fr", "port": 993, "secure": true },
+    "smtp": { "host": "smtp.orange.fr", "port": 465, "secure": true },
+    "documentationUrl": "https://assistance.orange.fr/nid/434630"
+  },
+  {
+    "id": "libero",
+    "name": "Libero Mail",
+    "domains": ["libero.it", "iol.it", "blu.it", "inwind.it"],
+    "mxPatterns": [],
+    "imap": { "host": "imapmail.libero.it", "port": 993, "secure": true },
+    "smtp": { "host": "smtp.libero.it", "port": 465, "secure": true },
+    "documentationUrl": "https://aiuto.libero.it/articolo/mail/configurare-libero-mail-con-client-di-posta-imap-e-smtp/"
+  }
+]

@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+
+nodeLinker: hoisted
+
+allowBuilds:
+  electron: true
+
+overrides:
+  "@electron/node-gyp": 10.2.0-electron.2

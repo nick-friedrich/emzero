@@ -1,0 +1,16 @@
+{
+  "name": "emzero",
+  "private": true,
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @emzero/desktop start",
+    "lint": "pnpm --filter @emzero/desktop lint",
+    "typecheck": "pnpm --filter @emzero/desktop typecheck",
+    "test": "pnpm --filter @emzero/desktop test",
+    "build": "pnpm --filter @emzero/desktop package",
+    "check": "pnpm lint && pnpm typecheck && pnpm test"
+  }
+}
