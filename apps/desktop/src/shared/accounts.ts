@@ -45,6 +45,17 @@ export function findInboxFolder(
   );
 }
 
+export function displayFolderName(folder: MailFolderSummary): string {
+  if (
+    folder.specialUse === '\\Inbox' ||
+    folder.name.toLowerCase() === 'inbox' ||
+    folder.path.toLowerCase() === 'inbox'
+  ) {
+    return 'Inbox';
+  }
+  return folder.name;
+}
+
 export interface FolderListResult {
   ok: boolean;
   folders: MailFolderSummary[];

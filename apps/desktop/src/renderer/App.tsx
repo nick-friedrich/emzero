@@ -32,7 +32,7 @@ import type {
   MailProvider,
   MailSyncStatus,
 } from '../shared/accounts';
-import { findInboxFolder } from '../shared/accounts';
+import { displayFolderName, findInboxFolder } from '../shared/accounts';
 import {
   groupMessagesWithRelated,
   splitQuotedText,
@@ -692,7 +692,7 @@ function ConversationReader({
           Back
         </Button>
         <span className="truncate text-sm text-muted-foreground">
-          {selection.account.name} / {selection.folder.name}
+          {selection.account.name} / {displayFolderName(selection.folder)}
         </span>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-7 lg:px-10">
@@ -819,7 +819,9 @@ function MessageList({ selection }: { selection: FolderSelection }) {
     <section className="flex min-h-0 flex-col overflow-hidden bg-background">
       <header className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold tracking-tight">{selection.folder.name}</h1>
+          <h1 className="truncate text-lg font-semibold tracking-tight">
+            {displayFolderName(selection.folder)}
+          </h1>
           <p className="truncate text-xs text-muted-foreground">
             {selection.account.name} · {selection.account.email}
           </p>
@@ -1361,7 +1363,7 @@ function Sidebar({
                               onClick={() => onSelect({ kind: 'folder', account, folder })}
                             >
                               <FolderIcon specialUse={folder.specialUse} />
-                              <span className="truncate">{folder.name}</span>
+                              <span className="truncate">{displayFolderName(folder)}</span>
                             </Button>
                           );
                         })}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  displayFolderName,
   findInboxFolder,
   type AccountDraft,
   type MailFolderSummary,
@@ -25,6 +26,23 @@ describe('validateAccountDraft', () => {
     expect(
       validateAccountDraft({ ...validDraft, imap: { ...validDraft.imap, port: 70_000 } }),
     ).toMatch(/valid IMAP port/);
+  });
+});
+
+describe('displayFolderName', () => {
+  it('normalizes inbox capitalization without changing other provider folder names', () => {
+    const inbox: MailFolderSummary = {
+      path: 'INBOX',
+      name: 'INBOX',
+      parentPath: '',
+      delimiter: '/',
+      specialUse: '\\Inbox',
+      selectable: true,
+    };
+    expect(displayFolderName(inbox)).toBe('Inbox');
+    expect(displayFolderName({ ...inbox, path: 'Receipts', name: 'RECEIPTS', specialUse: null })).toBe(
+      'RECEIPTS',
+    );
   });
 });
 
