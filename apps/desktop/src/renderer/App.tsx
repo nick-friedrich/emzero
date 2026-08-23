@@ -14,6 +14,7 @@ import {
   Mail,
   Menu,
   Paperclip,
+  Palette,
   PenLine,
   Plus,
   RefreshCw,
@@ -32,6 +33,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { messageThemeColors, themes, useTheme, type Theme } from '@/theme';
 import type {
   AccountDraft,
   AccountSummary,
@@ -384,18 +386,18 @@ type FolderLoadState =
 function FolderIcon({ specialUse }: { specialUse: string | null }) {
   switch (specialUse) {
     case '\\Inbox':
-      return <Inbox className="size-3.5" />;
+      return <Inbox className="size-3" />;
     case '\\Sent':
-      return <Send className="size-3.5" />;
+      return <Send className="size-3" />;
     case '\\Drafts':
-      return <FileText className="size-3.5" />;
+      return <FileText className="size-3" />;
     case '\\Archive':
-      return <Archive className="size-3.5" />;
+      return <Archive className="size-3" />;
     case '\\Trash':
     case '\\Junk':
-      return <Trash2 className="size-3.5" />;
+      return <Trash2 className="size-3" />;
     default:
-      return <Folder className="size-3.5" />;
+      return <Folder className="size-3" />;
   }
 }
 
@@ -458,11 +460,13 @@ function fileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function htmlDocument(body: string, showQuoted: boolean): string {
+function htmlDocument(body: string, showQuoted: boolean, theme: Theme): string {
   const quotedStyle = showQuoted
     ? ''
     : 'blockquote,.gmail_quote,.yahoo_quoted,.moz-cite-prefix,#divRplyFwdMsg{display:none!important}';
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline';"><style>html{color-scheme:light}body{box-sizing:border-box;margin:0;padding:1.5rem;color:#292524;background:#fff;font:14px/1.65 Inter,ui-sans-serif,system-ui,sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}${quotedStyle}</style></head><body>${body}</body></html>`;
+  const colors = messageThemeColors[theme];
+  const colorScheme = theme === 'light' ? 'light' : 'dark';
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="${colorScheme}"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline';"><style>html{color-scheme:${colorScheme};background:${colors.background}}body{box-sizing:border-box;margin:0;padding:1.5rem;color:${colors.foreground};background:${colors.background};font:14px/1.65 Inter,ui-sans-serif,system-ui,sans-serif;overflow-wrap:anywhere}a{color:inherit}img{max-width:100%;height:auto}table{max-width:100%}${quotedStyle}</style></head><body>${body}</body></html>`;
 }
 
 function messageDate(value: string | null): string {
@@ -522,6 +526,7 @@ type MessageDetailLoadState =
   | { status: 'error'; message: string };
 
 function MessageBody({ message }: { message: MailMessageDetail }) {
+  const { theme } = useTheme();
   const [view, setView] = useState<'html' | 'text'>('html');
   const [showQuoted, setShowQuoted] = useState(false);
   const textParts = splitQuotedText(message.text);
@@ -556,11 +561,11 @@ function MessageBody({ message }: { message: MailMessageDetail }) {
 
       {message.html && view === 'html' ? (
         <iframe
-          className="mt-4 h-[55vh] min-h-80 w-full rounded-md border border-border bg-white"
+          className="mt-4 h-[55vh] min-h-80 w-full rounded-md border border-border bg-card"
           title="Email content"
           sandbox=""
           referrerPolicy="no-referrer"
-          srcDoc={htmlDocument(message.html, showQuoted)}
+          srcDoc={htmlDocument(message.html, showQuoted, theme)}
         />
       ) : (
         <div className="mt-5 whitespace-pre-wrap break-words text-sm leading-7 text-foreground">
@@ -1259,6 +1264,7 @@ function Sidebar({
   onAdd: () => void;
   className?: string;
 }) {
+  const { theme, setTheme } = useTheme();
   const [expanded, setExpanded] = useState(() => new Set<string>());
   const [folderStates, setFolderStates] = useState<Record<string, FolderLoadState>>({});
 
@@ -1426,14 +1432,14 @@ function Sidebar({
                             <Button
                               key={folder.path}
                               variant={isSelected ? 'secondary' : 'ghost'}
-                              className="h-7 w-full justify-start gap-1.5 px-2 text-[0.7rem] font-normal"
+                              className="h-7 w-full justify-start gap-1.5 px-2 font-normal"
                               style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
                               disabled={!folder.selectable}
                               title={folder.path}
                               onClick={() => onSelect({ kind: 'folder', account, folder })}
                             >
                               <FolderIcon specialUse={folder.specialUse} />
-                              <span className="min-w-0 flex-1 truncate text-left">
+                              <span className="min-w-0 flex-1 truncate text-left text-xs leading-4">
                                 {displayFolderName(folder)}
                               </span>
                               <UnreadBadge count={folder.unreadCount ?? 0} />
@@ -1450,6 +1456,22 @@ function Sidebar({
       </nav>
 
       <div className="mt-auto border-t border-border pt-4">
+        <label className="relative mb-2 block" aria-label="Color theme">
+          <Palette className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+          <select
+            className="theme-select"
+            value={theme}
+            title="Color theme"
+            onChange={(event) => setTheme(event.target.value as Theme)}
+          >
+            {themes.map(({ value, label }) => (
+              <option key={value} value={value}>
+                {label} theme
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-2.5 size-4 text-muted-foreground" />
+        </label>
         <Button
           variant="ghost"
           className="mb-1 w-full justify-start text-muted-foreground"
