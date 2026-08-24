@@ -1501,6 +1501,13 @@ function MessageList({
     if (selectedConversation) return;
     const handleSelectionShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isEditableTarget(event.target)) return;
+      if (event.key === 'Escape' && selectedConversationIds.size > 0) {
+        event.preventDefault();
+        setSelectedConversationIds(new Set());
+        setSelectionAnchorId(null);
+        setSelectionCursorId(null);
+        return;
+      }
       if (event.key.toLowerCase() === 'a' && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
         setSelectedConversationIds(new Set(conversations.map((conversation) => conversation.id)));
@@ -2107,6 +2114,13 @@ function UnifiedInbox({
     if (selectedItem) return;
     const handleSelectionShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isEditableTarget(event.target)) return;
+      if (event.key === 'Escape' && selectedItemKeys.size > 0) {
+        event.preventDefault();
+        setSelectedItemKeys(new Set());
+        setSelectionAnchorKey(null);
+        setSelectionCursorKey(null);
+        return;
+      }
       const keys = availableItems.map((item) => itemKey(item));
       if (event.key.toLowerCase() === 'a' && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
