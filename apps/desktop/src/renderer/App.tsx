@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -619,6 +620,23 @@ type MessageDetailLoadState =
 
 type ConversationAction = 'read' | 'unread' | 'delete';
 
+const bulkActionConfirmationThreshold = 10;
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+    return true;
+  }
+  return (
+    target instanceof HTMLInputElement &&
+    !['button', 'checkbox', 'radio', 'reset', 'submit'].includes(target.type)
+  );
+}
+
+function messageCountInFolder(conversation: MailConversation, folderPath: string): number {
+  return conversation.messages.filter((message) => message.folderPath === folderPath).length;
+}
+
 async function performConversationAction(
   accountId: string,
   folderPath: string,
@@ -722,6 +740,125 @@ function ConversationActions({
         deleteButton
       )}
     </div>
+  );
+}
+
+function SelectionCheckbox({
+  checked,
+  indeterminate = false,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  indeterminate?: boolean;
+  label: string;
+  onChange: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+
+  return (
+    <input
+      ref={ref}
+      className="size-4 shrink-0 cursor-pointer accent-primary"
+      type="checkbox"
+      checked={checked}
+      aria-label={label}
+      onChange={onChange}
+    />
+  );
+}
+
+function BulkActionToolbar({
+  selectedRows,
+  selectedEmails,
+  totalRows,
+  busy,
+  permanentDelete,
+  onToggleAll,
+  onClear,
+  onAction,
+}: {
+  selectedRows: number;
+  selectedEmails: number;
+  totalRows: number;
+  busy: boolean;
+  permanentDelete: boolean;
+  onToggleAll: () => void;
+  onClear: () => void;
+  onAction: (action: ConversationAction) => void;
+}) {
+  const [pendingAction, setPendingAction] = useState<ConversationAction | null>(null);
+  const allSelected = selectedRows === totalRows;
+  const needsConfirmation = (action: ConversationAction) =>
+    selectedEmails > bulkActionConfirmationThreshold || (action === 'delete' && permanentDelete);
+  const requestAction = (action: ConversationAction) => {
+    if (needsConfirmation(action)) setPendingAction(action);
+    else onAction(action);
+  };
+  const actionLabel =
+    pendingAction === 'read'
+      ? 'mark as read'
+      : pendingAction === 'unread'
+        ? 'mark as unread'
+        : 'delete';
+
+  return (
+    <>
+      <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border bg-secondary px-4 py-2 lg:px-6" role="toolbar" aria-label="Bulk email actions">
+        <SelectionCheckbox
+          checked={allSelected}
+          indeterminate={!allSelected}
+          label={allSelected ? 'Clear selection' : 'Select all conversations'}
+          onChange={onToggleAll}
+        />
+        <span className="mr-auto text-sm font-medium">
+          {selectedEmails} {selectedEmails === 1 ? 'email' : 'emails'} selected
+        </span>
+        <Button variant="ghost" className="px-3" disabled={busy} onClick={() => requestAction('read')}>
+          <MailOpen className="size-4" />
+          <span className="hidden sm:inline">Mark read</span>
+        </Button>
+        <Button variant="ghost" className="px-3" disabled={busy} onClick={() => requestAction('unread')}>
+          <Mail className="size-4" />
+          <span className="hidden sm:inline">Mark unread</span>
+        </Button>
+        <Button variant="ghost" className="px-3 text-danger hover:text-danger" disabled={busy} onClick={() => requestAction('delete')}>
+          {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+          <span className="hidden sm:inline">Delete</span>
+        </Button>
+        <Button variant="ghost" className="px-3" disabled={busy} onClick={onClear}>Cancel</Button>
+      </div>
+      <AlertDialog open={pendingAction !== null} onOpenChange={(open) => { if (!open) setPendingAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingAction === 'delete' && permanentDelete
+                ? `Permanently delete ${selectedEmails} emails?`
+                : `${pendingAction === 'delete' ? 'Delete' : pendingAction === 'read' ? 'Mark as read' : 'Mark as unread'} ${selectedEmails} emails?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingAction === 'delete' && permanentDelete
+                ? 'These emails will be permanently removed and cannot be recovered.'
+                : `You are about to ${actionLabel} more than ${bulkActionConfirmationThreshold} emails.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingAction) onAction(pendingAction);
+                setPendingAction(null);
+              }}
+            >
+              {pendingAction === 'delete' && permanentDelete ? 'Permanently delete' : 'Continue'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
@@ -1230,6 +1367,8 @@ function MessageList({ selection }: { selection: FolderSelection }) {
   const pendingActions = useRef(new Set<string>());
   const [busyConversations, setBusyConversations] = useState<ReadonlySet<string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedConversationIds, setSelectedConversationIds] = useState<ReadonlySet<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -1298,18 +1437,47 @@ function MessageList({ selection }: { selection: FolderSelection }) {
   }, [refreshKey, selection.account.id, selection.folder.path, selection.folder.specialUse]);
 
   const refresh = () => {
+    setSelectedConversationIds(new Set());
     setState({ status: 'loading' });
     setRefreshKey((current) => current + 1);
   };
 
   const showRecipients = selection.folder.specialUse === '\\Sent';
-  const conversations =
-    state.status === 'loaded'
-      ? groupMessagesWithRelated(state.messages, state.relatedMessages)
-      : [];
+  const conversations = useMemo(
+    () =>
+      state.status === 'loaded'
+        ? groupMessagesWithRelated(state.messages, state.relatedMessages)
+        : [],
+    [state],
+  );
+  const selectedConversations = conversations.filter((conversation) =>
+    selectedConversationIds.has(conversation.id),
+  );
+  const selectedEmailCount = selectedConversations.reduce(
+    (total, conversation) => total + messageCountInFolder(conversation, selection.folder.path),
+    0,
+  );
+
+  useEffect(() => {
+    if (selectedConversation) return;
+    const handleSelectAll = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.key.toLowerCase() !== 'a' ||
+        (!event.ctrlKey && !event.metaKey) ||
+        isEditableTarget(event.target)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setSelectedConversationIds(new Set(conversations.map((conversation) => conversation.id)));
+    };
+    window.addEventListener('keydown', handleSelectAll);
+    return () => window.removeEventListener('keydown', handleSelectAll);
+  }, [conversations, selectedConversation]);
 
   const runAction = async (conversation: MailConversation, action: ConversationAction) => {
-    if (pendingActions.current.has(conversation.id)) return;
+    if (pendingActions.current.has(conversation.id)) return false;
     pendingActions.current.add(conversation.id);
     setBusyConversations((current) => new Set(current).add(conversation.id));
     setActionError(null);
@@ -1359,7 +1527,7 @@ function MessageList({ selection }: { selection: FolderSelection }) {
       if (error) {
         setActionError(error);
         if (action !== 'delete') updateUnread(previousUnread);
-        return;
+        return false;
       }
       if (action === 'delete') {
         setState((current) =>
@@ -1384,9 +1552,11 @@ function MessageList({ selection }: { selection: FolderSelection }) {
         );
         setSelectedConversation(null);
       }
+      return true;
     } catch {
       setActionError('The action could not be completed.');
       if (action !== 'delete') updateUnread(previousUnread);
+      return false;
     } finally {
       pendingActions.current.delete(conversation.id);
       setBusyConversations((current) => {
@@ -1394,6 +1564,21 @@ function MessageList({ selection }: { selection: FolderSelection }) {
         next.delete(conversation.id);
         return next;
       });
+    }
+  };
+
+  const runBulkAction = async (action: ConversationAction) => {
+    if (bulkBusy) return;
+    const targets = selectedConversations;
+    setBulkBusy(true);
+    try {
+      const failed = new Set<string>();
+      for (const conversation of targets) {
+        if (!(await runAction(conversation, action))) failed.add(conversation.id);
+      }
+      setSelectedConversationIds(failed);
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -1526,6 +1711,25 @@ function MessageList({ selection }: { selection: FolderSelection }) {
         </div>
       )}
 
+      {state.status === 'loaded' && selectedConversationIds.size > 0 && (
+        <BulkActionToolbar
+          selectedRows={selectedConversationIds.size}
+          selectedEmails={selectedEmailCount}
+          totalRows={conversations.length}
+          busy={bulkBusy}
+          permanentDelete={selection.folder.specialUse === '\\Trash'}
+          onToggleAll={() =>
+            setSelectedConversationIds(
+              selectedConversationIds.size === conversations.length
+                ? new Set()
+                : new Set(conversations.map((conversation) => conversation.id)),
+            )
+          }
+          onClear={() => setSelectedConversationIds(new Set())}
+          onAction={(action) => void runBulkAction(action)}
+        />
+      )}
+
       {state.status === 'loaded' && state.messages.length > 0 && (
         <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Messages">
           {conversations.map((conversation) => {
@@ -1539,9 +1743,23 @@ function MessageList({ selection }: { selection: FolderSelection }) {
             return (
               <div
                 key={conversation.id}
-                className="flex min-w-0 items-center border-b border-border hover:bg-accent/60"
+                className={`flex min-w-0 items-center border-b border-border hover:bg-accent/60 ${selectedConversationIds.has(conversation.id) ? 'bg-accent/60' : ''}`}
                 role="listitem"
               >
+                <div className="pl-4 lg:pl-6" onClick={(event) => event.stopPropagation()}>
+                  <SelectionCheckbox
+                    checked={selectedConversationIds.has(conversation.id)}
+                    label={`Select conversation: ${conversation.subject}`}
+                    onChange={() =>
+                      setSelectedConversationIds((current) => {
+                        const next = new Set(current);
+                        if (next.has(conversation.id)) next.delete(conversation.id);
+                        else next.add(conversation.id);
+                        return next;
+                      })
+                    }
+                  />
+                </div>
                 <button
                   type="button"
                   className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-left focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6"
@@ -1610,6 +1828,8 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
   const pendingActions = useRef(new Set<string>());
   const [busyConversations, setBusyConversations] = useState<ReadonlySet<string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedItemKeys, setSelectedItemKeys] = useState<ReadonlySet<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -1715,16 +1935,47 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
 
   const refresh = () => {
     setSelectedItem(null);
+    setSelectedItemKeys(new Set());
     setState({ status: 'loading' });
     setRefreshKey((current) => current + 1);
   };
 
   const itemKey = (item: UnifiedConversationItem) =>
     `${item.selection.account.id}:${item.conversation.id}`;
+  const availableItems = useMemo(
+    () => (state.status === 'loaded' ? state.items : []),
+    [state],
+  );
+  const selectedItems = availableItems.filter((item) => selectedItemKeys.has(itemKey(item)));
+  const selectedEmailCount = selectedItems.reduce(
+    (total, item) =>
+      total + messageCountInFolder(item.conversation, item.selection.folder.path),
+    0,
+  );
+
+  useEffect(() => {
+    if (selectedItem) return;
+    const handleSelectAll = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.key.toLowerCase() !== 'a' ||
+        (!event.ctrlKey && !event.metaKey) ||
+        isEditableTarget(event.target)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setSelectedItemKeys(
+        new Set(availableItems.map((item) => `${item.selection.account.id}:${item.conversation.id}`)),
+      );
+    };
+    window.addEventListener('keydown', handleSelectAll);
+    return () => window.removeEventListener('keydown', handleSelectAll);
+  }, [availableItems, selectedItem]);
 
   const runAction = async (item: UnifiedConversationItem, action: ConversationAction) => {
     const key = itemKey(item);
-    if (pendingActions.current.has(key)) return;
+    if (pendingActions.current.has(key)) return false;
     pendingActions.current.add(key);
     setBusyConversations((current) => new Set(current).add(key));
     setActionError(null);
@@ -1767,7 +2018,7 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
       if (error) {
         setActionError(error);
         if (action !== 'delete') updateUnread(previousUnread);
-        return;
+        return false;
       }
       if (action === 'delete') {
         setState((current) =>
@@ -1794,9 +2045,11 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
         );
         setSelectedItem(null);
       }
+      return true;
     } catch {
       setActionError('The action could not be completed.');
       if (action !== 'delete') updateUnread(previousUnread);
+      return false;
     } finally {
       pendingActions.current.delete(key);
       setBusyConversations((current) => {
@@ -1804,6 +2057,21 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
         next.delete(key);
         return next;
       });
+    }
+  };
+
+  const runBulkAction = async (action: ConversationAction) => {
+    if (bulkBusy) return;
+    const targets = selectedItems;
+    setBulkBusy(true);
+    try {
+      const failed = new Set<string>();
+      for (const item of targets) {
+        if (!(await runAction(item, action))) failed.add(itemKey(item));
+      }
+      setSelectedItemKeys(failed);
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -1923,6 +2191,25 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
         </div>
       )}
 
+      {state.status === 'loaded' && selectedItemKeys.size > 0 && (
+        <BulkActionToolbar
+          selectedRows={selectedItemKeys.size}
+          selectedEmails={selectedEmailCount}
+          totalRows={state.items.length}
+          busy={bulkBusy}
+          permanentDelete={false}
+          onToggleAll={() =>
+            setSelectedItemKeys(
+              selectedItemKeys.size === state.items.length
+                ? new Set()
+                : new Set(state.items.map((item) => itemKey(item))),
+            )
+          }
+          onClear={() => setSelectedItemKeys(new Set())}
+          onAction={(action) => void runBulkAction(action)}
+        />
+      )}
+
       {state.status === 'loaded' && state.items.length === 0 && (
         <div className="grid flex-1 place-items-center p-8 text-center">
           <div>
@@ -1961,9 +2248,24 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
             return (
               <div
                 key={`${selection.account.id}:${conversation.id}`}
-                className="flex min-w-0 items-center border-b border-border hover:bg-accent/60"
+                className={`flex min-w-0 items-center border-b border-border hover:bg-accent/60 ${selectedItemKeys.has(itemKey(item)) ? 'bg-accent/60' : ''}`}
                 role="listitem"
               >
+                <div className="pl-4 lg:pl-6" onClick={(event) => event.stopPropagation()}>
+                  <SelectionCheckbox
+                    checked={selectedItemKeys.has(itemKey(item))}
+                    label={`Select conversation: ${conversation.subject}`}
+                    onChange={() =>
+                      setSelectedItemKeys((current) => {
+                        const key = itemKey(item);
+                        const next = new Set(current);
+                        if (next.has(key)) next.delete(key);
+                        else next.add(key);
+                        return next;
+                      })
+                    }
+                  />
+                </div>
                 <button
                   type="button"
                   className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-left focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6"
