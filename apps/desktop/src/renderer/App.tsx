@@ -2731,7 +2731,7 @@ function Sidebar({
         className,
       )}
     >
-      <div className="mb-8 flex items-center gap-3 px-2">
+      <div className="mb-8 flex shrink-0 items-center gap-3 px-2">
         <div className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
           <Mail className="size-4" />
         </div>
@@ -2742,7 +2742,7 @@ function Sidebar({
       </div>
 
       <Button
-        className="mb-4 w-full justify-start"
+        className="mb-4 w-full shrink-0 justify-start"
         disabled={accounts.length === 0}
         onClick={onCompose}
       >
@@ -2750,7 +2750,7 @@ function Sidebar({
         Compose
       </Button>
 
-      <nav aria-label="Mailboxes" className="space-y-1">
+      <nav aria-label="Mailboxes" className="shrink-0 space-y-1">
         <Button
           variant={selection.kind === 'unified' ? 'secondary' : 'ghost'}
           className="w-full justify-start"
@@ -2775,7 +2775,7 @@ function Sidebar({
                 <div key={account.id}>
                   <Button
                     variant="ghost"
-                    className="h-auto w-full justify-start gap-2 py-2"
+                    className="h-auto w-full justify-start gap-2 py-2 focus-visible:ring-inset"
                     aria-expanded={isExpanded}
                     onClick={() => toggleAccount(account)}
                   >
@@ -2851,7 +2851,7 @@ function Sidebar({
         )}
       </nav>
 
-      <div className="mt-auto border-t border-border pt-4">
+      <div className="mt-auto shrink-0 border-t border-border pt-4">
         <label className="relative mb-2 block" aria-label="Color theme">
           <Palette className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
           <select
