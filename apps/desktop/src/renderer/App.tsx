@@ -11,6 +11,7 @@ import {
 import {
   Archive,
   ArrowLeft,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -747,11 +748,13 @@ function SelectionCheckbox({
   checked,
   indeterminate = false,
   label,
+  className,
   onChange,
 }: {
   checked: boolean;
   indeterminate?: boolean;
   label: string;
+  className?: string;
   onChange: () => void;
 }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -760,14 +763,31 @@ function SelectionCheckbox({
   }, [indeterminate]);
 
   return (
-    <input
-      ref={ref}
-      className="size-4 shrink-0 cursor-pointer accent-primary"
-      type="checkbox"
-      checked={checked}
-      aria-label={label}
-      onChange={onChange}
-    />
+    <label className={cn('relative grid size-5 shrink-0 cursor-pointer place-items-center', className)}>
+      <input
+        ref={ref}
+        className="peer sr-only"
+        type="checkbox"
+        checked={checked}
+        aria-label={label}
+        onChange={onChange}
+      />
+      <span
+        className={cn(
+          'grid size-4 place-items-center rounded-[0.3rem] border bg-card text-primary-foreground shadow-sm transition-colors peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background',
+          checked || indeterminate
+            ? 'border-primary bg-primary'
+            : 'border-border hover:border-primary/70',
+        )}
+        aria-hidden="true"
+      >
+        {indeterminate ? (
+          <span className="h-0.5 w-2 rounded-full bg-current" />
+        ) : checked ? (
+          <Check className="size-3" strokeWidth={3} />
+        ) : null}
+      </span>
+    </label>
   );
 }
 
@@ -1743,12 +1763,16 @@ function MessageList({ selection }: { selection: FolderSelection }) {
             return (
               <div
                 key={conversation.id}
-                className={`flex min-w-0 items-center border-b border-border hover:bg-accent/60 ${selectedConversationIds.has(conversation.id) ? 'bg-accent/60' : ''}`}
+                className={`group flex min-w-0 items-center border-b border-border hover:bg-accent/60 ${selectedConversationIds.has(conversation.id) ? 'bg-accent/60' : ''}`}
                 role="listitem"
               >
                 <div className="pl-4 lg:pl-6" onClick={(event) => event.stopPropagation()}>
                   <SelectionCheckbox
                     checked={selectedConversationIds.has(conversation.id)}
+                    className={cn(
+                      'transition-opacity group-hover:opacity-100 focus-within:opacity-100',
+                      selectedConversationIds.size > 0 ? 'opacity-100' : 'opacity-0',
+                    )}
                     label={`Select conversation: ${conversation.subject}`}
                     onChange={() =>
                       setSelectedConversationIds((current) => {
@@ -2248,12 +2272,16 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
             return (
               <div
                 key={`${selection.account.id}:${conversation.id}`}
-                className={`flex min-w-0 items-center border-b border-border hover:bg-accent/60 ${selectedItemKeys.has(itemKey(item)) ? 'bg-accent/60' : ''}`}
+                className={`group flex min-w-0 items-center border-b border-border hover:bg-accent/60 ${selectedItemKeys.has(itemKey(item)) ? 'bg-accent/60' : ''}`}
                 role="listitem"
               >
                 <div className="pl-4 lg:pl-6" onClick={(event) => event.stopPropagation()}>
                   <SelectionCheckbox
                     checked={selectedItemKeys.has(itemKey(item))}
+                    className={cn(
+                      'transition-opacity group-hover:opacity-100 focus-within:opacity-100',
+                      selectedItemKeys.size > 0 ? 'opacity-100' : 'opacity-0',
+                    )}
                     label={`Select conversation: ${conversation.subject}`}
                     onChange={() =>
                       setSelectedItemKeys((current) => {
