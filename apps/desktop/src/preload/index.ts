@@ -14,6 +14,8 @@ import {
   type MessageOperationResult,
   type MailProvider,
   type MailReplyDraft,
+  type MailSearchRequest,
+  type MailSearchResult,
   type MailSendDraft,
   type MailSendResult,
   type MailSyncStatus,
@@ -35,6 +37,7 @@ export interface EmzeroDesktopApi {
   };
   messages: {
     list: (accountId: string, folderPath: string, refresh?: boolean) => Promise<MessageListResult>;
+    search: (request: MailSearchRequest) => Promise<MailSearchResult>;
     get: (accountId: string, folderPath: string, uid: number) => Promise<MessageDetailResult>;
     setUnread: (
       accountId: string,
@@ -81,6 +84,7 @@ contextBridge.exposeInMainWorld('emzero', {
   messages: {
     list: (accountId, folderPath, refresh = false) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.listMessages, accountId, folderPath, refresh),
+    search: (request) => ipcRenderer.invoke(ACCOUNT_CHANNELS.searchMessages, request),
     get: (accountId, folderPath, uid) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.getMessage, accountId, folderPath, uid),
     setUnread: (accountId, folderPath, uids, unread) =>

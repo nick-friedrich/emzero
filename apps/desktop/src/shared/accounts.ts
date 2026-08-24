@@ -103,6 +103,27 @@ export interface MessageListResult {
   message?: string;
 }
 
+export interface MailSearchRequest {
+  query: string;
+  accountId?: string;
+  folderPath?: string;
+  limit?: number;
+  sort?: 'relevance' | 'newest' | 'oldest';
+}
+
+export interface MailSearchItem {
+  accountId: string;
+  folder: MailFolderSummary;
+  message: MailMessageSummary;
+  snippet: string | null;
+}
+
+export interface MailSearchResult {
+  ok: boolean;
+  items: MailSearchItem[];
+  message?: string;
+}
+
 export type BulkMessageAction = 'read' | 'unread' | 'delete';
 
 export interface BulkMessageGroup {
@@ -243,6 +264,7 @@ export const ACCOUNT_CHANNELS = {
   discoverProvider: 'providers:discover',
   listFolders: 'folders:list',
   listMessages: 'messages:list',
+  searchMessages: 'messages:search',
   getMessage: 'messages:get',
   setMessageUnread: 'messages:set-unread',
   deleteMessages: 'messages:delete',

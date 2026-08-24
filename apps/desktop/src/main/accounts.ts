@@ -22,6 +22,8 @@ import {
   type MailFolderSummary,
   type MailMessageDetail,
   type MailMessageSummary,
+  type MailSearchRequest,
+  type MailSearchResult,
   type MailSendDraft,
   type MailSendResult,
   type MailSyncStatus,
@@ -1069,6 +1071,35 @@ export function registerAccountHandlers(): void {
       return listFolderMessages(account, folderPath, refresh === true);
     },
   );
+
+  ipcMain.handle(ACCOUNT_CHANNELS.searchMessages, (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (!value || typeof value !== 'object') {
+      return { ok: false, items: [], message: 'Invalid search.' } satisfies MailSearchResult;
+    }
+    const request = value as Partial<MailSearchRequest>;
+    if (
+      typeof request.query !== 'string' ||
+      request.query.length > 500 ||
+      (request.accountId !== undefined && typeof request.accountId !== 'string') ||
+      (request.folderPath !== undefined && typeof request.folderPath !== 'string') ||
+      (request.limit !== undefined &&
+        (typeof request.limit !== 'number' || !Number.isInteger(request.limit))) ||
+      (request.sort !== undefined &&
+        !['relevance', 'newest', 'oldest'].includes(request.sort))
+    ) {
+      return { ok: false, items: [], message: 'Invalid search.' } satisfies MailSearchResult;
+    }
+    return {
+      ok: true,
+      items: mailCache().searchMessages(request.query, {
+        accountId: request.accountId,
+        folderPath: request.folderPath,
+        limit: request.limit,
+        sort: request.sort,
+      }),
+    } satisfies MailSearchResult;
+  });
 
   ipcMain.handle(
     ACCOUNT_CHANNELS.getMessage,

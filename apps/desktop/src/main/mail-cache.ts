@@ -5,6 +5,7 @@ import type {
   MailFolderSummary,
   MailMessageDetail,
   MailMessageSummary,
+  MailSearchItem,
   RecipientSuggestion,
 } from '../shared/accounts.js';
 
@@ -59,6 +60,17 @@ interface CorrespondentRow {
   address: string | null;
   observed_at: string | null;
   outgoing: number;
+}
+
+interface SearchRow extends MessageRow {
+  account_id: string;
+  folder_name: string;
+  folder_parent_path: string;
+  folder_delimiter: string;
+  folder_special_use: string | null;
+  folder_selectable: number;
+  folder_unread_count: number;
+  snippet: string | null;
 }
 
 export interface CachedFolderMessages {
@@ -189,6 +201,97 @@ export class MailCache {
             AND messages.unread = 1
         );
         PRAGMA user_version = 3;
+        COMMIT;
+      `);
+      version = 3;
+    }
+
+    if (version < 4) {
+      this.#database.exec(`
+        BEGIN;
+        CREATE VIRTUAL TABLE message_search USING fts5(
+          account_id UNINDEXED,
+          folder_path UNINDEXED,
+          uid UNINDEXED,
+          subject,
+          sender_addresses,
+          recipient_addresses,
+          body_text,
+          tokenize = 'unicode61 remove_diacritics 2'
+        );
+
+        INSERT INTO message_search (
+          account_id, folder_path, uid, subject, sender_addresses, recipient_addresses, body_text
+        )
+        SELECT messages.account_id, messages.folder_path, messages.uid, messages.subject,
+               messages.sender_addresses, messages.recipient_addresses,
+               COALESCE(message_bodies.body_text, '')
+        FROM messages
+        LEFT JOIN message_bodies
+          ON message_bodies.account_id = messages.account_id
+         AND message_bodies.folder_path = messages.folder_path
+         AND message_bodies.uid = messages.uid;
+
+        CREATE TRIGGER messages_search_insert AFTER INSERT ON messages BEGIN
+          INSERT INTO message_search (
+            account_id, folder_path, uid, subject, sender_addresses, recipient_addresses, body_text
+          ) VALUES (
+            new.account_id, new.folder_path, new.uid, new.subject,
+            new.sender_addresses, new.recipient_addresses, ''
+          );
+        END;
+
+        CREATE TRIGGER messages_search_update
+        AFTER UPDATE OF subject, sender_addresses, recipient_addresses ON messages BEGIN
+          DELETE FROM message_search
+          WHERE account_id = old.account_id AND folder_path = old.folder_path AND uid = old.uid;
+          INSERT INTO message_search (
+            account_id, folder_path, uid, subject, sender_addresses, recipient_addresses, body_text
+          )
+          SELECT new.account_id, new.folder_path, new.uid, new.subject,
+                 new.sender_addresses, new.recipient_addresses,
+                 COALESCE(message_bodies.body_text, '')
+          FROM (SELECT 1)
+          LEFT JOIN message_bodies
+            ON message_bodies.account_id = new.account_id
+           AND message_bodies.folder_path = new.folder_path
+           AND message_bodies.uid = new.uid;
+        END;
+
+        CREATE TRIGGER messages_search_delete AFTER DELETE ON messages BEGIN
+          DELETE FROM message_search
+          WHERE account_id = old.account_id AND folder_path = old.folder_path AND uid = old.uid;
+        END;
+
+        CREATE TRIGGER message_bodies_search_insert AFTER INSERT ON message_bodies BEGIN
+          DELETE FROM message_search
+          WHERE account_id = new.account_id AND folder_path = new.folder_path AND uid = new.uid;
+          INSERT INTO message_search (
+            account_id, folder_path, uid, subject, sender_addresses, recipient_addresses, body_text
+          )
+          SELECT messages.account_id, messages.folder_path, messages.uid, messages.subject,
+                 messages.sender_addresses, messages.recipient_addresses, new.body_text
+          FROM messages
+          WHERE messages.account_id = new.account_id
+            AND messages.folder_path = new.folder_path
+            AND messages.uid = new.uid;
+        END;
+
+        CREATE TRIGGER message_bodies_search_update AFTER UPDATE OF body_text ON message_bodies BEGIN
+          DELETE FROM message_search
+          WHERE account_id = new.account_id AND folder_path = new.folder_path AND uid = new.uid;
+          INSERT INTO message_search (
+            account_id, folder_path, uid, subject, sender_addresses, recipient_addresses, body_text
+          )
+          SELECT messages.account_id, messages.folder_path, messages.uid, messages.subject,
+                 messages.sender_addresses, messages.recipient_addresses, new.body_text
+          FROM messages
+          WHERE messages.account_id = new.account_id
+            AND messages.folder_path = new.folder_path
+            AND messages.uid = new.uid;
+        END;
+
+        PRAGMA user_version = 4;
         COMMIT;
       `);
     }
@@ -378,6 +481,95 @@ export class MailCache {
       total: folder?.message_count ?? 0,
       syncedAt: folder?.synced_at ?? null,
     };
+  }
+
+  searchMessages(
+    query: string,
+    filters: {
+      accountId?: string;
+      folderPath?: string;
+      limit?: number;
+      sort?: 'relevance' | 'newest' | 'oldest';
+    } = {},
+  ): MailSearchItem[] {
+    const tokens = query.trim().match(/[\p{L}\p{N}@._+-]+/gu) ?? [];
+    if (tokens.length === 0) return [];
+    const matchQuery = tokens
+      .slice(0, 12)
+      .map((token) => `"${token.replaceAll('"', '""')}"*`)
+      .join(' AND ');
+    const clauses = ['message_search MATCH ?'];
+    const parameters: Array<string | number> = [matchQuery];
+    if (filters.accountId) {
+      clauses.push('messages.account_id = ?');
+      parameters.push(filters.accountId);
+    }
+    if (filters.folderPath) {
+      clauses.push('messages.folder_path = ?');
+      parameters.push(filters.folderPath);
+    }
+    parameters.push(Math.max(1, Math.min(filters.limit ?? 100, 200)));
+    const orderBy =
+      filters.sort === 'newest'
+        ? 'COALESCE(messages.received_at, messages.sent_at) DESC, messages.uid DESC'
+        : filters.sort === 'oldest'
+          ? 'COALESCE(messages.received_at, messages.sent_at) ASC, messages.uid ASC'
+          : `bm25(message_search, 0, 0, 0, 10, 7, 4, 1),
+             COALESCE(messages.received_at, messages.sent_at) DESC`;
+
+    const rows = this.#database
+      .prepare(`
+        SELECT messages.account_id, messages.folder_path, messages.uid, messages.message_id,
+               messages.in_reply_to, messages.reference_ids, messages.subject,
+               messages.sender_addresses, messages.recipient_addresses, messages.sent_at,
+               messages.received_at, messages.unread, messages.flagged, messages.size,
+               folders.name AS folder_name, folders.parent_path AS folder_parent_path,
+               folders.delimiter AS folder_delimiter, folders.special_use AS folder_special_use,
+               folders.selectable AS folder_selectable,
+               folders.unread_count AS folder_unread_count,
+               NULLIF(snippet(message_search, 6, '', '', ' … ', 24), '') AS snippet
+        FROM message_search
+        JOIN messages
+          ON messages.account_id = message_search.account_id
+         AND messages.folder_path = message_search.folder_path
+         AND messages.uid = CAST(message_search.uid AS INTEGER)
+        JOIN folders
+          ON folders.account_id = messages.account_id
+         AND folders.path = messages.folder_path
+        WHERE ${clauses.join(' AND ')}
+        ORDER BY ${orderBy}
+        LIMIT ?
+      `)
+      .all(...parameters) as unknown as SearchRow[];
+
+    return rows.map((row) => ({
+      accountId: row.account_id,
+      folder: {
+        path: row.folder_path,
+        name: row.folder_name,
+        parentPath: row.folder_parent_path,
+        delimiter: row.folder_delimiter,
+        specialUse: row.folder_special_use,
+        selectable: Boolean(row.folder_selectable),
+        unreadCount: row.folder_unread_count,
+      },
+      message: {
+        folderPath: row.folder_path,
+        uid: row.uid,
+        messageId: row.message_id,
+        inReplyTo: row.in_reply_to,
+        references: parseJsonArray<string>(row.reference_ids),
+        subject: row.subject,
+        from: parseJsonArray<MailAddressSummary>(row.sender_addresses),
+        to: parseJsonArray<MailAddressSummary>(row.recipient_addresses),
+        sentAt: row.sent_at,
+        receivedAt: row.received_at,
+        unread: Boolean(row.unread),
+        flagged: Boolean(row.flagged),
+        size: row.size,
+      },
+      snippet: row.snippet,
+    }));
   }
 
   searchRecipients(

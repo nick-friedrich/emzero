@@ -114,6 +114,92 @@ describe('MailCache', () => {
     expect(cache.searchRecipients('account-1', 'bob', ['BOB@example.com'])).toEqual([]);
   });
 
+  it('searches cached headers and ranks subject matches', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox]);
+    cache.replaceRecentMessages(
+      'account-1',
+      'INBOX',
+      [
+        message(1, 'Quarterly planning'),
+        {
+          ...message(2, 'Project update'),
+          from: [{ name: 'Quarterly Team', address: 'team@example.com' }],
+        },
+      ],
+      2,
+    );
+
+    const results = cache.searchMessages('quarter');
+
+    expect(results.map(({ message: result }) => result.uid)).toEqual([1, 2]);
+    expect(results[0]).toMatchObject({
+      accountId: 'account-1',
+      folder: { path: 'INBOX', specialUse: '\\Inbox' },
+      message: { subject: 'Quarterly planning' },
+    });
+  });
+
+  it('adds cached bodies to search and removes deleted messages from results', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox]);
+    cache.replaceRecentMessages('account-1', 'INBOX', [message(2)], 1);
+
+    expect(cache.searchMessages('cached')).toEqual([]);
+    cache.putMessageBody('account-1', 'INBOX', detail);
+    expect(cache.searchMessages('cached')[0]).toMatchObject({
+      message: { uid: 2 },
+      snippet: 'Cached body',
+    });
+
+    cache.deleteMessages('account-1', 'INBOX', [2]);
+    expect(cache.searchMessages('cached')).toEqual([]);
+    expect(cache.searchMessages('message')).toEqual([]);
+  });
+
+  it('filters search results by account and folder', () => {
+    cache = new MailCache(':memory:');
+    const archive = { ...inbox, path: 'Archive', name: 'Archive', specialUse: '\\Archive' };
+    cache.replaceFolders('account-1', [inbox, archive]);
+    cache.replaceFolders('account-2', [inbox]);
+    cache.replaceRecentMessages('account-1', 'INBOX', [message(1, 'Shared term')], 1);
+    cache.replaceRecentMessages(
+      'account-1',
+      'Archive',
+      [{ ...message(2, 'Shared term'), folderPath: 'Archive' }],
+      1,
+    );
+    cache.replaceRecentMessages('account-2', 'INBOX', [message(3, 'Shared term')], 1);
+
+    expect(cache.searchMessages('shared', { accountId: 'account-2' })).toHaveLength(1);
+    expect(cache.searchMessages('shared', { accountId: 'account-1', folderPath: 'Archive' }))
+      .toMatchObject([{ accountId: 'account-1', folder: { path: 'Archive' } }]);
+  });
+
+  it('sorts search results by relevance or date', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox]);
+    cache.replaceRecentMessages(
+      'account-1',
+      'INBOX',
+      [
+        message(1, 'Quarterly planning'),
+        {
+          ...message(2, 'Project update'),
+          from: [{ name: 'Quarterly Team', address: 'team@example.com' }],
+        },
+      ],
+      2,
+    );
+
+    expect(cache.searchMessages('quarter', { sort: 'relevance' }).map(({ message }) => message.uid))
+      .toEqual([1, 2]);
+    expect(cache.searchMessages('quarter', { sort: 'newest' }).map(({ message }) => message.uid))
+      .toEqual([2, 1]);
+    expect(cache.searchMessages('quarter', { sort: 'oldest' }).map(({ message }) => message.uid))
+      .toEqual([1, 2]);
+  });
+
   it('replaces the synced UID window while retaining older cached messages', () => {
     cache = new MailCache(':memory:');
     cache.replaceFolders('account-1', [inbox]);
