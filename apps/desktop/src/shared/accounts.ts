@@ -57,6 +57,15 @@ export function displayFolderName(folder: MailFolderSummary): string {
   return folder.name;
 }
 
+export function accountUnreadCount(folders: MailFolderSummary[]): number {
+  return folders.reduce(
+    (total, folder) =>
+      total +
+      (folder.selectable && folder.specialUse !== '\\Trash' ? folder.unreadCount : 0),
+    0,
+  );
+}
+
 export interface FolderListResult {
   ok: boolean;
   folders: MailFolderSummary[];

@@ -83,7 +83,12 @@ import type {
   MailSyncStatus,
   RecipientSuggestion,
 } from '../shared/accounts';
-import { defaultAccountName, displayFolderName, findInboxFolder } from '../shared/accounts';
+import {
+  accountUnreadCount,
+  defaultAccountName,
+  displayFolderName,
+  findInboxFolder,
+} from '../shared/accounts';
 import {
   groupMessagesWithRelated,
   splitQuotedText,
@@ -2721,11 +2726,7 @@ function Sidebar({
               const folderState = folderStates[account.id];
               const accountUnread =
                 folderState?.status === 'loaded'
-                  ? folderState.folders.reduce(
-                      (total, folder) =>
-                        total + (folder.selectable ? (folder.unreadCount ?? 0) : 0),
-                      0,
-                    )
+                  ? accountUnreadCount(folderState.folders)
                   : 0;
               return (
                 <div key={account.id}>

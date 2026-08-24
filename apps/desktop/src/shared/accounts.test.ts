@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  accountUnreadCount,
   defaultAccountName,
   displayFolderName,
   findInboxFolder,
@@ -79,5 +80,33 @@ describe('findInboxFolder', () => {
     const unavailableInbox = folder('INBOX', null, false);
     const selectableInbox = folder('Inbox');
     expect(findInboxFolder([unavailableInbox, selectableInbox])).toBe(selectableInbox);
+  });
+});
+
+describe('accountUnreadCount', () => {
+  it('excludes trash and unselectable folders from the account total', () => {
+    const folder = (
+      path: string,
+      unreadCount: number,
+      specialUse: string | null = null,
+      selectable = true,
+    ): MailFolderSummary => ({
+      path,
+      name: path,
+      parentPath: '',
+      delimiter: '/',
+      specialUse,
+      selectable,
+      unreadCount,
+    });
+
+    expect(
+      accountUnreadCount([
+        folder('INBOX', 3, '\\Inbox'),
+        folder('Receipts', 2),
+        folder('Trash', 4, '\\Trash'),
+        folder('Container', 8, null, false),
+      ]),
+    ).toBe(5);
   });
 });
