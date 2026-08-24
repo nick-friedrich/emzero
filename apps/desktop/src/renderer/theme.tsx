@@ -109,14 +109,21 @@ export function useTheme(): ThemeContextValue {
   return value;
 }
 
-export const messageThemeColors: Record<Theme, { background: string; foreground: string }> = {
-  light: { background: '#f8faff', foreground: '#202a3b' },
-  dark: { background: '#111827', foreground: '#e8edf7' },
-  catppuccin: { background: '#1e1e2e', foreground: '#cdd6f4' },
-  'catppuccin-latte': { background: '#eff1f5', foreground: '#4c4f69' },
-  nord: { background: '#2e3440', foreground: '#d8dee9' },
-  'tokyo-night': { background: '#1a1b26', foreground: '#c0caf5' },
-  'solarized-dark': { background: '#002b36', foreground: '#93a1a1' },
+export const messageThemeColors: Record<
+  Theme,
+  { background: string; foreground: string; primary: string }
+> = {
+  light: { background: '#f8faff', foreground: '#202a3b', primary: '#316dcc' },
+  dark: { background: '#111827', foreground: '#e8edf7', primary: '#7aa2e8' },
+  catppuccin: { background: '#1e1e2e', foreground: '#cdd6f4', primary: '#cba6f7' },
+  'catppuccin-latte': {
+    background: '#eff1f5',
+    foreground: '#4c4f69',
+    primary: '#8839ef',
+  },
+  nord: { background: '#2e3440', foreground: '#d8dee9', primary: '#88c0d0' },
+  'tokyo-night': { background: '#1a1b26', foreground: '#c0caf5', primary: '#7aa2f7' },
+  'solarized-dark': { background: '#002b36', foreground: '#93a1a1', primary: '#2aa198' },
 };
 
 export const themeColorSchemes: Record<Theme, 'light' | 'dark'> = {
