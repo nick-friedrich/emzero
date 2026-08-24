@@ -81,6 +81,90 @@ export interface FolderListResult {
   message?: string;
 }
 
+export type FolderMutationResult = FolderListResult;
+
+export interface FolderCreateRequest {
+  name: string;
+  parentPath: string;
+}
+
+export interface FolderRenameRequest {
+  folderPath: string;
+  name: string;
+}
+
+export interface FolderMoveRequest {
+  folderPath: string;
+  parentPath: string;
+  beforePath: string | null;
+}
+
+export type FolderDropMode = 'before' | 'inside' | 'after' | 'root';
+
+export function folderMoveRequestForDrop(
+  folders: MailFolderSummary[],
+  sourcePath: string,
+  targetPath: string | null,
+  mode: FolderDropMode,
+): FolderMoveRequest | null {
+  const source = folders.find((folder) => folder.path === sourcePath);
+  if (!source || !manageableFolder(source)) return null;
+  if (mode === 'root') {
+    return { folderPath: source.path, parentPath: '', beforePath: null };
+  }
+  const target = targetPath
+    ? folders.find((folder) => folder.path === targetPath)
+    : undefined;
+  if (
+    !target ||
+    target.path === source.path ||
+    target.path.startsWith(`${source.path}${source.delimiter}`)
+  ) return null;
+  if (mode === 'inside') {
+    return { folderPath: source.path, parentPath: target.path, beforePath: null };
+  }
+  if (mode === 'before') {
+    return {
+      folderPath: source.path,
+      parentPath: target.parentPath,
+      beforePath: target.path,
+    };
+  }
+  const siblings = folders.filter(
+    (folder) => folder.parentPath === target.parentPath && folder.path !== source.path,
+  );
+  const targetIndex = siblings.findIndex((folder) => folder.path === target.path);
+  return {
+    folderPath: source.path,
+    parentPath: target.parentPath,
+    beforePath: siblings[targetIndex + 1]?.path ?? null,
+  };
+}
+
+export function manageableFolder(folder: MailFolderSummary): boolean {
+  return folder.specialUse === null;
+}
+
+export function orderedFolderTree(folders: MailFolderSummary[]): MailFolderSummary[] {
+  const paths = new Set(folders.map((folder) => folder.path));
+  const children = new Map<string, MailFolderSummary[]>();
+  for (const folder of folders) {
+    const parentPath = paths.has(folder.parentPath) ? folder.parentPath : '';
+    const siblings = children.get(parentPath) ?? [];
+    siblings.push(folder);
+    children.set(parentPath, siblings);
+  }
+  const ordered: MailFolderSummary[] = [];
+  const visit = (parentPath: string) => {
+    for (const folder of children.get(parentPath) ?? []) {
+      ordered.push(folder);
+      visit(folder.path);
+    }
+  };
+  visit('');
+  return ordered;
+}
+
 export interface MailAddressSummary {
   name: string | null;
   address: string | null;
@@ -272,6 +356,10 @@ export const ACCOUNT_CHANNELS = {
   providers: 'providers:list',
   discoverProvider: 'providers:discover',
   listFolders: 'folders:list',
+  createFolder: 'folders:create',
+  renameFolder: 'folders:rename',
+  moveFolder: 'folders:move',
+  deleteFolder: 'folders:delete',
   listMessages: 'messages:list',
   searchMessages: 'messages:search',
   getMessage: 'messages:get',

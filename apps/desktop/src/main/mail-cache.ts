@@ -316,12 +316,16 @@ export class MailCache {
         delimiter = excluded.delimiter,
         special_use = excluded.special_use,
         selectable = excluded.selectable,
-        unread_count = excluded.unread_count,
-        position = excluded.position
+        unread_count = excluded.unread_count
     `);
     const existing = this.#database
-      .prepare('SELECT path FROM folders WHERE account_id = ?')
-      .all(accountId) as Array<{ path: string }>;
+      .prepare('SELECT path, position FROM folders WHERE account_id = ?')
+      .all(accountId) as Array<{ path: string; position: number }>;
+    const existingPaths = new Set(existing.map((folder) => folder.path));
+    let nextPosition = existing.reduce(
+      (maximum, folder) => Math.max(maximum, folder.position + 1),
+      0,
+    );
     const incomingPaths = new Set(folders.map((folder) => folder.path));
     const remove = this.#database.prepare(
       'DELETE FROM folders WHERE account_id = ? AND path = ?',
@@ -329,7 +333,7 @@ export class MailCache {
 
     this.#database.exec('BEGIN');
     try {
-      folders.forEach((folder, position) => {
+      folders.forEach((folder, serverPosition) => {
         upsert.run(
           accountId,
           folder.path,
@@ -339,7 +343,7 @@ export class MailCache {
           folder.specialUse,
           folder.selectable ? 1 : 0,
           folder.unreadCount,
-          position,
+          existingPaths.has(folder.path) ? serverPosition : nextPosition++,
         );
       });
       for (const folder of existing) {
@@ -371,6 +375,38 @@ export class MailCache {
       selectable: Boolean(row.selectable),
       unreadCount: row.unread_count,
     }));
+  }
+
+  reorderFolderSiblings(
+    accountId: string,
+    parentPath: string,
+    orderedPaths: string[],
+  ): void {
+    const siblingPaths = new Set(
+      (
+        this.#database
+          .prepare('SELECT path FROM folders WHERE account_id = ? AND parent_path = ?')
+          .all(accountId, parentPath) as Array<{ path: string }>
+      ).map(({ path }) => path),
+    );
+    if (
+      orderedPaths.length !== siblingPaths.size ||
+      new Set(orderedPaths).size !== orderedPaths.length ||
+      orderedPaths.some((path) => !siblingPaths.has(path))
+    ) {
+      throw new Error('Folder order does not match the destination.');
+    }
+    const update = this.#database.prepare(
+      'UPDATE folders SET position = ? WHERE account_id = ? AND path = ?',
+    );
+    this.#database.exec('BEGIN');
+    try {
+      orderedPaths.forEach((path, position) => update.run(position, accountId, path));
+      this.#database.exec('COMMIT');
+    } catch (error) {
+      this.#database.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   replaceRecentMessages(

@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type DragEvent,
   type FormEvent,
   type ReactNode,
 } from 'react';
@@ -18,6 +19,7 @@ import {
   CircleAlert,
   FileText,
   Folder,
+  GripVertical,
   Inbox,
   LoaderCircle,
   LockKeyhole,
@@ -89,6 +91,8 @@ import type {
   MailSendDraft,
   MailSyncStatus,
   RecipientSuggestion,
+  FolderMutationResult,
+  FolderDropMode,
 } from '../shared/accounts';
 import {
   accountUnreadCount,
@@ -96,6 +100,9 @@ import {
   displayFolderName,
   findArchiveFolder,
   findInboxFolder,
+  folderMoveRequestForDrop,
+  manageableFolder,
+  orderedFolderTree,
 } from '../shared/accounts';
 import {
   groupMessagesWithRelated,
@@ -500,6 +507,10 @@ function FolderIcon({ specialUse }: { specialUse: string | null }) {
     default:
       return <Folder className="size-3" />;
   }
+}
+
+function joinedFolderPath(parentPath: string, name: string, delimiter: string): string {
+  return parentPath ? `${parentPath}${delimiter}${name}` : name;
 }
 
 function UnreadBadge({ count }: { count: number }) {
@@ -3774,6 +3785,94 @@ function MailSearch({
   );
 }
 
+type FolderEditorState =
+  | { kind: 'create'; account: AccountSummary; parentPath: string }
+  | { kind: 'rename'; account: AccountSummary; folder: MailFolderSummary };
+
+function FolderEditorDialog({
+  state,
+  folders,
+  busy,
+  error,
+  onClose,
+  onSubmit,
+}: {
+  state: FolderEditorState;
+  folders: MailFolderSummary[];
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSubmit: (name: string, parentPath: string) => void;
+}) {
+  const [name, setName] = useState(state.kind === 'rename' ? state.folder.name : '');
+  const [parentPath, setParentPath] = useState(
+    state.kind === 'create' ? state.parentPath : state.folder.parentPath,
+  );
+  const create = state.kind === 'create';
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{create ? 'Create folder' : 'Rename folder'}</DialogTitle>
+          <DialogDescription>
+            {create
+              ? `Add a mail folder to ${state.account.name}.`
+              : `Change the name of ${state.folder.name}.`}
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="mt-2 space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (name.trim()) onSubmit(name, parentPath);
+          }}
+        >
+          <Field label="Folder name">
+            <input
+              autoFocus
+              className="field"
+              value={name}
+              maxLength={200}
+              disabled={busy}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </Field>
+          {create && (
+            <Field label="Location">
+              <select
+                className="field"
+                value={parentPath}
+                disabled={busy}
+                onChange={(event) => setParentPath(event.target.value)}
+              >
+                <option value="">Top level</option>
+                {orderedFolderTree(folders).map((folder) => (
+                  <option key={folder.path} value={folder.path}>{folder.path}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+          {error && <p className="text-sm text-danger">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={busy || !name.trim()}>
+              {busy && <LoaderCircle className="size-4 animate-spin" />}
+              {create ? 'Create' : 'Rename'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type FolderDropTarget = {
+  accountId: string;
+  folderPath: string | null;
+  mode: FolderDropMode;
+};
+
 function Sidebar({
   accounts,
   selection,
@@ -3798,6 +3897,136 @@ function Sidebar({
   const { theme, setTheme, interfaceFont, setInterfaceFont } = useTheme();
   const [expanded, setExpanded] = useState(() => new Set<string>());
   const [folderStates, setFolderStates] = useState<Record<string, FolderLoadState>>({});
+  const [folderEditor, setFolderEditor] = useState<FolderEditorState | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    account: AccountSummary;
+    folder: MailFolderSummary;
+  } | null>(null);
+  const [folderBusy, setFolderBusy] = useState(false);
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const [draggedFolder, setDraggedFolder] = useState<{
+    accountId: string;
+    folderPath: string;
+  } | null>(null);
+  const [dropTarget, setDropTarget] = useState<FolderDropTarget | null>(null);
+
+  const applyFolderResult = (accountId: string, result: FolderMutationResult): boolean => {
+    if (!result.ok) {
+      setFolderError(result.message ?? 'The folder could not be updated.');
+      return false;
+    }
+    setFolderStates((current) => ({
+      ...current,
+      [accountId]: { status: 'loaded', folders: result.folders },
+    }));
+    setFolderError(null);
+    return true;
+  };
+
+  const submitFolderEditor = async (name: string, parentPath: string) => {
+    if (!folderEditor || folderBusy) return;
+    setFolderBusy(true);
+    setFolderError(null);
+    try {
+      const result = folderEditor.kind === 'create'
+        ? await window.emzero.folders.create(folderEditor.account.id, { name, parentPath })
+        : await window.emzero.folders.rename(folderEditor.account.id, {
+            folderPath: folderEditor.folder.path,
+            name,
+          });
+      if (!applyFolderResult(folderEditor.account.id, result)) return;
+      if (folderEditor.kind === 'rename' && selection.kind === 'folder') {
+        const { folder } = folderEditor;
+        if (
+          selection.account.id === folderEditor.account.id &&
+          (selection.folder.path === folder.path ||
+            selection.folder.path.startsWith(`${folder.path}${folder.delimiter}`))
+        ) {
+          const nextPath = joinedFolderPath(folder.parentPath, name.trim(), folder.delimiter);
+          const selectedPath = selection.folder.path.replace(folder.path, nextPath);
+          const selectedFolder = result.folders.find((candidate) => candidate.path === selectedPath);
+          if (selectedFolder) onSelect({ kind: 'folder', account: folderEditor.account, folder: selectedFolder });
+        }
+      }
+      setFolderEditor(null);
+    } catch {
+      setFolderError('The folder could not be updated.');
+    } finally {
+      setFolderBusy(false);
+    }
+  };
+
+  const deleteFolder = async () => {
+    if (!deleteTarget || folderBusy) return;
+    setFolderBusy(true);
+    setFolderError(null);
+    try {
+      const result = await window.emzero.folders.delete(
+        deleteTarget.account.id,
+        deleteTarget.folder.path,
+      );
+      if (!applyFolderResult(deleteTarget.account.id, result)) return;
+      if (
+        selection.kind === 'folder' &&
+        selection.account.id === deleteTarget.account.id &&
+        (selection.folder.path === deleteTarget.folder.path ||
+          selection.folder.path.startsWith(
+            `${deleteTarget.folder.path}${deleteTarget.folder.delimiter}`,
+          ))
+      ) {
+        const inbox = findInboxFolder(result.folders);
+        onSelect(inbox
+          ? { kind: 'folder', account: deleteTarget.account, folder: inbox }
+          : { kind: 'unified' });
+      }
+      setDeleteTarget(null);
+    } catch {
+      setFolderError('The folder could not be deleted.');
+    } finally {
+      setFolderBusy(false);
+    }
+  };
+
+  const moveDraggedFolder = async (
+    account: AccountSummary,
+    target: FolderDropTarget,
+  ) => {
+    if (!draggedFolder || draggedFolder.accountId !== account.id || folderBusy) return;
+    const folderState = folderStates[account.id];
+    if (folderState?.status !== 'loaded') return;
+    const source = folderState.folders.find((folder) => folder.path === draggedFolder.folderPath);
+    if (!source) return;
+    const request = folderMoveRequestForDrop(
+      folderState.folders,
+      source.path,
+      target.folderPath,
+      target.mode,
+    );
+    if (!request) return;
+    setFolderBusy(true);
+    setFolderError(null);
+    try {
+      const result = await window.emzero.folders.move(account.id, request);
+      if (!applyFolderResult(account.id, result)) return;
+      if (
+        selection.kind === 'folder' &&
+        selection.account.id === account.id &&
+        (selection.folder.path === source.path ||
+          selection.folder.path.startsWith(`${source.path}${source.delimiter}`))
+      ) {
+        const nextPath = joinedFolderPath(request.parentPath, source.name, source.delimiter);
+        const selectedPath = selection.folder.path.replace(source.path, nextPath);
+        const selectedFolder = result.folders.find((folder) => folder.path === selectedPath);
+        if (selectedFolder) onSelect({ kind: 'folder', account, folder: selectedFolder });
+      }
+    } catch {
+      setFolderError('The folder could not be moved.');
+    } finally {
+      setFolderBusy(false);
+      setDraggedFolder(null);
+      setDropTarget(null);
+    }
+  };
 
   const loadFolders = useCallback(
     (accountId: string, onLoaded?: (folders: MailFolderSummary[]) => void) => {
@@ -3891,9 +4120,11 @@ function Sidebar({
       else loadFolders(account.id, selectInbox);
     }
   };
+  const editorFolderState = folderEditor ? folderStates[folderEditor.account.id] : undefined;
 
   return (
-    <aside
+    <>
+      <aside
       className={cn(
         'flex min-h-0 flex-col overflow-y-auto border-r border-border bg-sidebar p-4',
         className,
@@ -3996,32 +4227,154 @@ function Sidebar({
                         </button>
                       )}
                       {folderState?.status === 'loaded' &&
-                        folderState.folders.map((folder) => {
+                        orderedFolderTree(folderState.folders).map((folder) => {
                           const depth = folder.parentPath
                             ? folder.parentPath.split(folder.delimiter).length
                             : 0;
+                          const canManage = manageableFolder(folder);
                           const isSelected =
                             selection.kind === 'folder' &&
                             selection.account.id === account.id &&
                             selection.folder.path === folder.path;
                           return (
-                            <Button
+                            <div
                               key={folder.path}
-                              variant={isSelected ? 'secondary' : 'ghost'}
-                              className="h-7 w-full justify-start gap-1.5 px-2 font-normal"
-                              style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
-                              disabled={!folder.selectable}
-                              title={folder.path}
-                              onClick={() => onSelect({ kind: 'folder', account, folder })}
+                              className={cn(
+                                'group/folder relative flex rounded-md',
+                                dropTarget?.accountId === account.id &&
+                                  dropTarget.folderPath === folder.path &&
+                                  dropTarget.mode === 'inside' && 'bg-primary/12 ring-1 ring-inset ring-primary/50',
+                                dropTarget?.accountId === account.id &&
+                                  dropTarget.folderPath === folder.path &&
+                                  dropTarget.mode === 'before' && 'before:absolute before:inset-x-1 before:top-0 before:h-0.5 before:bg-primary',
+                                dropTarget?.accountId === account.id &&
+                                  dropTarget.folderPath === folder.path &&
+                                  dropTarget.mode === 'after' && 'after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:bg-primary',
+                                draggedFolder?.accountId === account.id &&
+                                  draggedFolder.folderPath === folder.path && 'opacity-45',
+                              )}
+                              draggable={canManage && !folderBusy}
+                              onDragStart={(event) => {
+                                if (!canManage) return;
+                                event.dataTransfer.effectAllowed = 'move';
+                                event.dataTransfer.setData('text/plain', folder.path);
+                                setDraggedFolder({ accountId: account.id, folderPath: folder.path });
+                              }}
+                              onDragEnd={() => {
+                                setDraggedFolder(null);
+                                setDropTarget(null);
+                              }}
+                              onDragOver={(event: DragEvent<HTMLDivElement>) => {
+                                if (!draggedFolder || draggedFolder.accountId !== account.id) return;
+                                const source = folderState.folders.find(
+                                  (candidate) => candidate.path === draggedFolder.folderPath,
+                                );
+                                if (
+                                  !source ||
+                                  folder.path === source.path ||
+                                  folder.path.startsWith(`${source.path}${source.delimiter}`)
+                                ) return;
+                                event.preventDefault();
+                                const bounds = event.currentTarget.getBoundingClientRect();
+                                const ratio = (event.clientY - bounds.top) / bounds.height;
+                                const mode = ratio < 0.28 ? 'before' : ratio > 0.72 ? 'after' : 'inside';
+                                event.dataTransfer.dropEffect = 'move';
+                                setDropTarget({ accountId: account.id, folderPath: folder.path, mode });
+                              }}
+                              onDrop={(event) => {
+                                event.preventDefault();
+                                if (dropTarget) void moveDraggedFolder(account, dropTarget);
+                              }}
                             >
-                              <FolderIcon specialUse={folder.specialUse} />
-                              <span className="min-w-0 flex-1 truncate text-left text-xs leading-4">
-                                {displayFolderName(folder)}
-                              </span>
-                              <UnreadBadge count={folder.unreadCount ?? 0} />
-                            </Button>
+                              <Button
+                                variant={isSelected ? 'secondary' : 'ghost'}
+                                className="h-7 min-w-0 flex-1 justify-start gap-1.5 px-2 font-normal"
+                                style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
+                                disabled={!folder.selectable}
+                                title={canManage ? `${folder.path} · drag to move` : folder.path}
+                                onClick={() => onSelect({ kind: 'folder', account, folder })}
+                              >
+                                {canManage && <GripVertical className="size-3 cursor-grab text-muted-foreground opacity-0 group-hover/folder:opacity-100" />}
+                                <FolderIcon specialUse={folder.specialUse} />
+                                <span className="min-w-0 flex-1 truncate text-left text-xs leading-4">
+                                  {displayFolderName(folder)}
+                                </span>
+                                <UnreadBadge count={folder.unreadCount ?? 0} />
+                              </Button>
+                              {canManage && (
+                                <div className="absolute right-1 top-0.5 flex bg-sidebar opacity-0 group-hover/folder:opacity-100 focus-within:opacity-100">
+                                  <Button
+                                    variant="ghost"
+                                    className="size-6 px-0"
+                                    aria-label={`Rename ${folder.name}`}
+                                    title="Rename folder"
+                                    disabled={folderBusy}
+                                    onClick={() => {
+                                      setFolderError(null);
+                                      setFolderEditor({ kind: 'rename', account, folder });
+                                    }}
+                                  >
+                                    <PenLine className="size-3" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    className="size-6 px-0 text-danger hover:text-danger"
+                                    aria-label={`Delete ${folder.name}`}
+                                    title="Delete folder"
+                                    disabled={folderBusy}
+                                    onClick={() => {
+                                      setFolderError(null);
+                                      setDeleteTarget({ account, folder });
+                                    }}
+                                  >
+                                    <Trash2 className="size-3" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
                           );
                         })}
+                      {folderState?.status === 'loaded' && draggedFolder?.accountId === account.id && (
+                        <div
+                          className={cn(
+                            'mx-1 mt-1 rounded-md border border-dashed px-2 py-1.5 text-center text-[0.68rem] text-muted-foreground',
+                            dropTarget?.accountId === account.id && dropTarget.mode === 'root' &&
+                              'border-primary bg-primary/10 text-foreground',
+                          )}
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                            event.dataTransfer.dropEffect = 'move';
+                            setDropTarget({ accountId: account.id, folderPath: null, mode: 'root' });
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            void moveDraggedFolder(account, {
+                              accountId: account.id,
+                              folderPath: null,
+                              mode: 'root',
+                            });
+                          }}
+                        >
+                          Move to top level
+                        </div>
+                      )}
+                      {folderState?.status === 'loaded' && (
+                        <Button
+                          variant="ghost"
+                          className="mt-1 h-7 w-full justify-start px-2 text-xs text-muted-foreground"
+                          disabled={folderBusy}
+                          onClick={() => {
+                            setFolderError(null);
+                            setFolderEditor({ kind: 'create', account, parentPath: '' });
+                          }}
+                        >
+                          <Plus className="size-3.5" />
+                          New folder
+                        </Button>
+                      )}
+                      {folderError && isExpanded && (
+                        <p className="px-2 py-1.5 text-xs text-danger">{folderError}</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -4096,7 +4449,60 @@ function Sidebar({
           Add account
         </Button>
       </div>
-    </aside>
+      </aside>
+      {folderEditor && (
+        <FolderEditorDialog
+          key={folderEditor.kind === 'create'
+            ? `create:${folderEditor.account.id}:${folderEditor.parentPath}`
+            : `rename:${folderEditor.account.id}:${folderEditor.folder.path}`}
+          state={folderEditor}
+          folders={editorFolderState?.status === 'loaded'
+            ? editorFolderState.folders
+            : []}
+          busy={folderBusy}
+          error={folderError}
+          onClose={() => {
+            setFolderEditor(null);
+            setFolderError(null);
+          }}
+          onSubmit={(name, parentPath) => void submitFolderEditor(name, parentPath)}
+        />
+      )}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !folderBusy) {
+            setDeleteTarget(null);
+            setFolderError(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete “{deleteTarget?.folder.name}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The folder and any messages it contains will be deleted from the mail server. This
+              cannot be undone in Emzero.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {folderError && <p className="text-sm text-danger">{folderError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={folderBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={folderBusy}
+              onClick={(event) => {
+                event.preventDefault();
+                void deleteFolder();
+              }}
+            >
+              {folderBusy && <LoaderCircle className="size-4 animate-spin" />}
+              Delete folder
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

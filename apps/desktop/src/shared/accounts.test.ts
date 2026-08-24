@@ -6,6 +6,9 @@ import {
   displayFolderName,
   findArchiveFolder,
   findInboxFolder,
+  folderMoveRequestForDrop,
+  manageableFolder,
+  orderedFolderTree,
   type AccountDraft,
   type MailFolderSummary,
   validateAccountDraft,
@@ -131,6 +134,63 @@ describe('accountUnreadCount', () => {
         folder('Container', 8, null, false),
       ]),
     ).toBe(5);
+  });
+});
+
+describe('folder organization', () => {
+  const folder = (
+    path: string,
+    parentPath = '',
+    specialUse: string | null = null,
+  ): MailFolderSummary => ({
+    path,
+    name: path.split('/').at(-1)!,
+    parentPath,
+    delimiter: '/',
+    specialUse,
+    selectable: true,
+    unreadCount: 0,
+  });
+
+  it('places descendants directly after their parents while retaining sibling order', () => {
+    const inbox = folder('INBOX', '', '\\Inbox');
+    const projects = folder('Projects');
+    const receipts = folder('Receipts');
+    const alpha = folder('Projects/Alpha', 'Projects');
+    const notes = folder('Projects/Alpha/Notes', 'Projects/Alpha');
+
+    expect(orderedFolderTree([inbox, projects, receipts, alpha, notes]).map(({ path }) => path))
+      .toEqual(['INBOX', 'Projects', 'Projects/Alpha', 'Projects/Alpha/Notes', 'Receipts']);
+  });
+
+  it('only allows custom folders to be renamed, moved, or deleted', () => {
+    expect(manageableFolder(folder('Projects'))).toBe(true);
+    expect(manageableFolder(folder('INBOX', '', '\\Inbox'))).toBe(false);
+  });
+
+  it('translates edge, center, and root drops into hierarchy moves', () => {
+    const projects = folder('Projects');
+    const alpha = folder('Projects/Alpha', 'Projects');
+    const beta = folder('Projects/Beta', 'Projects');
+    const receipts = folder('Receipts');
+    const folders = [projects, alpha, beta, receipts];
+
+    expect(folderMoveRequestForDrop(folders, 'Receipts', 'Projects', 'inside')).toEqual({
+      folderPath: 'Receipts',
+      parentPath: 'Projects',
+      beforePath: null,
+    });
+    expect(folderMoveRequestForDrop(folders, 'Projects/Beta', 'Projects/Alpha', 'before')).toEqual({
+      folderPath: 'Projects/Beta',
+      parentPath: 'Projects',
+      beforePath: 'Projects/Alpha',
+    });
+    expect(folderMoveRequestForDrop(folders, 'Projects/Alpha', null, 'root')).toEqual({
+      folderPath: 'Projects/Alpha',
+      parentPath: '',
+      beforePath: null,
+    });
+    expect(folderMoveRequestForDrop(folders, 'Projects', 'Projects/Alpha', 'inside')).toBeNull();
   });
 });
 

@@ -63,6 +63,27 @@ describe('MailCache', () => {
     expect(cache.listFolders('account-1')).toEqual([inbox, archive]);
   });
 
+  it('persists custom sibling order across server folder refreshes', () => {
+    cache = new MailCache(':memory:');
+    const alpha = { ...inbox, path: 'Alpha', name: 'Alpha', specialUse: null };
+    const beta = { ...inbox, path: 'Beta', name: 'Beta', specialUse: null };
+    cache.replaceFolders('account-1', [inbox, alpha, beta]);
+
+    cache.reorderFolderSiblings('account-1', '', ['Beta', 'INBOX', 'Alpha']);
+    expect(cache.listFolders('account-1').map(({ path }) => path)).toEqual([
+      'Beta',
+      'INBOX',
+      'Alpha',
+    ]);
+
+    cache.replaceFolders('account-1', [inbox, alpha, beta]);
+    expect(cache.listFolders('account-1').map(({ path }) => path)).toEqual([
+      'Beta',
+      'INBOX',
+      'Alpha',
+    ]);
+  });
+
   it('stores message summaries and sync metadata newest first', () => {
     cache = new MailCache(':memory:');
     cache.replaceFolders('account-1', [inbox]);

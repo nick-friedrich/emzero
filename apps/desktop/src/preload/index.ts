@@ -9,6 +9,10 @@ import {
   type BulkMessageJobRequest,
   type BulkMessageJobStartResult,
   type FolderListResult,
+  type FolderCreateRequest,
+  type FolderMoveRequest,
+  type FolderMutationResult,
+  type FolderRenameRequest,
   type MessageListResult,
   type MessageDetailResult,
   type MessageOperationResult,
@@ -34,6 +38,10 @@ export interface EmzeroDesktopApi {
   };
   folders: {
     list: (accountId: string, refresh?: boolean) => Promise<FolderListResult>;
+    create: (accountId: string, request: FolderCreateRequest) => Promise<FolderMutationResult>;
+    rename: (accountId: string, request: FolderRenameRequest) => Promise<FolderMutationResult>;
+    move: (accountId: string, request: FolderMoveRequest) => Promise<FolderMutationResult>;
+    delete: (accountId: string, folderPath: string) => Promise<FolderMutationResult>;
   };
   messages: {
     list: (accountId: string, folderPath: string, refresh?: boolean) => Promise<MessageListResult>;
@@ -86,6 +94,14 @@ contextBridge.exposeInMainWorld('emzero', {
   folders: {
     list: (accountId, refresh = false) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.listFolders, accountId, refresh),
+    create: (accountId, request) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.createFolder, accountId, request),
+    rename: (accountId, request) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.renameFolder, accountId, request),
+    move: (accountId, request) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.moveFolder, accountId, request),
+    delete: (accountId, folderPath) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.deleteFolder, accountId, folderPath),
   },
   messages: {
     list: (accountId, folderPath, refresh = false) =>

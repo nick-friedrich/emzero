@@ -9,6 +9,7 @@ import {
   ACCOUNT_CHANNELS,
   chunkMessageUids,
   findArchiveFolder,
+  manageableFolder,
   type AccountDraft,
   type AccountOperationResult,
   type AccountNameUpdate,
@@ -19,6 +20,10 @@ import {
   type BulkMessageJobRequest,
   type BulkMessageJobStartResult,
   type FolderListResult,
+  type FolderCreateRequest,
+  type FolderMoveRequest,
+  type FolderMutationResult,
+  type FolderRenameRequest,
   type MailAddressSummary,
   type MailFolderSummary,
   type MailMessageDetail,
@@ -226,6 +231,22 @@ async function decryptPassword(account: StoredAccount): Promise<string> {
   return result;
 }
 
+async function refreshedFolders(imap: ImapFlow, accountId: string): Promise<MailFolderSummary[]> {
+  const folders: MailFolderSummary[] = (
+    await imap.list({ statusQuery: { unseen: true } })
+  ).map((folder) => ({
+    path: folder.path,
+    name: folder.name,
+    parentPath: folder.parentPath,
+    delimiter: folder.delimiter,
+    specialUse: folder.specialUse ?? null,
+    selectable: !folder.flags.has('\\Noselect'),
+    unreadCount: folder.status?.unseen ?? 0,
+  }));
+  mailCache().replaceFolders(accountId, folders);
+  return mailCache().listFolders(accountId);
+}
+
 async function listAccountFolders(
   account: StoredAccount,
   refresh = false,
@@ -251,18 +272,7 @@ async function listAccountFolders(
       socketTimeout: 15_000,
     });
     await imap.connect();
-    const folders: MailFolderSummary[] = (
-      await imap.list({ statusQuery: { unseen: true } })
-    ).map((folder) => ({
-      path: folder.path,
-      name: folder.name,
-      parentPath: folder.parentPath,
-      delimiter: folder.delimiter,
-      specialUse: folder.specialUse ?? null,
-      selectable: !folder.flags.has('\\Noselect'),
-      unreadCount: folder.status?.unseen ?? 0,
-    }));
-    mailCache().replaceFolders(account.id, folders);
+    const folders = await refreshedFolders(imap, account.id);
     return { ok: true, folders, source: 'server' };
   } catch (error) {
     if (cachedFolders.length > 0) {
@@ -282,6 +292,183 @@ async function listAccountFolders(
     if (imap?.usable) await imap.logout().catch(() => imap?.close());
     else imap?.close();
   }
+}
+
+function validFolderName(name: string, delimiter: string): boolean {
+  const trimmed = name.trim();
+  return Boolean(trimmed) &&
+    trimmed.length <= 200 &&
+    !trimmed.includes(delimiter) &&
+    !/[\r\n\0]/.test(trimmed);
+}
+
+function folderPath(parentPath: string, name: string, delimiter: string): string {
+  return parentPath ? `${parentPath}${delimiter}${name}` : name;
+}
+
+async function mutateAccountFolders(
+  account: StoredAccount,
+  operation: (imap: ImapFlow) => Promise<void>,
+): Promise<FolderMutationResult> {
+  let password = '';
+  let imap: ImapFlow | null = null;
+  try {
+    password = await decryptPassword(account);
+    imap = new ImapFlow({
+      host: account.imap.host,
+      port: account.imap.port,
+      secure: account.imap.secure,
+      auth: { user: account.username, pass: password },
+      logger: false,
+      connectionTimeout: 12_000,
+      greetingTimeout: 12_000,
+      socketTimeout: 20_000,
+    });
+    await imap.connect();
+    await operation(imap);
+    return { ok: true, folders: await refreshedFolders(imap, account.id), source: 'server' };
+  } catch (error) {
+    return {
+      ok: false,
+      folders: mailCache().listFolders(account.id),
+      message: `Could not update folders: ${errorMessage(error, password)}`,
+    };
+  } finally {
+    if (imap?.usable) await imap.logout().catch(() => imap?.close());
+    else imap?.close();
+  }
+}
+
+async function createAccountFolder(
+  account: StoredAccount,
+  request: FolderCreateRequest,
+): Promise<FolderMutationResult> {
+  const folders = mailCache().listFolders(account.id);
+  const parent = request.parentPath
+    ? folders.find((folder) => folder.path === request.parentPath)
+    : undefined;
+  if (request.parentPath && !parent) {
+    return { ok: false, folders, message: 'The parent folder no longer exists.' };
+  }
+  const delimiter = parent?.delimiter ?? folders[0]?.delimiter ?? '/';
+  const name = request.name.trim();
+  if (!validFolderName(name, delimiter)) {
+    return { ok: false, folders, message: `Folder names cannot contain “${delimiter}”.` };
+  }
+  const path = folderPath(request.parentPath, name, delimiter);
+  if (folders.some((folder) => folder.path === path)) {
+    return { ok: false, folders, message: 'A folder with this name already exists here.' };
+  }
+  return mutateAccountFolders(account, async (imap) => {
+    await imap.mailboxCreate(path);
+  });
+}
+
+async function renameAccountFolder(
+  account: StoredAccount,
+  request: FolderRenameRequest,
+): Promise<FolderMutationResult> {
+  const folders = mailCache().listFolders(account.id);
+  const folder = folders.find((candidate) => candidate.path === request.folderPath);
+  if (!folder || !manageableFolder(folder)) {
+    return { ok: false, folders, message: 'This provider-managed folder cannot be renamed.' };
+  }
+  const name = request.name.trim();
+  if (!validFolderName(name, folder.delimiter)) {
+    return { ok: false, folders, message: `Folder names cannot contain “${folder.delimiter}”.` };
+  }
+  const nextPath = folderPath(folder.parentPath, name, folder.delimiter);
+  if (nextPath === folder.path) return { ok: true, folders, source: 'cache' };
+  if (folders.some((candidate) => candidate.path === nextPath)) {
+    return { ok: false, folders, message: 'A folder with this name already exists here.' };
+  }
+  const siblings = folders.filter((candidate) => candidate.parentPath === folder.parentPath);
+  const currentIndex = siblings.findIndex((candidate) => candidate.path === folder.path);
+  const beforePath = siblings[currentIndex + 1]?.path ?? null;
+  const result = await mutateAccountFolders(account, async (imap) => {
+    await imap.mailboxRename(folder.path, nextPath);
+  });
+  if (!result.ok) return result;
+  const orderedPaths = result.folders
+    .filter((candidate) => candidate.parentPath === folder.parentPath && candidate.path !== nextPath)
+    .map((candidate) => candidate.path);
+  const beforeIndex = beforePath ? orderedPaths.indexOf(beforePath) : orderedPaths.length;
+  orderedPaths.splice(beforeIndex < 0 ? orderedPaths.length : beforeIndex, 0, nextPath);
+  mailCache().reorderFolderSiblings(account.id, folder.parentPath, orderedPaths);
+  return { ...result, folders: mailCache().listFolders(account.id) };
+}
+
+async function moveAccountFolder(
+  account: StoredAccount,
+  request: FolderMoveRequest,
+): Promise<FolderMutationResult> {
+  const folders = mailCache().listFolders(account.id);
+  const folder = folders.find((candidate) => candidate.path === request.folderPath);
+  if (!folder || !manageableFolder(folder)) {
+    return { ok: false, folders, message: 'This provider-managed folder cannot be moved.' };
+  }
+  const parent = request.parentPath
+    ? folders.find((candidate) => candidate.path === request.parentPath)
+    : undefined;
+  if (request.parentPath && !parent) {
+    return { ok: false, folders, message: 'The destination folder no longer exists.' };
+  }
+  if (
+    request.parentPath === folder.path ||
+    (request.parentPath && request.parentPath.startsWith(`${folder.path}${folder.delimiter}`))
+  ) {
+    return { ok: false, folders, message: 'A folder cannot be moved inside itself.' };
+  }
+  const nextPath = folderPath(request.parentPath, folder.name, folder.delimiter);
+  if (nextPath !== folder.path && folders.some((candidate) => candidate.path === nextPath)) {
+    return { ok: false, folders, message: 'A folder with this name already exists there.' };
+  }
+
+  const applyOrder = (freshFolders: MailFolderSummary[], movedPath: string) => {
+    const siblings = freshFolders
+      .filter((candidate) => candidate.parentPath === request.parentPath && candidate.path !== movedPath)
+      .map((candidate) => candidate.path);
+    const beforeIndex = request.beforePath ? siblings.indexOf(request.beforePath) : siblings.length;
+    if (request.beforePath && beforeIndex < 0) {
+      throw new Error('The drop position is no longer available.');
+    }
+    siblings.splice(beforeIndex, 0, movedPath);
+    mailCache().reorderFolderSiblings(account.id, request.parentPath, siblings);
+  };
+
+  if (nextPath === folder.path) {
+    try {
+      applyOrder(folders, folder.path);
+      return { ok: true, folders: mailCache().listFolders(account.id), source: 'cache' };
+    } catch (error) {
+      return { ok: false, folders, message: errorMessage(error, '') };
+    }
+  }
+
+  const result = await mutateAccountFolders(account, async (imap) => {
+    await imap.mailboxRename(folder.path, nextPath);
+  });
+  if (!result.ok) return result;
+  try {
+    applyOrder(result.folders, nextPath);
+    return { ...result, folders: mailCache().listFolders(account.id) };
+  } catch (error) {
+    return { ok: false, folders: result.folders, message: errorMessage(error, '') };
+  }
+}
+
+async function deleteAccountFolder(
+  account: StoredAccount,
+  targetPath: string,
+): Promise<FolderMutationResult> {
+  const folders = mailCache().listFolders(account.id);
+  const folder = folders.find((candidate) => candidate.path === targetPath);
+  if (!folder || !manageableFolder(folder)) {
+    return { ok: false, folders, message: 'This provider-managed folder cannot be deleted.' };
+  }
+  return mutateAccountFolders(account, async (imap) => {
+    await imap.mailboxDelete(folder.path);
+  });
 }
 
 function addresses(
@@ -1116,6 +1303,67 @@ export function registerAccountHandlers(): void {
       return { ok: false, folders: [], message: 'Account not found.' } satisfies FolderListResult;
     }
     return listAccountFolders(account, refresh === true);
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.createFolder, async (event, accountId: unknown, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    const request = value as Partial<FolderCreateRequest> | null;
+    if (
+      typeof accountId !== 'string' ||
+      !request ||
+      typeof request.name !== 'string' ||
+      typeof request.parentPath !== 'string'
+    ) {
+      return { ok: false, folders: [], message: 'Invalid folder.' } satisfies FolderMutationResult;
+    }
+    const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+    if (!account) return { ok: false, folders: [], message: 'Account not found.' } satisfies FolderMutationResult;
+    return createAccountFolder(account, request as FolderCreateRequest);
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.renameFolder, async (event, accountId: unknown, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    const request = value as Partial<FolderRenameRequest> | null;
+    if (
+      typeof accountId !== 'string' ||
+      !request ||
+      typeof request.folderPath !== 'string' ||
+      !request.folderPath ||
+      typeof request.name !== 'string'
+    ) {
+      return { ok: false, folders: [], message: 'Invalid folder.' } satisfies FolderMutationResult;
+    }
+    const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+    if (!account) return { ok: false, folders: [], message: 'Account not found.' } satisfies FolderMutationResult;
+    return renameAccountFolder(account, request as FolderRenameRequest);
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.moveFolder, async (event, accountId: unknown, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    const request = value as Partial<FolderMoveRequest> | null;
+    if (
+      typeof accountId !== 'string' ||
+      !request ||
+      typeof request.folderPath !== 'string' ||
+      !request.folderPath ||
+      typeof request.parentPath !== 'string' ||
+      (request.beforePath !== null && typeof request.beforePath !== 'string')
+    ) {
+      return { ok: false, folders: [], message: 'Invalid folder move.' } satisfies FolderMutationResult;
+    }
+    const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+    if (!account) return { ok: false, folders: [], message: 'Account not found.' } satisfies FolderMutationResult;
+    return moveAccountFolder(account, request as FolderMoveRequest);
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.deleteFolder, async (event, accountId: unknown, folderPath: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (typeof accountId !== 'string' || typeof folderPath !== 'string' || !folderPath) {
+      return { ok: false, folders: [], message: 'Invalid folder.' } satisfies FolderMutationResult;
+    }
+    const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+    if (!account) return { ok: false, folders: [], message: 'Account not found.' } satisfies FolderMutationResult;
+    return deleteAccountFolder(account, folderPath);
   });
 
   ipcMain.handle(
