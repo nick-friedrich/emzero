@@ -635,16 +635,16 @@ async function performConversationAction(
   return result.ok ? null : result.message ?? 'The action could not be completed.';
 }
 
-function conversationWithUnread(
+function conversationWithUnreadValues(
   conversation: MailConversation,
-  folderPath: string,
-  unread: boolean,
+  unreadByMessage: ReadonlyMap<string, boolean>,
 ): MailConversation {
   return {
     ...conversation,
-    messages: conversation.messages.map((message) =>
-      message.folderPath === folderPath ? { ...message, unread } : message,
-    ),
+    messages: conversation.messages.map((message) => {
+      const unread = unreadByMessage.get(`${message.folderPath}:${message.uid}`);
+      return unread === undefined ? message : { ...message, unread };
+    }),
   };
 }
 
@@ -1227,7 +1227,8 @@ function MessageList({ selection }: { selection: FolderSelection }) {
   const [state, setState] = useState<MessageLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedConversation, setSelectedConversation] = useState<MailConversation | null>(null);
-  const [busyConversation, setBusyConversation] = useState<string | null>(null);
+  const pendingActions = useRef(new Set<string>());
+  const [busyConversations, setBusyConversations] = useState<ReadonlySet<string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1308,8 +1309,46 @@ function MessageList({ selection }: { selection: FolderSelection }) {
       : [];
 
   const runAction = async (conversation: MailConversation, action: ConversationAction) => {
-    setBusyConversation(conversation.id);
+    if (pendingActions.current.has(conversation.id)) return;
+    pendingActions.current.add(conversation.id);
+    setBusyConversations((current) => new Set(current).add(conversation.id));
     setActionError(null);
+    const keys = new Set(
+      conversation.messages
+        .filter((message) => message.folderPath === selection.folder.path)
+        .map((message) => `${message.folderPath}:${message.uid}`),
+    );
+    const previousUnread = new Map(
+      conversation.messages
+        .filter((message) => keys.has(`${message.folderPath}:${message.uid}`))
+        .map((message) => [`${message.folderPath}:${message.uid}`, message.unread]),
+    );
+    const updateUnread = (unreadByMessage: ReadonlyMap<string, boolean>) => {
+      const update = (message: MailMessageSummary) => {
+        const unread = unreadByMessage.get(`${message.folderPath}:${message.uid}`);
+        return unread === undefined ? message : { ...message, unread };
+      };
+      setState((current) =>
+        current.status === 'loaded'
+          ? {
+              ...current,
+              messages: current.messages.map(update),
+              relatedMessages: current.relatedMessages.map(update),
+            }
+          : current,
+      );
+      setSelectedConversation((current) =>
+        current?.id === conversation.id
+          ? conversationWithUnreadValues(current, unreadByMessage)
+          : current,
+      );
+    };
+
+    if (action !== 'delete') {
+      const unread = action === 'unread';
+      updateUnread(new Map([...keys].map((key) => [key, unread])));
+    }
+
     try {
       const error = await performConversationAction(
         selection.account.id,
@@ -1319,13 +1358,9 @@ function MessageList({ selection }: { selection: FolderSelection }) {
       );
       if (error) {
         setActionError(error);
+        if (action !== 'delete') updateUnread(previousUnread);
         return;
       }
-      const keys = new Set(
-        conversation.messages
-          .filter((message) => message.folderPath === selection.folder.path)
-          .map((message) => `${message.folderPath}:${message.uid}`),
-      );
       if (action === 'delete') {
         setState((current) =>
           current.status === 'loaded'
@@ -1348,27 +1383,17 @@ function MessageList({ selection }: { selection: FolderSelection }) {
             : current,
         );
         setSelectedConversation(null);
-      } else {
-        const unread = action === 'unread';
-        const update = (message: MailMessageSummary) =>
-          keys.has(`${message.folderPath}:${message.uid}`) ? { ...message, unread } : message;
-        setState((current) =>
-          current.status === 'loaded'
-            ? {
-                ...current,
-                messages: current.messages.map(update),
-                relatedMessages: current.relatedMessages.map(update),
-              }
-            : current,
-        );
-        setSelectedConversation((current) =>
-          current ? conversationWithUnread(current, selection.folder.path, unread) : current,
-        );
       }
     } catch {
       setActionError('The action could not be completed.');
+      if (action !== 'delete') updateUnread(previousUnread);
     } finally {
-      setBusyConversation(null);
+      pendingActions.current.delete(conversation.id);
+      setBusyConversations((current) => {
+        const next = new Set(current);
+        next.delete(conversation.id);
+        return next;
+      });
     }
   };
 
@@ -1379,7 +1404,7 @@ function MessageList({ selection }: { selection: FolderSelection }) {
         selection={selection}
         conversation={selectedConversation}
         onBack={() => setSelectedConversation(null)}
-        busy={busyConversation === selectedConversation.id}
+        busy={busyConversations.has(selectedConversation.id)}
         actionError={actionError}
         onSetUnread={(unread) =>
           void runAction(selectedConversation, unread ? 'unread' : 'read')
@@ -1554,7 +1579,7 @@ function MessageList({ selection }: { selection: FolderSelection }) {
                 <div className="pr-3 lg:pr-5">
                   <ConversationActions
                     unread={unread}
-                    busy={busyConversation === conversation.id}
+                    busy={busyConversations.has(conversation.id)}
                     confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
                     onSetUnread={(nextUnread) =>
                       void runAction(conversation, nextUnread ? 'unread' : 'read')
@@ -1582,7 +1607,8 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
   const [state, setState] = useState<UnifiedInboxLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedItem, setSelectedItem] = useState<UnifiedConversationItem | null>(null);
-  const [busyConversation, setBusyConversation] = useState<string | null>(null);
+  const pendingActions = useRef(new Set<string>());
+  const [busyConversations, setBusyConversations] = useState<ReadonlySet<string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1698,8 +1724,39 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
 
   const runAction = async (item: UnifiedConversationItem, action: ConversationAction) => {
     const key = itemKey(item);
-    setBusyConversation(key);
+    if (pendingActions.current.has(key)) return;
+    pendingActions.current.add(key);
+    setBusyConversations((current) => new Set(current).add(key));
     setActionError(null);
+    const previousUnread = new Map(
+      item.conversation.messages
+        .filter((message) => message.folderPath === item.selection.folder.path)
+        .map((message) => [`${message.folderPath}:${message.uid}`, message.unread]),
+    );
+    const updateUnread = (unreadByMessage: ReadonlyMap<string, boolean>) => {
+      const updateItem = (candidate: UnifiedConversationItem): UnifiedConversationItem =>
+        itemKey(candidate) === key
+          ? {
+              ...candidate,
+              conversation: conversationWithUnreadValues(
+                candidate.conversation,
+                unreadByMessage,
+              ),
+            }
+          : candidate;
+      setState((current) =>
+        current.status === 'loaded'
+          ? { ...current, items: current.items.map(updateItem) }
+          : current,
+      );
+      setSelectedItem((current) => (current ? updateItem(current) : current));
+    };
+
+    if (action !== 'delete') {
+      const unread = action === 'unread';
+      updateUnread(new Map([...previousUnread.keys()].map((messageKey) => [messageKey, unread])));
+    }
+
     try {
       const error = await performConversationAction(
         item.selection.account.id,
@@ -1709,6 +1766,7 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
       );
       if (error) {
         setActionError(error);
+        if (action !== 'delete') updateUnread(previousUnread);
         return;
       }
       if (action === 'delete') {
@@ -1735,32 +1793,17 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
             : current,
         );
         setSelectedItem(null);
-      } else {
-        const unread = action === 'unread';
-        const updatedItem = {
-          ...item,
-          conversation: conversationWithUnread(
-            item.conversation,
-            item.selection.folder.path,
-            unread,
-          ),
-        };
-        setState((current) =>
-          current.status === 'loaded'
-            ? {
-                ...current,
-                items: current.items.map((candidate) =>
-                  itemKey(candidate) === key ? updatedItem : candidate,
-                ),
-              }
-            : current,
-        );
-        setSelectedItem((current) => (current && itemKey(current) === key ? updatedItem : current));
       }
     } catch {
       setActionError('The action could not be completed.');
+      if (action !== 'delete') updateUnread(previousUnread);
     } finally {
-      setBusyConversation(null);
+      pendingActions.current.delete(key);
+      setBusyConversations((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
     }
   };
 
@@ -1771,7 +1814,7 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
         selection={selectedItem.selection}
         conversation={selectedItem.conversation}
         onBack={() => setSelectedItem(null)}
-        busy={busyConversation === itemKey(selectedItem)}
+        busy={busyConversations.has(itemKey(selectedItem))}
         actionError={actionError}
         onSetUnread={(unread) =>
           void runAction(selectedItem, unread ? 'unread' : 'read')
@@ -1958,7 +2001,7 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
                 <div className="pr-3 lg:pr-5">
                   <ConversationActions
                     unread={unread}
-                    busy={busyConversation === itemKey(item)}
+                    busy={busyConversations.has(itemKey(item))}
                     confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
                     onSetUnread={(nextUnread) =>
                       void runAction(item, nextUnread ? 'unread' : 'read')
