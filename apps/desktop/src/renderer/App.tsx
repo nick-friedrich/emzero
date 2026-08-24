@@ -952,11 +952,11 @@ function ReplyComposer({
           >
             {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
             Send reply
-            <kbd className="ml-1 rounded border border-primary-foreground/30 px-1.5 py-0.5 text-[0.62rem] font-normal">
-              {sendShortcutLabel()}
-            </kbd>
           </Button>
         </div>
+        <p className="mt-2 text-right text-[0.68rem] text-muted-foreground">
+          Send with {sendShortcutLabel()}
+        </p>
       </form>
       <AlertDialog
         open={confirmationOpen}
@@ -2486,11 +2486,11 @@ function ComposeDialog({
             >
               {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
               Send
-              <kbd className="ml-1 rounded border border-primary-foreground/30 px-1.5 py-0.5 text-[0.62rem] font-normal">
-                {sendShortcutLabel()}
-              </kbd>
             </Button>
           </div>
+          <p className="text-right text-[0.68rem] text-muted-foreground">
+            Send with {sendShortcutLabel()}
+          </p>
         </form>
       </DialogContent>
       <AlertDialog
