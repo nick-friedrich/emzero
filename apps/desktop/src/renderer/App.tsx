@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import {
   Archive,
   ArrowLeft,
@@ -106,6 +114,31 @@ function storedSkipSendConfirmation(): boolean {
   } catch {
     return false;
   }
+}
+
+function sendShortcutLabel(): string {
+  return window.emzero.platform === 'darwin' ? '⌘ + Enter' : 'Ctrl + Enter';
+}
+
+function useSendShortcut(enabled: boolean, onSend: () => void): void {
+  useEffect(() => {
+    if (!enabled) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        event.key !== 'Enter' ||
+        (!event.ctrlKey && !event.metaKey)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      onSend();
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [enabled, onSend]);
 }
 
 interface Status {
@@ -794,6 +827,7 @@ function ReplyComposer({
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<MailSendDraft | null>(null);
+  const confirmationActionRef = useRef<HTMLButtonElement>(null);
 
   const deliver = async (draft: MailSendDraft) => {
     setBusy(true);
@@ -816,8 +850,7 @@ function ReplyComposer({
     }
   };
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
+  const requestSend = () => {
     const draft = createReplyDraft(account, summary, message, text);
     const validationError = validateReplyDraft(draft);
     if (validationError) {
@@ -831,6 +864,13 @@ function ReplyComposer({
     setPendingDraft(draft);
     setDontShowAgain(false);
     setConfirmationOpen(true);
+  };
+
+  useSendShortcut(open && !busy && !confirmationOpen, requestSend);
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    requestSend();
   };
 
   if (!open) {
@@ -868,12 +908,6 @@ function ReplyComposer({
       <form
         className="mt-6 border-t border-border pt-5"
         onSubmit={submit}
-        onKeyDown={(event) => {
-          if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !busy) {
-            event.preventDefault();
-            event.currentTarget.requestSubmit();
-          }
-        }}
       >
         <div className="mb-3 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
         <Reply className="size-4 shrink-0" />
@@ -918,6 +952,9 @@ function ReplyComposer({
           >
             {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
             Send reply
+            <kbd className="ml-1 rounded border border-primary-foreground/30 px-1.5 py-0.5 text-[0.62rem] font-normal">
+              {sendShortcutLabel()}
+            </kbd>
           </Button>
         </div>
       </form>
@@ -928,7 +965,19 @@ function ReplyComposer({
           if (!nextOpen) setPendingDraft(null);
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            confirmationActionRef.current?.focus();
+          }}
+          onKeyDownCapture={(event) => {
+            if (event.key === 'Enter' && !event.repeat) {
+              event.preventDefault();
+              event.stopPropagation();
+              confirmationActionRef.current?.click();
+            }
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>Send this reply?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -960,9 +1009,15 @@ function ReplyComposer({
             />
             Don’t show this confirmation again
           </label>
+          <p className="text-xs text-muted-foreground">
+            Press <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5">Enter</kbd>{' '}
+            to send or <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5">Esc</kbd>{' '}
+            to cancel. Open this dialog with {sendShortcutLabel()}.
+          </p>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              ref={confirmationActionRef}
               variant="default"
               onClick={() => {
                 if (!pendingDraft) return;
@@ -2261,6 +2316,7 @@ function ComposeDialog({
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<MailSendDraft | null>(null);
+  const confirmationActionRef = useRef<HTMLButtonElement>(null);
 
   const deliver = async (draft: MailSendDraft) => {
     setBusy(true);
@@ -2280,8 +2336,7 @@ function ComposeDialog({
     }
   };
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
+  const requestSend = () => {
     const draft: MailSendDraft = {
       to: parseAddressList(to),
       cc: parseAddressList(cc),
@@ -2305,6 +2360,13 @@ function ComposeDialog({
     setConfirmationOpen(true);
   };
 
+  useSendShortcut(open && !busy && !confirmationOpen, requestSend);
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    requestSend();
+  };
+
   return (
     <Dialog
       open={open}
@@ -2320,12 +2382,6 @@ function ComposeDialog({
         <form
           className="space-y-4"
           onSubmit={submit}
-          onKeyDown={(event) => {
-            if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !busy) {
-              event.preventDefault();
-              event.currentTarget.requestSubmit();
-            }
-          }}
         >
           <Field label="From">
             <div className="relative">
@@ -2430,6 +2486,9 @@ function ComposeDialog({
             >
               {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
               Send
+              <kbd className="ml-1 rounded border border-primary-foreground/30 px-1.5 py-0.5 text-[0.62rem] font-normal">
+                {sendShortcutLabel()}
+              </kbd>
             </Button>
           </div>
         </form>
@@ -2441,7 +2500,19 @@ function ComposeDialog({
           if (!nextOpen) setPendingDraft(null);
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            confirmationActionRef.current?.focus();
+          }}
+          onKeyDownCapture={(event) => {
+            if (event.key === 'Enter' && !event.repeat) {
+              event.preventDefault();
+              event.stopPropagation();
+              confirmationActionRef.current?.click();
+            }
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>Send this email?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -2473,9 +2544,15 @@ function ComposeDialog({
             />
             Don’t show this confirmation again
           </label>
+          <p className="text-xs text-muted-foreground">
+            Press <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5">Enter</kbd>{' '}
+            to send or <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5">Esc</kbd>{' '}
+            to cancel. Open this dialog with {sendShortcutLabel()}.
+          </p>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              ref={confirmationActionRef}
               variant="default"
               onClick={() => {
                 if (!pendingDraft) return;
