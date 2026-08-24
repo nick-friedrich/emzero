@@ -5,6 +5,9 @@ import {
   type AccountOperationResult,
   type AccountNameUpdate,
   type AccountSummary,
+  type BulkMessageJobProgress,
+  type BulkMessageJobRequest,
+  type BulkMessageJobStartResult,
   type FolderListResult,
   type MessageListResult,
   type MessageDetailResult,
@@ -44,6 +47,9 @@ export interface EmzeroDesktopApi {
       folderPath: string,
       uids: number[],
     ) => Promise<MessageOperationResult>;
+    startBulkJob: (request: BulkMessageJobRequest) => Promise<BulkMessageJobStartResult>;
+    cancelBulkJob: (jobId: string) => Promise<boolean>;
+    onBulkJobProgress: (listener: (progress: BulkMessageJobProgress) => void) => () => void;
     sendReply: (accountId: string, draft: MailReplyDraft) => Promise<MailSendResult>;
     send: (accountId: string, draft: MailSendDraft) => Promise<MailSendResult>;
     suggestRecipients: (accountId: string, query: string) => Promise<RecipientSuggestion[]>;
@@ -81,6 +87,16 @@ contextBridge.exposeInMainWorld('emzero', {
       ipcRenderer.invoke(ACCOUNT_CHANNELS.setMessageUnread, accountId, folderPath, uids, unread),
     delete: (accountId, folderPath, uids) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.deleteMessages, accountId, folderPath, uids),
+    startBulkJob: (request) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.startBulkMessageJob, request),
+    cancelBulkJob: (jobId) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.cancelBulkMessageJob, jobId),
+    onBulkJobProgress: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, progress: BulkMessageJobProgress) =>
+        listener(progress);
+      ipcRenderer.on(ACCOUNT_CHANNELS.bulkMessageJobChanged, handler);
+      return () => ipcRenderer.removeListener(ACCOUNT_CHANNELS.bulkMessageJobChanged, handler);
+    },
     sendReply: (accountId, draft) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.sendReply, accountId, draft),
     send: (accountId, draft) => ipcRenderer.invoke(ACCOUNT_CHANNELS.sendMessage, accountId, draft),

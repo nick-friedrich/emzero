@@ -77,6 +77,9 @@ import {
 import type {
   AccountDraft,
   AccountSummary,
+  BulkMessageJobProgress,
+  BulkMessageJobRequest,
+  BulkMessageJobStartResult,
   MailFolderSummary,
   MailMessageDetail,
   MailMessageSummary,
@@ -621,6 +624,11 @@ type MessageDetailLoadState =
 
 type ConversationAction = 'read' | 'unread' | 'delete';
 
+type StartBulkOperation = (
+  request: BulkMessageJobRequest,
+  location: string,
+) => Promise<BulkMessageJobStartResult>;
+
 const bulkActionConfirmationThreshold = 10;
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -846,7 +854,7 @@ function BulkActionToolbar({
           <span className="hidden sm:inline">Mark unread</span>
         </Button>
         <Button variant="ghost" className="px-3 text-danger hover:text-danger" disabled={busy} onClick={() => requestAction('delete')}>
-          {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+          <Trash2 className="size-4" />
           <span className="hidden sm:inline">Delete</span>
         </Button>
         <Button variant="ghost" className="px-3" disabled={busy} onClick={onClear}>Cancel</Button>
@@ -1380,7 +1388,13 @@ function ConversationReader({
   );
 }
 
-function MessageList({ selection }: { selection: FolderSelection }) {
+function MessageList({
+  selection,
+  onStartBulkOperation,
+}: {
+  selection: FolderSelection;
+  onStartBulkOperation: StartBulkOperation;
+}) {
   const [state, setState] = useState<MessageLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedConversation, setSelectedConversation] = useState<MailConversation | null>(null);
@@ -1496,6 +1510,39 @@ function MessageList({ selection }: { selection: FolderSelection }) {
     return () => window.removeEventListener('keydown', handleSelectAll);
   }, [conversations, selectedConversation]);
 
+  useEffect(
+    () =>
+      window.emzero.messages.onBulkJobProgress((progress) => {
+        if (
+          !progress.processedUids ||
+          progress.accountId !== selection.account.id ||
+          progress.folderPath !== selection.folder.path
+        ) {
+          return;
+        }
+        const processed = new Set(progress.processedUids);
+        setState((current) => {
+          if (current.status !== 'loaded') return current;
+          if (progress.action === 'delete') {
+            const removed = current.messages.filter((message) => processed.has(message.uid)).length;
+            return {
+              ...current,
+              messages: current.messages.filter((message) => !processed.has(message.uid)),
+              total: Math.max(0, current.total - removed),
+            };
+          }
+          const unread = progress.action === 'unread';
+          return {
+            ...current,
+            messages: current.messages.map((message) =>
+              processed.has(message.uid) ? { ...message, unread } : message,
+            ),
+          };
+        });
+      }),
+    [selection.account.id, selection.folder.path],
+  );
+
   const runAction = async (conversation: MailConversation, action: ConversationAction) => {
     if (pendingActions.current.has(conversation.id)) return false;
     pendingActions.current.add(conversation.id);
@@ -1589,14 +1636,29 @@ function MessageList({ selection }: { selection: FolderSelection }) {
 
   const runBulkAction = async (action: ConversationAction) => {
     if (bulkBusy) return;
-    const targets = selectedConversations;
+    const uids = [
+      ...new Set(
+        selectedConversations.flatMap((conversation) =>
+          conversation.messages
+            .filter((message) => message.folderPath === selection.folder.path)
+            .map((message) => message.uid),
+        ),
+      ),
+    ];
     setBulkBusy(true);
     try {
-      const failed = new Set<string>();
-      for (const conversation of targets) {
-        if (!(await runAction(conversation, action))) failed.add(conversation.id);
+      const result = await onStartBulkOperation(
+        {
+          action,
+          groups: [{ accountId: selection.account.id, folderPath: selection.folder.path, uids }],
+        },
+        displayFolderName(selection.folder),
+      );
+      if (result.ok) {
+        setSelectedConversationIds(new Set());
+      } else {
+        setActionError(result.message ?? 'The bulk action could not be started.');
       }
-      setSelectedConversationIds(failed);
     } finally {
       setBulkBusy(false);
     }
@@ -1845,7 +1907,13 @@ function conversationTime(conversation: MailConversation): number {
   return Number.isNaN(time) ? 0 : time;
 }
 
-function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
+function UnifiedInbox({
+  accounts,
+  onStartBulkOperation,
+}: {
+  accounts: AccountSummary[];
+  onStartBulkOperation: StartBulkOperation;
+}) {
   const [state, setState] = useState<UnifiedInboxLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedItem, setSelectedItem] = useState<UnifiedConversationItem | null>(null);
@@ -1997,6 +2065,68 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
     return () => window.removeEventListener('keydown', handleSelectAll);
   }, [availableItems, selectedItem]);
 
+  useEffect(
+    () =>
+      window.emzero.messages.onBulkJobProgress((progress) => {
+        if (!progress.processedUids || !progress.accountId || !progress.folderPath) return;
+        const processed = new Set(progress.processedUids);
+        setState((current) => {
+      if (current.status !== 'loaded') return current;
+      let affectedMessages = 0;
+      const items = current.items.flatMap((item) => {
+        if (
+          item.selection.account.id !== progress.accountId ||
+          item.selection.folder.path !== progress.folderPath
+        ) {
+          return [item];
+        }
+        const affected = item.conversation.messages.filter(
+          (message) =>
+            message.folderPath === progress.folderPath && processed.has(message.uid),
+        ).length;
+        if (affected === 0) return [item];
+        affectedMessages += affected;
+        if (progress.action === 'delete') {
+          const messages = item.conversation.messages.filter(
+            (message) =>
+              message.folderPath !== progress.folderPath || !processed.has(message.uid),
+          );
+          return messages.some((message) => message.folderPath === progress.folderPath)
+            ? [{ ...item, conversation: { ...item.conversation, messages } }]
+            : [];
+        }
+        const unread = progress.action === 'unread';
+        return [
+          {
+            ...item,
+            conversation: {
+              ...item.conversation,
+              messages: item.conversation.messages.map((message) =>
+                message.folderPath === progress.folderPath && processed.has(message.uid)
+                  ? { ...message, unread }
+                  : message,
+              ),
+            },
+          },
+        ];
+      });
+      return {
+        ...current,
+        items,
+        loadedMessages:
+          progress.action === 'delete'
+            ? Math.max(0, current.loadedMessages - affectedMessages)
+            : current.loadedMessages,
+        totalMessages:
+          progress.action === 'delete'
+            ? Math.max(0, current.totalMessages - affectedMessages)
+            : current.totalMessages,
+      };
+        });
+      }),
+    [],
+  );
+
   const runAction = async (item: UnifiedConversationItem, action: ConversationAction) => {
     const key = itemKey(item);
     if (pendingActions.current.has(key)) return false;
@@ -2086,14 +2216,35 @@ function UnifiedInbox({ accounts }: { accounts: AccountSummary[] }) {
 
   const runBulkAction = async (action: ConversationAction) => {
     if (bulkBusy) return;
-    const targets = selectedItems;
+    const groups = new Map<string, BulkMessageJobRequest['groups'][number]>();
+    for (const item of selectedItems) {
+      const { account, folder } = item.selection;
+      const key = `${account.id}:${folder.path}`;
+      const group = groups.get(key) ?? { accountId: account.id, folderPath: folder.path, uids: [] };
+      group.uids.push(
+        ...item.conversation.messages
+          .filter((message) => message.folderPath === folder.path)
+          .map((message) => message.uid),
+      );
+      groups.set(key, group);
+    }
     setBulkBusy(true);
     try {
-      const failed = new Set<string>();
-      for (const item of targets) {
-        if (!(await runAction(item, action))) failed.add(itemKey(item));
+      const result = await onStartBulkOperation(
+        {
+          action,
+          groups: [...groups.values()].map((group) => ({
+            ...group,
+            uids: [...new Set(group.uids)],
+          })),
+        },
+        'Unified inbox',
+      );
+      if (result.ok) {
+        setSelectedItemKeys(new Set());
+      } else {
+        setActionError(result.message ?? 'The bulk action could not be started.');
       }
-      setSelectedItemKeys(failed);
     } finally {
       setBulkBusy(false);
     }
@@ -3035,6 +3186,27 @@ function Sidebar({
     };
   }, [accounts, syncRevision]);
 
+  useEffect(
+    () =>
+      window.emzero.messages.onBulkJobProgress((progress) => {
+        if (!progress.accountId || !progress.folder) return;
+        setFolderStates((current) => {
+          const accountState = current[progress.accountId!];
+          if (accountState?.status !== 'loaded') return current;
+          return {
+            ...current,
+            [progress.accountId!]: {
+              status: 'loaded',
+              folders: accountState.folders.map((folder) =>
+                folder.path === progress.folder!.path ? progress.folder! : folder,
+              ),
+            },
+          };
+        });
+      }),
+    [],
+  );
+
   const toggleAccount = (account: AccountSummary) => {
     const isOpening = !expanded.has(account.id);
     setExpanded((current) => {
@@ -3250,6 +3422,110 @@ function Sidebar({
   );
 }
 
+interface BulkOperationView {
+  location: string;
+  request: BulkMessageJobRequest;
+  progress: BulkMessageJobProgress;
+  processedKeys: ReadonlySet<string>;
+}
+
+function BulkOperationBar({
+  operation,
+  onStop,
+  onRetry,
+  onDismiss,
+}: {
+  operation: BulkOperationView;
+  onStop: () => void;
+  onRetry: () => void;
+  onDismiss: () => void;
+}) {
+  const { progress, location } = operation;
+  const terminal = ['completed', 'stopped', 'error'].includes(progress.state);
+  const verb =
+    progress.action === 'read'
+      ? 'mark as read'
+      : progress.action === 'unread'
+        ? 'mark as unread'
+        : 'delete';
+  const presentVerb =
+    progress.action === 'read'
+      ? 'Marking emails as read'
+      : progress.action === 'unread'
+        ? 'Marking emails as unread'
+        : 'Deleting emails';
+  const title =
+    progress.state === 'completed'
+      ? `${progress.total} ${progress.total === 1 ? 'email' : 'emails'} ${verb === 'delete' ? 'deleted' : progress.action === 'read' ? 'marked as read' : 'marked as unread'}`
+      : progress.state === 'stopped'
+        ? `Stopped after ${progress.processed} of ${progress.total}`
+        : progress.state === 'error'
+          ? `Stopped after ${progress.processed} of ${progress.total}`
+          : `${presentVerb} in ${location}`;
+  const percentage = progress.total > 0 ? (progress.processed / progress.total) * 100 : 0;
+
+  return (
+    <aside className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card px-4 py-3 shadow-[0_-8px_24px_-18px_rgba(0,0,0,0.5)] lg:left-60" aria-live="polite" aria-label="Mail operation status">
+      <div className="mx-auto flex max-w-5xl items-center gap-3">
+        <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-primary">
+          {progress.state === 'completed' ? (
+            <CheckCircle2 className="size-4 text-success" />
+          ) : progress.state === 'error' ? (
+            <CircleAlert className="size-4 text-danger" />
+          ) : progress.state === 'stopped' ? (
+            <XCircle className="size-4 text-muted-foreground" />
+          ) : progress.action === 'delete' ? (
+            <Trash2 className="size-4" />
+          ) : progress.action === 'read' ? (
+            <MailOpen className="size-4" />
+          ) : (
+            <Mail className="size-4" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <p className="truncate font-medium">{title}</p>
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+              {progress.processed}/{progress.total}
+            </span>
+          </div>
+          {!terminal && (
+            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-secondary">
+              <div
+                className="h-full rounded-full bg-primary transition-[width]"
+                style={{ width: `${percentage}%` }}
+              />
+            </div>
+          )}
+          <p className={cn('mt-1 truncate text-xs', progress.state === 'error' ? 'text-danger' : 'text-muted-foreground')}>
+            {progress.state === 'running'
+              ? 'You can continue using Emzero while this runs.'
+              : progress.state === 'stopping'
+                ? 'Stopping after the current batch…'
+                : progress.message ?? (progress.state === 'stopped' ? 'Completed changes were kept.' : `Finished in ${location}.`)}
+          </p>
+        </div>
+        {progress.state === 'running' && (
+          <Button variant="secondary" className="shrink-0" onClick={onStop}>Stop</Button>
+        )}
+        {progress.state === 'stopping' && (
+          <Button variant="secondary" className="shrink-0" disabled>Stopping…</Button>
+        )}
+        {(progress.state === 'stopped' || progress.state === 'error') && progress.processed < progress.total && (
+          <Button variant="secondary" className="shrink-0" onClick={onRetry}>
+            {progress.state === 'stopped' ? 'Resume remaining' : 'Retry remaining'}
+          </Button>
+        )}
+        {terminal && (
+          <Button variant="ghost" className="size-9 shrink-0 px-0" aria-label="Dismiss operation status" onClick={onDismiss}>
+            <XCircle className="size-4" />
+          </Button>
+        )}
+      </div>
+    </aside>
+  );
+}
+
 export function App() {
   const [accounts, setAccounts] = useState<AccountSummary[] | null>(null);
   const [providers, setProviders] = useState<MailProvider[]>([]);
@@ -3263,6 +3539,7 @@ export function App() {
     lastSyncedAt: null,
   });
   const [syncRevision, setSyncRevision] = useState(0);
+  const [bulkOperation, setBulkOperation] = useState<BulkOperationView | null>(null);
 
   useEffect(() => {
     void Promise.allSettled([window.emzero.accounts.list(), window.emzero.providers.list()]).then(
@@ -3274,6 +3551,70 @@ export function App() {
       },
     );
   }, []);
+
+  useEffect(
+    () =>
+      window.emzero.messages.onBulkJobProgress((progress) => {
+        setBulkOperation((current) => {
+          if (!current) return current;
+          const processedKeys = new Set(current.processedKeys);
+          if (progress.accountId && progress.folderPath && progress.processedUids) {
+            for (const uid of progress.processedUids) {
+              processedKeys.add(`${progress.accountId}:${progress.folderPath}:${uid}`);
+            }
+          }
+          return { ...current, progress, processedKeys };
+        });
+        if (['completed', 'stopped', 'error'].includes(progress.state)) {
+          setSyncRevision((current) => current + 1);
+        }
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    if (bulkOperation?.progress.state !== 'completed') return;
+    const timer = window.setTimeout(() => setBulkOperation(null), 8_000);
+    return () => window.clearTimeout(timer);
+  }, [bulkOperation?.progress.state]);
+
+  const startBulkOperation = useCallback<StartBulkOperation>(async (request, location) => {
+    if (
+      bulkOperation?.progress.state === 'running' ||
+      bulkOperation?.progress.state === 'stopping'
+    ) {
+      return { ok: false, message: 'Another bulk message action is already running.' };
+    }
+    const total = request.groups.reduce((sum, group) => sum + group.uids.length, 0);
+    setBulkOperation({
+      location,
+      request,
+      processedKeys: new Set(),
+      progress: {
+        jobId: 'starting',
+        action: request.action,
+        state: 'running',
+        total,
+        processed: 0,
+      },
+    });
+    try {
+      const result = await window.emzero.messages.startBulkJob(request);
+      if (!result.ok || !result.jobId) {
+        setBulkOperation(null);
+        return result;
+      }
+      setBulkOperation((current) =>
+        current
+          ? { ...current, progress: { ...current.progress, jobId: result.jobId! } }
+          : current,
+      );
+      return result;
+    } catch {
+      setBulkOperation(null);
+      return { ok: false, message: 'The bulk action could not be started.' };
+    }
+  }, [bulkOperation?.progress.state]);
 
   useEffect(() => {
     void window.emzero.sync.status().then(setSyncStatus).catch(() => undefined);
@@ -3413,9 +3754,40 @@ export function App() {
         <MessageList
           key={`${selection.account.id}:${selection.folder.path}:${syncRevision}`}
           selection={selection}
+          onStartBulkOperation={startBulkOperation}
         />
       ) : (
-        <UnifiedInbox key={syncRevision} accounts={accounts} />
+        <UnifiedInbox
+          key={syncRevision}
+          accounts={accounts}
+          onStartBulkOperation={startBulkOperation}
+        />
+      )}
+      {bulkOperation && (
+        <BulkOperationBar
+          operation={bulkOperation}
+          onStop={() => {
+            void window.emzero.messages.cancelBulkJob(bulkOperation.progress.jobId);
+          }}
+          onRetry={() => {
+            const request: BulkMessageJobRequest = {
+              ...bulkOperation.request,
+              groups: bulkOperation.request.groups
+                .map((group) => ({
+                  ...group,
+                  uids: group.uids.filter(
+                    (uid) =>
+                      !bulkOperation.processedKeys.has(
+                        `${group.accountId}:${group.folderPath}:${uid}`,
+                      ),
+                  ),
+                }))
+                .filter((group) => group.uids.length > 0),
+            };
+            void startBulkOperation(request, bulkOperation.location);
+          }}
+          onDismiss={() => setBulkOperation(null)}
+        />
       )}
     </main>
   );

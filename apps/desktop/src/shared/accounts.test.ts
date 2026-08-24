@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   accountUnreadCount,
+  chunkMessageUids,
   defaultAccountName,
   displayFolderName,
   findInboxFolder,
@@ -108,5 +109,15 @@ describe('accountUnreadCount', () => {
         folder('Container', 8, null, false),
       ]),
     ).toBe(5);
+  });
+});
+
+describe('chunkMessageUids', () => {
+  it('keeps every UID in order while respecting the operation batch size', () => {
+    expect(chunkMessageUids([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+  });
+
+  it('rejects invalid chunk sizes', () => {
+    expect(() => chunkMessageUids([1], 0)).toThrow(RangeError);
   });
 });

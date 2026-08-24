@@ -103,6 +103,49 @@ export interface MessageListResult {
   message?: string;
 }
 
+export type BulkMessageAction = 'read' | 'unread' | 'delete';
+
+export interface BulkMessageGroup {
+  accountId: string;
+  folderPath: string;
+  uids: number[];
+}
+
+export interface BulkMessageJobRequest {
+  action: BulkMessageAction;
+  groups: BulkMessageGroup[];
+}
+
+export interface BulkMessageJobStartResult {
+  ok: boolean;
+  jobId?: string;
+  message?: string;
+}
+
+export interface BulkMessageJobProgress {
+  jobId: string;
+  action: BulkMessageAction;
+  state: 'running' | 'stopping' | 'completed' | 'stopped' | 'error';
+  total: number;
+  processed: number;
+  accountId?: string;
+  folderPath?: string;
+  processedUids?: number[];
+  folder?: MailFolderSummary;
+  message?: string;
+}
+
+export function chunkMessageUids(uids: number[], chunkSize: number): number[][] {
+  if (!Number.isInteger(chunkSize) || chunkSize < 1) {
+    throw new RangeError('Chunk size must be a positive integer.');
+  }
+  const chunks: number[][] = [];
+  for (let offset = 0; offset < uids.length; offset += chunkSize) {
+    chunks.push(uids.slice(offset, offset + chunkSize));
+  }
+  return chunks;
+}
+
 export interface MailAttachmentSummary {
   filename: string;
   contentType: string;
@@ -203,6 +246,9 @@ export const ACCOUNT_CHANNELS = {
   getMessage: 'messages:get',
   setMessageUnread: 'messages:set-unread',
   deleteMessages: 'messages:delete',
+  startBulkMessageJob: 'messages:bulk-start',
+  cancelBulkMessageJob: 'messages:bulk-cancel',
+  bulkMessageJobChanged: 'messages:bulk-changed',
   sendReply: 'messages:send-reply',
   sendMessage: 'messages:send',
   suggestRecipients: 'messages:suggest-recipients',
