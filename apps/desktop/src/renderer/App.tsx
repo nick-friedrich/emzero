@@ -64,7 +64,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { cn } from '@/lib/utils';
+import { cn, keysInRange } from '@/lib/utils';
 import {
   interfaceFonts,
   messageThemeColors,
@@ -763,7 +763,7 @@ function SelectionCheckbox({
   indeterminate?: boolean;
   label: string;
   className?: string;
-  onChange: () => void;
+  onChange: (shiftKey: boolean) => void;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -778,7 +778,7 @@ function SelectionCheckbox({
         type="checkbox"
         checked={checked}
         aria-label={label}
-        onChange={onChange}
+        onChange={(event) => onChange((event.nativeEvent as MouseEvent).shiftKey)}
       />
       <span
         className={cn(
@@ -1402,6 +1402,9 @@ function MessageList({
   const [busyConversations, setBusyConversations] = useState<ReadonlySet<string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
   const [selectedConversationIds, setSelectedConversationIds] = useState<ReadonlySet<string>>(new Set());
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
+  const [selectionCursorId, setSelectionCursorId] = useState<string | null>(null);
+  const conversationRowRefs = useRef(new Map<string, HTMLButtonElement>());
   const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => {
@@ -1472,6 +1475,8 @@ function MessageList({
 
   const refresh = () => {
     setSelectedConversationIds(new Set());
+    setSelectionAnchorId(null);
+    setSelectionCursorId(null);
     setState({ status: 'loading' });
     setRefreshKey((current) => current + 1);
   };
@@ -1494,21 +1499,36 @@ function MessageList({
 
   useEffect(() => {
     if (selectedConversation) return;
-    const handleSelectAll = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        event.key.toLowerCase() !== 'a' ||
-        (!event.ctrlKey && !event.metaKey) ||
-        isEditableTarget(event.target)
-      ) {
+    const handleSelectionShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || isEditableTarget(event.target)) return;
+      if (event.key.toLowerCase() === 'a' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        setSelectedConversationIds(new Set(conversations.map((conversation) => conversation.id)));
+        setSelectionAnchorId(conversations[0]?.id ?? null);
+        setSelectionCursorId(conversations.at(-1)?.id ?? null);
         return;
       }
+      if (!event.shiftKey || !['ArrowUp', 'ArrowDown'].includes(event.key) || conversations.length === 0) return;
       event.preventDefault();
-      setSelectedConversationIds(new Set(conversations.map((conversation) => conversation.id)));
+      const keys = conversations.map((conversation) => conversation.id);
+      let cursorIndex = selectionCursorId
+        ? keys.indexOf(selectionCursorId)
+        : keys.findIndex((key) => selectedConversationIds.has(key));
+      if (cursorIndex < 0) cursorIndex = event.key === 'ArrowDown' ? 0 : keys.length - 1;
+      const anchorIndex = selectionAnchorId ? keys.indexOf(selectionAnchorId) : cursorIndex;
+      const nextIndex = Math.max(
+        0,
+        Math.min(keys.length - 1, cursorIndex + (event.key === 'ArrowDown' ? 1 : -1)),
+      );
+      const safeAnchorIndex = anchorIndex < 0 ? cursorIndex : anchorIndex;
+      setSelectedConversationIds(keysInRange(keys, safeAnchorIndex, nextIndex));
+      setSelectionAnchorId(keys[safeAnchorIndex]);
+      setSelectionCursorId(keys[nextIndex]);
+      conversationRowRefs.current.get(keys[nextIndex])?.focus();
     };
-    window.addEventListener('keydown', handleSelectAll);
-    return () => window.removeEventListener('keydown', handleSelectAll);
-  }, [conversations, selectedConversation]);
+    window.addEventListener('keydown', handleSelectionShortcut);
+    return () => window.removeEventListener('keydown', handleSelectionShortcut);
+  }, [conversations, selectedConversation, selectedConversationIds, selectionAnchorId, selectionCursorId]);
 
   useEffect(
     () =>
@@ -1656,6 +1676,8 @@ function MessageList({
       );
       if (result.ok) {
         setSelectedConversationIds(new Set());
+        setSelectionAnchorId(null);
+        setSelectionCursorId(null);
       } else {
         setActionError(result.message ?? 'The bulk action could not be started.');
       }
@@ -1800,14 +1822,22 @@ function MessageList({
           totalRows={conversations.length}
           busy={bulkBusy}
           permanentDelete={selection.folder.specialUse === '\\Trash'}
-          onToggleAll={() =>
-            setSelectedConversationIds(
-              selectedConversationIds.size === conversations.length
-                ? new Set()
-                : new Set(conversations.map((conversation) => conversation.id)),
-            )
-          }
-          onClear={() => setSelectedConversationIds(new Set())}
+          onToggleAll={() => {
+            if (selectedConversationIds.size === conversations.length) {
+              setSelectedConversationIds(new Set());
+              setSelectionAnchorId(null);
+              setSelectionCursorId(null);
+            } else {
+              setSelectedConversationIds(new Set(conversations.map((conversation) => conversation.id)));
+              setSelectionAnchorId(conversations[0]?.id ?? null);
+              setSelectionCursorId(conversations.at(-1)?.id ?? null);
+            }
+          }}
+          onClear={() => {
+            setSelectedConversationIds(new Set());
+            setSelectionAnchorId(null);
+            setSelectionCursorId(null);
+          }}
           onAction={(action) => void runBulkAction(action)}
         />
       )}
@@ -1836,20 +1866,43 @@ function MessageList({
                       selectedConversationIds.size > 0 ? 'opacity-100' : 'opacity-0',
                     )}
                     label={`Select conversation: ${conversation.subject}`}
-                    onChange={() =>
-                      setSelectedConversationIds((current) => {
+                    onChange={(shiftKey) => {
+                      const keys = conversations.map((candidate) => candidate.id);
+                      const targetIndex = keys.indexOf(conversation.id);
+                      const anchorIndex = selectionAnchorId ? keys.indexOf(selectionAnchorId) : -1;
+                      if (shiftKey && anchorIndex >= 0) {
+                        setSelectedConversationIds(keysInRange(keys, anchorIndex, targetIndex));
+                      } else {
+                        setSelectedConversationIds((current) => {
                         const next = new Set(current);
                         if (next.has(conversation.id)) next.delete(conversation.id);
                         else next.add(conversation.id);
                         return next;
-                      })
-                    }
+                        });
+                        setSelectionAnchorId(conversation.id);
+                      }
+                      setSelectionCursorId(conversation.id);
+                    }}
                   />
                 </div>
                 <button
                   type="button"
+                  ref={(node) => {
+                    if (node) conversationRowRefs.current.set(conversation.id, node);
+                    else conversationRowRefs.current.delete(conversation.id);
+                  }}
                   className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-left focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6"
-                  onClick={() => {
+                  onFocus={() => setSelectionCursorId(conversation.id)}
+                  onClick={(event) => {
+                    if (event.shiftKey) {
+                      const keys = conversations.map((candidate) => candidate.id);
+                      const targetIndex = keys.indexOf(conversation.id);
+                      const anchorIndex = selectionAnchorId ? keys.indexOf(selectionAnchorId) : targetIndex;
+                      setSelectedConversationIds(keysInRange(keys, anchorIndex, targetIndex));
+                      setSelectionAnchorId(keys[anchorIndex]);
+                      setSelectionCursorId(conversation.id);
+                      return;
+                    }
                     setActionError(null);
                     setSelectedConversation(conversation);
                   }}
@@ -1921,6 +1974,9 @@ function UnifiedInbox({
   const [busyConversations, setBusyConversations] = useState<ReadonlySet<string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
   const [selectedItemKeys, setSelectedItemKeys] = useState<ReadonlySet<string>>(new Set());
+  const [selectionAnchorKey, setSelectionAnchorKey] = useState<string | null>(null);
+  const [selectionCursorKey, setSelectionCursorKey] = useState<string | null>(null);
+  const unifiedRowRefs = useRef(new Map<string, HTMLButtonElement>());
   const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => {
@@ -2028,6 +2084,8 @@ function UnifiedInbox({
   const refresh = () => {
     setSelectedItem(null);
     setSelectedItemKeys(new Set());
+    setSelectionAnchorKey(null);
+    setSelectionCursorKey(null);
     setState({ status: 'loading' });
     setRefreshKey((current) => current + 1);
   };
@@ -2047,23 +2105,36 @@ function UnifiedInbox({
 
   useEffect(() => {
     if (selectedItem) return;
-    const handleSelectAll = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        event.key.toLowerCase() !== 'a' ||
-        (!event.ctrlKey && !event.metaKey) ||
-        isEditableTarget(event.target)
-      ) {
+    const handleSelectionShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || isEditableTarget(event.target)) return;
+      const keys = availableItems.map((item) => itemKey(item));
+      if (event.key.toLowerCase() === 'a' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        setSelectedItemKeys(new Set(keys));
+        setSelectionAnchorKey(keys[0] ?? null);
+        setSelectionCursorKey(keys.at(-1) ?? null);
         return;
       }
+      if (!event.shiftKey || !['ArrowUp', 'ArrowDown'].includes(event.key) || keys.length === 0) return;
       event.preventDefault();
-      setSelectedItemKeys(
-        new Set(availableItems.map((item) => `${item.selection.account.id}:${item.conversation.id}`)),
+      let cursorIndex = selectionCursorKey
+        ? keys.indexOf(selectionCursorKey)
+        : keys.findIndex((key) => selectedItemKeys.has(key));
+      if (cursorIndex < 0) cursorIndex = event.key === 'ArrowDown' ? 0 : keys.length - 1;
+      const anchorIndex = selectionAnchorKey ? keys.indexOf(selectionAnchorKey) : cursorIndex;
+      const nextIndex = Math.max(
+        0,
+        Math.min(keys.length - 1, cursorIndex + (event.key === 'ArrowDown' ? 1 : -1)),
       );
+      const safeAnchorIndex = anchorIndex < 0 ? cursorIndex : anchorIndex;
+      setSelectedItemKeys(keysInRange(keys, safeAnchorIndex, nextIndex));
+      setSelectionAnchorKey(keys[safeAnchorIndex]);
+      setSelectionCursorKey(keys[nextIndex]);
+      unifiedRowRefs.current.get(keys[nextIndex])?.focus();
     };
-    window.addEventListener('keydown', handleSelectAll);
-    return () => window.removeEventListener('keydown', handleSelectAll);
-  }, [availableItems, selectedItem]);
+    window.addEventListener('keydown', handleSelectionShortcut);
+    return () => window.removeEventListener('keydown', handleSelectionShortcut);
+  }, [availableItems, selectedItem, selectedItemKeys, selectionAnchorKey, selectionCursorKey]);
 
   useEffect(
     () =>
@@ -2242,6 +2313,8 @@ function UnifiedInbox({
       );
       if (result.ok) {
         setSelectedItemKeys(new Set());
+        setSelectionAnchorKey(null);
+        setSelectionCursorKey(null);
       } else {
         setActionError(result.message ?? 'The bulk action could not be started.');
       }
@@ -2373,14 +2446,23 @@ function UnifiedInbox({
           totalRows={state.items.length}
           busy={bulkBusy}
           permanentDelete={false}
-          onToggleAll={() =>
-            setSelectedItemKeys(
-              selectedItemKeys.size === state.items.length
-                ? new Set()
-                : new Set(state.items.map((item) => itemKey(item))),
-            )
-          }
-          onClear={() => setSelectedItemKeys(new Set())}
+          onToggleAll={() => {
+            const keys = state.items.map((item) => itemKey(item));
+            if (selectedItemKeys.size === state.items.length) {
+              setSelectedItemKeys(new Set());
+              setSelectionAnchorKey(null);
+              setSelectionCursorKey(null);
+            } else {
+              setSelectedItemKeys(new Set(keys));
+              setSelectionAnchorKey(keys[0] ?? null);
+              setSelectionCursorKey(keys.at(-1) ?? null);
+            }
+          }}
+          onClear={() => {
+            setSelectedItemKeys(new Set());
+            setSelectionAnchorKey(null);
+            setSelectionCursorKey(null);
+          }}
           onAction={(action) => void runBulkAction(action)}
         />
       )}
@@ -2434,21 +2516,50 @@ function UnifiedInbox({
                       selectedItemKeys.size > 0 ? 'opacity-100' : 'opacity-0',
                     )}
                     label={`Select conversation: ${conversation.subject}`}
-                    onChange={() =>
-                      setSelectedItemKeys((current) => {
+                    onChange={(shiftKey) => {
+                      const keys = state.items.map((candidate) => itemKey(candidate));
+                      const key = itemKey(item);
+                      const targetIndex = keys.indexOf(key);
+                      const anchorIndex = selectionAnchorKey ? keys.indexOf(selectionAnchorKey) : -1;
+                      if (shiftKey && anchorIndex >= 0) {
+                        setSelectedItemKeys(keysInRange(keys, anchorIndex, targetIndex));
+                      } else {
+                        setSelectedItemKeys((current) => {
                         const key = itemKey(item);
                         const next = new Set(current);
                         if (next.has(key)) next.delete(key);
                         else next.add(key);
                         return next;
-                      })
-                    }
+                        });
+                        setSelectionAnchorKey(key);
+                      }
+                      setSelectionCursorKey(key);
+                    }}
                   />
                 </div>
                 <button
                   type="button"
+                  ref={(node) => {
+                    const key = itemKey(item);
+                    if (node) unifiedRowRefs.current.set(key, node);
+                    else unifiedRowRefs.current.delete(key);
+                  }}
                   className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-left focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6"
-                  onClick={() => { setActionError(null); setSelectedItem(item); }}
+                  onFocus={() => setSelectionCursorKey(itemKey(item))}
+                  onClick={(event) => {
+                    if (event.shiftKey) {
+                      const keys = state.items.map((candidate) => itemKey(candidate));
+                      const key = itemKey(item);
+                      const targetIndex = keys.indexOf(key);
+                      const anchorIndex = selectionAnchorKey ? keys.indexOf(selectionAnchorKey) : targetIndex;
+                      setSelectedItemKeys(keysInRange(keys, anchorIndex, targetIndex));
+                      setSelectionAnchorKey(keys[anchorIndex]);
+                      setSelectionCursorKey(key);
+                      return;
+                    }
+                    setActionError(null);
+                    setSelectedItem(item);
+                  }}
                 >
                 <div className="flex min-w-0 items-center gap-2">
                   <span
