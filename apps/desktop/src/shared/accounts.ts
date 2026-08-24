@@ -46,6 +46,14 @@ export function findInboxFolder(
   );
 }
 
+export function findArchiveFolder(
+  folders: MailFolderSummary[],
+): MailFolderSummary | undefined {
+  return folders.find(
+    (folder) => folder.selectable && folder.specialUse === '\\Archive',
+  );
+}
+
 export function displayFolderName(folder: MailFolderSummary): string {
   if (
     folder.specialUse === '\\Inbox' ||
@@ -124,12 +132,13 @@ export interface MailSearchResult {
   message?: string;
 }
 
-export type BulkMessageAction = 'read' | 'unread' | 'delete';
+export type BulkMessageAction = 'read' | 'unread' | 'archive' | 'move' | 'delete';
 
 export interface BulkMessageGroup {
   accountId: string;
   folderPath: string;
   uids: number[];
+  destinationPath?: string;
 }
 
 export interface BulkMessageJobRequest {
@@ -268,6 +277,7 @@ export const ACCOUNT_CHANNELS = {
   getMessage: 'messages:get',
   setMessageUnread: 'messages:set-unread',
   deleteMessages: 'messages:delete',
+  moveMessages: 'messages:move',
   startBulkMessageJob: 'messages:bulk-start',
   cancelBulkMessageJob: 'messages:bulk-cancel',
   bulkMessageJobChanged: 'messages:bulk-changed',

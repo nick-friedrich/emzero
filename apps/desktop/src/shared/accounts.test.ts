@@ -4,6 +4,7 @@ import {
   chunkMessageUids,
   defaultAccountName,
   displayFolderName,
+  findArchiveFolder,
   findInboxFolder,
   type AccountDraft,
   type MailFolderSummary,
@@ -81,6 +82,27 @@ describe('findInboxFolder', () => {
     const unavailableInbox = folder('INBOX', null, false);
     const selectableInbox = folder('Inbox');
     expect(findInboxFolder([unavailableInbox, selectableInbox])).toBe(selectableInbox);
+  });
+});
+
+describe('findArchiveFolder', () => {
+  it('only accepts a selectable provider-designated archive', () => {
+    const folder = (path: string, specialUse: string | null, selectable = true): MailFolderSummary => ({
+      path,
+      name: path,
+      parentPath: '',
+      delimiter: '/',
+      specialUse,
+      selectable,
+      unreadCount: 0,
+    });
+    const namedArchive = folder('Archive', null);
+    const unavailableArchive = folder('All Mail', '\\Archive', false);
+    const designatedArchive = folder('Saved', '\\Archive');
+
+    expect(findArchiveFolder([namedArchive, unavailableArchive, designatedArchive]))
+      .toBe(designatedArchive);
+    expect(findArchiveFolder([namedArchive, unavailableArchive])).toBeUndefined();
   });
 });
 

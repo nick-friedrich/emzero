@@ -94,6 +94,7 @@ import {
   accountUnreadCount,
   defaultAccountName,
   displayFolderName,
+  findArchiveFolder,
   findInboxFolder,
 } from '../shared/accounts';
 import {
@@ -601,6 +602,7 @@ type MessageLoadState =
 
 interface UnifiedConversationItem {
   selection: FolderSelection;
+  folders: MailFolderSummary[];
   conversation: MailConversation;
 }
 
@@ -625,7 +627,7 @@ type MessageDetailLoadState =
   | { status: 'loaded'; message: MailMessageDetail }
   | { status: 'error'; message: string };
 
-type ConversationAction = 'read' | 'unread' | 'delete';
+type ConversationAction = 'read' | 'unread' | 'move' | 'delete';
 
 type StartBulkOperation = (
   request: BulkMessageJobRequest,
@@ -654,15 +656,96 @@ async function performConversationAction(
   folderPath: string,
   conversation: MailConversation,
   action: ConversationAction,
+  destinationPath?: string,
 ): Promise<string | null> {
+  if (action === 'move' && !destinationPath) return 'Choose a destination folder.';
   const uids = conversation.messages
     .filter((message) => message.folderPath === folderPath)
     .map((message) => message.uid);
   const result =
     action === 'delete'
       ? await window.emzero.messages.delete(accountId, folderPath, uids)
+      : action === 'move' && destinationPath
+        ? await window.emzero.messages.move(accountId, folderPath, uids, destinationPath)
       : await window.emzero.messages.setUnread(accountId, folderPath, uids, action === 'unread');
   return result.ok ? null : result.message ?? 'The action could not be completed.';
+}
+
+function MoveToDialog({
+  folders,
+  sourcePath,
+  count,
+  busy,
+  compact = false,
+  onMove,
+}: {
+  folders: MailFolderSummary[];
+  sourcePath: string;
+  count: number;
+  busy: boolean;
+  compact?: boolean;
+  onMove: (destinationPath: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [destinationPath, setDestinationPath] = useState('');
+  const destinations = folders.filter(
+    (folder) => folder.selectable && folder.path !== sourcePath,
+  );
+  const effectiveDestinationPath = destinations.some(
+    (folder) => folder.path === destinationPath,
+  )
+    ? destinationPath
+    : (destinations[0]?.path ?? '');
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        className={compact ? 'size-8 px-0' : 'px-3'}
+        aria-label="Move to folder"
+        title="Move to folder"
+        disabled={busy || destinations.length === 0}
+        onClick={() => setOpen(true)}
+      >
+        <Folder className="size-4" />
+        {!compact && <span className="hidden sm:inline">Move to</span>}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Move {count === 1 ? 'email' : `${count} emails`}</DialogTitle>
+            <DialogDescription>Choose a destination folder in this account.</DialogDescription>
+          </DialogHeader>
+          <label className="mt-2 block text-sm font-medium">
+            <span className="mb-2 block">Destination</span>
+            <select
+              className="field"
+              value={effectiveDestinationPath}
+              onChange={(event) => setDestinationPath(event.target.value)}
+            >
+              {destinations.map((folder) => (
+                <option key={folder.path} value={folder.path}>
+                  {displayFolderName(folder)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!effectiveDestinationPath}
+              onClick={() => {
+                onMove(effectiveDestinationPath);
+                setOpen(false);
+              }}
+            >
+              Move
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }
 
 function conversationWithUnreadValues(
@@ -695,18 +778,27 @@ function conversationWithMessage(
 }
 
 function ConversationActions({
+  folders,
+  sourcePath,
+  messageCount,
   unread,
   busy,
   confirmPermanentDelete,
   onSetUnread,
+  onMove,
   onDelete,
 }: {
+  folders: MailFolderSummary[];
+  sourcePath: string;
+  messageCount: number;
   unread: boolean;
   busy: boolean;
   confirmPermanentDelete: boolean;
   onSetUnread: (unread: boolean) => void;
+  onMove: (destinationPath: string) => void;
   onDelete: () => void;
 }) {
+  const archive = findArchiveFolder(folders);
   const unreadLabel = unread ? 'Mark as read' : 'Mark as unread';
   const deleteButton = (
     <Button
@@ -732,6 +824,26 @@ function ConversationActions({
       >
         {unread ? <MailOpen className="size-4" /> : <Mail className="size-4" />}
       </Button>
+      {archive && archive.path !== sourcePath && (
+        <Button
+          variant="ghost"
+          className="size-8 px-0"
+          aria-label="Archive conversation"
+          title="Archive conversation"
+          disabled={busy}
+          onClick={() => onMove(archive.path)}
+        >
+          <Archive className="size-4" />
+        </Button>
+      )}
+      <MoveToDialog
+        folders={folders}
+        sourcePath={sourcePath}
+        count={messageCount}
+        busy={busy}
+        compact
+        onMove={onMove}
+      />
       {confirmPermanentDelete ? (
         <AlertDialog>
           <AlertDialogTrigger asChild>{deleteButton}</AlertDialogTrigger>
@@ -803,6 +915,9 @@ function SelectionCheckbox({
 }
 
 function BulkActionToolbar({
+  folders,
+  sourcePath,
+  canArchive: canArchiveOverride,
   selectedRows,
   selectedEmails,
   totalRows,
@@ -811,7 +926,11 @@ function BulkActionToolbar({
   onToggleAll,
   onClear,
   onAction,
+  onMove,
 }: {
+  folders: MailFolderSummary[];
+  sourcePath: string;
+  canArchive?: boolean;
   selectedRows: number;
   selectedEmails: number;
   totalRows: number;
@@ -819,13 +938,16 @@ function BulkActionToolbar({
   permanentDelete: boolean;
   onToggleAll: () => void;
   onClear: () => void;
-  onAction: (action: ConversationAction) => void;
+  onAction: (action: BulkMessageJobRequest['action']) => void;
+  onMove: (destinationPath: string) => void;
 }) {
-  const [pendingAction, setPendingAction] = useState<ConversationAction | null>(null);
+  const [pendingAction, setPendingAction] = useState<BulkMessageJobRequest['action'] | null>(null);
   const allSelected = selectedRows === totalRows;
-  const needsConfirmation = (action: ConversationAction) =>
+  const archive = findArchiveFolder(folders);
+  const canArchive = canArchiveOverride ?? Boolean(archive && archive.path !== sourcePath);
+  const needsConfirmation = (action: BulkMessageJobRequest['action']) =>
     selectedEmails > bulkActionConfirmationThreshold || (action === 'delete' && permanentDelete);
-  const requestAction = (action: ConversationAction) => {
+  const requestAction = (action: BulkMessageJobRequest['action']) => {
     if (needsConfirmation(action)) setPendingAction(action);
     else onAction(action);
   };
@@ -834,6 +956,8 @@ function BulkActionToolbar({
       ? 'mark as read'
       : pendingAction === 'unread'
         ? 'mark as unread'
+        : pendingAction === 'archive'
+          ? 'archive'
         : 'delete';
 
   return (
@@ -856,6 +980,19 @@ function BulkActionToolbar({
           <Mail className="size-4" />
           <span className="hidden sm:inline">Mark unread</span>
         </Button>
+        {canArchive && (
+          <Button variant="ghost" className="px-3" disabled={busy} onClick={() => requestAction('archive')}>
+            <Archive className="size-4" />
+            <span className="hidden sm:inline">Archive</span>
+          </Button>
+        )}
+        <MoveToDialog
+          folders={folders}
+          sourcePath={sourcePath}
+          count={selectedEmails}
+          busy={busy}
+          onMove={onMove}
+        />
         <Button variant="ghost" className="px-3 text-danger hover:text-danger" disabled={busy} onClick={() => requestAction('delete')}>
           <Trash2 className="size-4" />
           <span className="hidden sm:inline">Delete</span>
@@ -868,7 +1005,7 @@ function BulkActionToolbar({
             <AlertDialogTitle>
               {pendingAction === 'delete' && permanentDelete
                 ? `Permanently delete ${selectedEmails} emails?`
-                : `${pendingAction === 'delete' ? 'Delete' : pendingAction === 'read' ? 'Mark as read' : 'Mark as unread'} ${selectedEmails} emails?`}
+                : `${pendingAction === 'delete' ? 'Delete' : pendingAction === 'read' ? 'Mark as read' : pendingAction === 'unread' ? 'Mark as unread' : 'Archive'} ${selectedEmails} emails?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingAction === 'delete' && permanentDelete
@@ -1318,20 +1455,24 @@ function ThreadMessageCard({
 
 function ConversationReader({
   selection,
+  folders,
   conversation,
   onBack,
   busy,
   actionError,
   onSetUnread,
+  onMove,
   onDelete,
   onReplySent,
 }: {
   selection: FolderSelection;
+  folders: MailFolderSummary[];
   conversation: MailConversation;
   onBack: () => void;
   busy: boolean;
   actionError: string | null;
   onSetUnread: (unread: boolean) => void;
+  onMove: (destinationPath: string) => void;
   onDelete: () => void;
   onReplySent: (message: MailMessageSummary) => void;
 }) {
@@ -1350,10 +1491,14 @@ function ConversationReader({
         </span>
         <div className="ml-auto">
           <ConversationActions
+            folders={folders}
+            sourcePath={selection.folder.path}
+            messageCount={messageCountInFolder(conversation, selection.folder.path)}
             unread={unread}
             busy={busy}
             confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
             onSetUnread={onSetUnread}
+            onMove={onMove}
             onDelete={onDelete}
           />
         </div>
@@ -1409,6 +1554,15 @@ function MessageList({
   const [selectionCursorId, setSelectionCursorId] = useState<string | null>(null);
   const conversationRowRefs = useRef(new Map<string, HTMLButtonElement>());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [folders, setFolders] = useState<MailFolderSummary[]>([selection.folder]);
+
+  useEffect(() => {
+    let active = true;
+    void window.emzero.folders.list(selection.account.id).then((result) => {
+      if (active && result.ok) setFolders(result.folders);
+    });
+    return () => { active = false; };
+  }, [selection.account.id]);
 
   useEffect(() => {
     let active = true;
@@ -1553,7 +1707,7 @@ function MessageList({
         const processed = new Set(progress.processedUids);
         setState((current) => {
           if (current.status !== 'loaded') return current;
-          if (progress.action === 'delete') {
+          if (['delete', 'archive', 'move'].includes(progress.action)) {
             const removed = current.messages.filter((message) => processed.has(message.uid)).length;
             return {
               ...current,
@@ -1573,7 +1727,11 @@ function MessageList({
     [selection.account.id, selection.folder.path],
   );
 
-  const runAction = async (conversation: MailConversation, action: ConversationAction) => {
+  const runAction = async (
+    conversation: MailConversation,
+    action: ConversationAction,
+    destinationPath?: string,
+  ) => {
     if (pendingActions.current.has(conversation.id)) return false;
     pendingActions.current.add(conversation.id);
     setBusyConversations((current) => new Set(current).add(conversation.id));
@@ -1609,7 +1767,7 @@ function MessageList({
       );
     };
 
-    if (action !== 'delete') {
+    if (action === 'read' || action === 'unread') {
       const unread = action === 'unread';
       updateUnread(new Map([...keys].map((key) => [key, unread])));
     }
@@ -1620,13 +1778,14 @@ function MessageList({
         selection.folder.path,
         conversation,
         action,
+        destinationPath,
       );
       if (error) {
         setActionError(error);
-        if (action !== 'delete') updateUnread(previousUnread);
+        if (action === 'read' || action === 'unread') updateUnread(previousUnread);
         return false;
       }
-      if (action === 'delete') {
+      if (action === 'delete' || action === 'move') {
         setState((current) =>
           current.status === 'loaded'
             ? {
@@ -1652,7 +1811,7 @@ function MessageList({
       return true;
     } catch {
       setActionError('The action could not be completed.');
-      if (action !== 'delete') updateUnread(previousUnread);
+      if (action === 'read' || action === 'unread') updateUnread(previousUnread);
       return false;
     } finally {
       pendingActions.current.delete(conversation.id);
@@ -1664,7 +1823,10 @@ function MessageList({
     }
   };
 
-  const runBulkAction = async (action: ConversationAction) => {
+  const runBulkAction = async (
+    action: BulkMessageJobRequest['action'],
+    destinationPath?: string,
+  ) => {
     if (bulkBusy) return;
     const uids = [
       ...new Set(
@@ -1680,7 +1842,12 @@ function MessageList({
       const result = await onStartBulkOperation(
         {
           action,
-          groups: [{ accountId: selection.account.id, folderPath: selection.folder.path, uids }],
+          groups: [{
+            accountId: selection.account.id,
+            folderPath: selection.folder.path,
+            uids,
+            ...(destinationPath ? { destinationPath } : {}),
+          }],
         },
         displayFolderName(selection.folder),
       );
@@ -1701,12 +1868,16 @@ function MessageList({
       <ConversationReader
         key={selectedConversation.id}
         selection={selection}
+        folders={folders}
         conversation={selectedConversation}
         onBack={() => setSelectedConversation(null)}
         busy={busyConversations.has(selectedConversation.id)}
         actionError={actionError}
         onSetUnread={(unread) =>
           void runAction(selectedConversation, unread ? 'unread' : 'read')
+        }
+        onMove={(destinationPath) =>
+          void runAction(selectedConversation, 'move', destinationPath)
         }
         onDelete={() => void runAction(selectedConversation, 'delete')}
         onReplySent={(message) => {
@@ -1827,6 +1998,8 @@ function MessageList({
 
       {state.status === 'loaded' && selectedConversationIds.size > 0 && (
         <BulkActionToolbar
+          folders={folders}
+          sourcePath={selection.folder.path}
           selectedRows={selectedConversationIds.size}
           selectedEmails={selectedEmailCount}
           totalRows={conversations.length}
@@ -1849,6 +2022,7 @@ function MessageList({
             setSelectionCursorId(null);
           }}
           onAction={(action) => void runBulkAction(action)}
+          onMove={(destinationPath) => void runBulkAction('move', destinationPath)}
         />
       )}
 
@@ -1945,11 +2119,17 @@ function MessageList({
                 </button>
                 <div className="pr-3 lg:pr-5">
                   <ConversationActions
+                    folders={folders}
+                    sourcePath={selection.folder.path}
+                    messageCount={messageCountInFolder(conversation, selection.folder.path)}
                     unread={unread}
                     busy={busyConversations.has(conversation.id)}
                     confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
                     onSetUnread={(nextUnread) =>
                       void runAction(conversation, nextUnread ? 'unread' : 'read')
+                    }
+                    onMove={(destinationPath) =>
+                      void runAction(conversation, 'move', destinationPath)
                     }
                     onDelete={() => void runAction(conversation, 'delete')}
                   />
@@ -2043,6 +2223,7 @@ function UnifiedInbox({
             account,
             items: groupMessagesWithRelated(messages, relatedMessages).map((conversation) => ({
               selection,
+              folders: folderResult.folders,
               conversation,
             })),
             loadedMessages: messages.length,
@@ -2112,6 +2293,13 @@ function UnifiedInbox({
       total + messageCountInFolder(item.conversation, item.selection.folder.path),
     0,
   );
+  const selectedAccountIds = new Set(
+    selectedItems.map((item) => item.selection.account.id),
+  );
+  const bulkMoveFolders = selectedAccountIds.size === 1
+    ? (selectedItems[0]?.folders ?? [])
+    : [];
+  const bulkMoveSourcePath = selectedItems[0]?.selection.folder.path ?? '';
 
   useEffect(() => {
     if (selectedItem) return;
@@ -2174,7 +2362,7 @@ function UnifiedInbox({
         ).length;
         if (affected === 0) return [item];
         affectedMessages += affected;
-        if (progress.action === 'delete') {
+        if (['delete', 'archive', 'move'].includes(progress.action)) {
           const messages = item.conversation.messages.filter(
             (message) =>
               message.folderPath !== progress.folderPath || !processed.has(message.uid),
@@ -2202,11 +2390,11 @@ function UnifiedInbox({
         ...current,
         items,
         loadedMessages:
-          progress.action === 'delete'
+          ['delete', 'archive', 'move'].includes(progress.action)
             ? Math.max(0, current.loadedMessages - affectedMessages)
             : current.loadedMessages,
         totalMessages:
-          progress.action === 'delete'
+          ['delete', 'archive', 'move'].includes(progress.action)
             ? Math.max(0, current.totalMessages - affectedMessages)
             : current.totalMessages,
       };
@@ -2215,7 +2403,11 @@ function UnifiedInbox({
     [],
   );
 
-  const runAction = async (item: UnifiedConversationItem, action: ConversationAction) => {
+  const runAction = async (
+    item: UnifiedConversationItem,
+    action: ConversationAction,
+    destinationPath?: string,
+  ) => {
     const key = itemKey(item);
     if (pendingActions.current.has(key)) return false;
     pendingActions.current.add(key);
@@ -2245,7 +2437,7 @@ function UnifiedInbox({
       setSelectedItem((current) => (current ? updateItem(current) : current));
     };
 
-    if (action !== 'delete') {
+    if (action === 'read' || action === 'unread') {
       const unread = action === 'unread';
       updateUnread(new Map([...previousUnread.keys()].map((messageKey) => [messageKey, unread])));
     }
@@ -2256,13 +2448,14 @@ function UnifiedInbox({
         item.selection.folder.path,
         item.conversation,
         action,
+        destinationPath,
       );
       if (error) {
         setActionError(error);
-        if (action !== 'delete') updateUnread(previousUnread);
+        if (action === 'read' || action === 'unread') updateUnread(previousUnread);
         return false;
       }
-      if (action === 'delete') {
+      if (action === 'delete' || action === 'move') {
         setState((current) =>
           current.status === 'loaded'
             ? {
@@ -2290,7 +2483,7 @@ function UnifiedInbox({
       return true;
     } catch {
       setActionError('The action could not be completed.');
-      if (action !== 'delete') updateUnread(previousUnread);
+      if (action === 'read' || action === 'unread') updateUnread(previousUnread);
       return false;
     } finally {
       pendingActions.current.delete(key);
@@ -2302,13 +2495,21 @@ function UnifiedInbox({
     }
   };
 
-  const runBulkAction = async (action: ConversationAction) => {
+  const runBulkAction = async (
+    action: BulkMessageJobRequest['action'],
+    destinationPath?: string,
+  ) => {
     if (bulkBusy) return;
     const groups = new Map<string, BulkMessageJobRequest['groups'][number]>();
     for (const item of selectedItems) {
       const { account, folder } = item.selection;
       const key = `${account.id}:${folder.path}`;
-      const group = groups.get(key) ?? { accountId: account.id, folderPath: folder.path, uids: [] };
+      const group = groups.get(key) ?? {
+        accountId: account.id,
+        folderPath: folder.path,
+        uids: [],
+        ...(destinationPath ? { destinationPath } : {}),
+      };
       group.uids.push(
         ...item.conversation.messages
           .filter((message) => message.folderPath === folder.path)
@@ -2345,6 +2546,7 @@ function UnifiedInbox({
       <ConversationReader
         key={`${selectedItem.selection.account.id}:${selectedItem.conversation.id}`}
         selection={selectedItem.selection}
+        folders={selectedItem.folders}
         conversation={selectedItem.conversation}
         onBack={() => setSelectedItem(null)}
         busy={busyConversations.has(itemKey(selectedItem))}
@@ -2352,6 +2554,7 @@ function UnifiedInbox({
         onSetUnread={(unread) =>
           void runAction(selectedItem, unread ? 'unread' : 'read')
         }
+        onMove={(destinationPath) => void runAction(selectedItem, 'move', destinationPath)}
         onDelete={() => void runAction(selectedItem, 'delete')}
         onReplySent={(message) => {
           setSelectedItem((current) =>
@@ -2458,6 +2661,12 @@ function UnifiedInbox({
 
       {state.status === 'loaded' && selectedItemKeys.size > 0 && (
         <BulkActionToolbar
+          folders={bulkMoveFolders}
+          sourcePath={bulkMoveSourcePath}
+          canArchive={selectedItems.every((item) => {
+            const archive = findArchiveFolder(item.folders);
+            return Boolean(archive && archive.path !== item.selection.folder.path);
+          })}
           selectedRows={selectedItemKeys.size}
           selectedEmails={selectedEmailCount}
           totalRows={state.items.length}
@@ -2481,6 +2690,7 @@ function UnifiedInbox({
             setSelectionCursorKey(null);
           }}
           onAction={(action) => void runBulkAction(action)}
+          onMove={(destinationPath) => void runBulkAction('move', destinationPath)}
         />
       )}
 
@@ -2609,12 +2819,16 @@ function UnifiedInbox({
                 </button>
                 <div className="pr-3 lg:pr-5">
                   <ConversationActions
+                    folders={item.folders}
+                    sourcePath={selection.folder.path}
+                    messageCount={messageCountInFolder(item.conversation, selection.folder.path)}
                     unread={unread}
                     busy={busyConversations.has(itemKey(item))}
                     confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
                     onSetUnread={(nextUnread) =>
                       void runAction(item, nextUnread ? 'unread' : 'read')
                     }
+                    onMove={(destinationPath) => void runAction(item, 'move', destinationPath)}
                     onDelete={() => void runAction(item, 'delete')}
                   />
                 </div>
@@ -3265,6 +3479,25 @@ function MailSearch({
   } | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedFolderState, setSelectedFolderState] = useState<{
+    accountId: string;
+    folders: MailFolderSummary[];
+  } | null>(null);
+  const selectedAccountId = selected?.item.accountId ?? null;
+  const selectedFolders = selectedFolderState?.accountId === selectedAccountId
+    ? selectedFolderState.folders
+    : [];
+
+  useEffect(() => {
+    if (!selectedAccountId) return;
+    let active = true;
+    void window.emzero.folders.list(selectedAccountId).then((result) => {
+      if (active && result.ok) {
+        setSelectedFolderState({ accountId: selectedAccountId, folders: result.folders });
+      }
+    });
+    return () => { active = false; };
+  }, [selectedAccountId]);
 
   useEffect(() => {
     const nextQuery = query.trim();
@@ -3319,7 +3552,7 @@ function MailSearch({
         account,
         folder: selected.item.folder,
       };
-      const runAction = async (action: ConversationAction) => {
+      const runAction = async (action: ConversationAction, destinationPath?: string) => {
         if (actionBusy) return;
         setActionBusy(true);
         setActionError(null);
@@ -3329,12 +3562,13 @@ function MailSearch({
             selection.folder.path,
             selected.conversation,
             action,
+            destinationPath,
           );
           if (error) {
             setActionError(error);
             return;
           }
-          if (action === 'delete') {
+          if (action === 'delete' || action === 'move') {
             setState((current) =>
               current.status === 'loaded'
                 ? {
@@ -3376,11 +3610,13 @@ function MailSearch({
       return (
         <ConversationReader
           selection={selection}
+          folders={selectedFolders}
           conversation={selected.conversation}
           onBack={() => setSelected(null)}
           busy={actionBusy}
           actionError={actionError}
           onSetUnread={(unread) => void runAction(unread ? 'unread' : 'read')}
+          onMove={(destinationPath) => void runAction('move', destinationPath)}
           onDelete={() => void runAction('delete')}
           onReplySent={(message) => {
             setSelected((current) =>
@@ -3889,16 +4125,24 @@ function BulkOperationBar({
       ? 'mark as read'
       : progress.action === 'unread'
         ? 'mark as unread'
+        : progress.action === 'archive'
+          ? 'archive'
+          : progress.action === 'move'
+            ? 'move'
         : 'delete';
   const presentVerb =
     progress.action === 'read'
       ? 'Marking emails as read'
       : progress.action === 'unread'
         ? 'Marking emails as unread'
+        : progress.action === 'archive'
+          ? 'Archiving emails'
+          : progress.action === 'move'
+            ? 'Moving emails'
         : 'Deleting emails';
   const title =
     progress.state === 'completed'
-      ? `${progress.total} ${progress.total === 1 ? 'email' : 'emails'} ${verb === 'delete' ? 'deleted' : progress.action === 'read' ? 'marked as read' : 'marked as unread'}`
+      ? `${progress.total} ${progress.total === 1 ? 'email' : 'emails'} ${verb === 'delete' ? 'deleted' : progress.action === 'read' ? 'marked as read' : progress.action === 'unread' ? 'marked as unread' : progress.action === 'archive' ? 'archived' : 'moved'}`
       : progress.state === 'stopped'
         ? `Stopped after ${progress.processed} of ${progress.total}`
         : progress.state === 'error'
@@ -3918,6 +4162,10 @@ function BulkOperationBar({
             <XCircle className="size-4 text-muted-foreground" />
           ) : progress.action === 'delete' ? (
             <Trash2 className="size-4" />
+          ) : progress.action === 'archive' ? (
+            <Archive className="size-4" />
+          ) : progress.action === 'move' ? (
+            <Folder className="size-4" />
           ) : progress.action === 'read' ? (
             <MailOpen className="size-4" />
           ) : (

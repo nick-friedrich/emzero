@@ -299,4 +299,37 @@ describe('MailCache', () => {
     });
     expect(cache.listFolders('account-1')[0].unreadCount).toBe(1);
   });
+
+  it('removes moved messages and invalidates the destination cache', () => {
+    cache = new MailCache(':memory:');
+    const archive = { ...inbox, path: 'Archive', name: 'Archive', specialUse: '\\Archive', unreadCount: 0 };
+    cache.replaceFolders('account-1', [inbox, archive]);
+    cache.replaceRecentMessages('account-1', 'INBOX', [message(1), message(2)], 2, 'inbox-sync');
+    cache.replaceRecentMessages(
+      'account-1',
+      'Archive',
+      [{ ...message(3), folderPath: 'Archive' }],
+      1,
+      'archive-sync',
+    );
+
+    cache.moveMessages('account-1', 'INBOX', 'Archive', [2]);
+
+    expect(cache.listMessages('account-1', 'INBOX')).toMatchObject({
+      messages: [{ uid: 1 }],
+      total: 1,
+    });
+    expect(cache.getFolderSyncState('account-1', 'Archive')).toMatchObject({
+      messages: [{ uid: 3 }],
+      total: 2,
+      syncedAt: null,
+      uidValidity: null,
+      uidNext: null,
+      highestModseq: null,
+    });
+    expect(cache.listFolders('account-1')).toMatchObject([
+      { path: 'INBOX', unreadCount: 1 },
+      { path: 'Archive', unreadCount: 1 },
+    ]);
+  });
 });

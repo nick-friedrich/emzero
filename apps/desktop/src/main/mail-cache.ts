@@ -742,6 +742,57 @@ export class MailCache {
     }
   }
 
+  moveMessages(
+    accountId: string,
+    folderPath: string,
+    destinationPath: string,
+    uids: number[],
+  ): void {
+    const messageState = this.#database.prepare(`
+      SELECT unread FROM messages
+      WHERE account_id = ? AND folder_path = ? AND uid = ?
+    `);
+    const remove = this.#database.prepare(`
+      DELETE FROM messages WHERE account_id = ? AND folder_path = ? AND uid = ?
+    `);
+    const updateSource = this.#database.prepare(`
+      UPDATE folders
+      SET message_count = MAX(0, message_count - ?),
+          unread_count = MAX(0, unread_count - ?)
+      WHERE account_id = ? AND path = ?
+    `);
+    const invalidateDestination = this.#database.prepare(`
+      UPDATE folders
+      SET message_count = message_count + ?,
+          unread_count = unread_count + ?,
+          synced_at = NULL,
+          uid_validity = NULL,
+          uid_next = NULL,
+          highest_modseq = NULL
+      WHERE account_id = ? AND path = ?
+    `);
+
+    this.#database.exec('BEGIN');
+    try {
+      let moved = 0;
+      let unread = 0;
+      for (const uid of uids) {
+        const row = messageState.get(accountId, folderPath, uid) as
+          | Pick<MessageRow, 'unread'>
+          | undefined;
+        if (!row) continue;
+        moved += Number(remove.run(accountId, folderPath, uid).changes);
+        unread += row.unread;
+      }
+      updateSource.run(moved, unread, accountId, folderPath);
+      invalidateDestination.run(moved, unread, accountId, destinationPath);
+      this.#database.exec('COMMIT');
+    } catch (error) {
+      this.#database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   applyIncrementalSync(
     accountId: string,
     folderPath: string,

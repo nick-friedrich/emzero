@@ -8,6 +8,7 @@ import nodemailer from 'nodemailer';
 import {
   ACCOUNT_CHANNELS,
   chunkMessageUids,
+  findArchiveFolder,
   type AccountDraft,
   type AccountOperationResult,
   type AccountNameUpdate,
@@ -536,7 +537,7 @@ function validUids(value: unknown): value is number[] {
 function validBulkMessageJobRequest(value: unknown): value is BulkMessageJobRequest {
   if (!value || typeof value !== 'object') return false;
   const request = value as Partial<BulkMessageJobRequest>;
-  if (!['read', 'unread', 'delete'].includes(request.action ?? '')) return false;
+  if (!['read', 'unread', 'archive', 'move', 'delete'].includes(request.action ?? '')) return false;
   if (!Array.isArray(request.groups) || request.groups.length === 0 || request.groups.length > 100) {
     return false;
   }
@@ -548,6 +549,8 @@ function validBulkMessageJobRequest(value: unknown): value is BulkMessageJobRequ
       !group.accountId ||
       typeof group.folderPath !== 'string' ||
       !group.folderPath ||
+      (request.action === 'move' &&
+        (typeof group.destinationPath !== 'string' || !group.destinationPath)) ||
       !validUids(group.uids)
     ) {
       return false;
@@ -555,6 +558,20 @@ function validBulkMessageJobRequest(value: unknown): value is BulkMessageJobRequ
     total += group.uids.length;
   }
   return total <= 20_000;
+}
+
+function moveDestination(
+  accountId: string,
+  folderPath: string,
+  action: 'archive' | 'move',
+  destinationPath?: string,
+): MailFolderSummary | undefined {
+  const folders = mailCache().listFolders(accountId);
+  const destination =
+    action === 'archive'
+      ? findArchiveFolder(folders)
+      : folders.find((folder) => folder.path === destinationPath && folder.selectable);
+  return destination?.path === folderPath ? undefined : destination;
 }
 
 function validSendDraft(value: unknown): value is MailSendDraft {
@@ -661,6 +678,45 @@ async function deleteFolderMessages(
   }
 }
 
+async function moveFolderMessages(
+  account: StoredAccount,
+  folderPath: string,
+  uids: number[],
+  destinationPath: string,
+): Promise<MessageOperationResult> {
+  const destination = moveDestination(account.id, folderPath, 'move', destinationPath);
+  if (!destination) return { ok: false, message: 'Choose a different destination folder.' };
+
+  let password = '';
+  let imap: ImapFlow | null = null;
+  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
+  try {
+    password = await decryptPassword(account);
+    imap = new ImapFlow({
+      host: account.imap.host,
+      port: account.imap.port,
+      secure: account.imap.secure,
+      auth: { user: account.username, pass: password },
+      logger: false,
+      connectionTimeout: 12_000,
+      greetingTimeout: 12_000,
+      socketTimeout: 20_000,
+    });
+    await imap.connect();
+    lock = await imap.getMailboxLock(folderPath);
+    const moved = await imap.messageMove(uids, destination.path, { uid: true });
+    if (!moved) return { ok: false, message: 'The messages are no longer available.' };
+    mailCache().moveMessages(account.id, folderPath, destination.path, uids);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: `Could not move messages: ${errorMessage(error, password)}` };
+  } finally {
+    lock?.release();
+    if (imap?.usable) await imap.logout().catch(() => imap?.close());
+    else imap?.close();
+  }
+}
+
 function bulkJobProgress(
   job: ActiveBulkMessageJob,
   state: BulkMessageJobProgress['state'],
@@ -704,6 +760,17 @@ async function processBulkMessageGroup(
             .listFolders(account.id)
             .find((folder) => folder.selectable && folder.specialUse === '\\Trash')
         : undefined;
+    const moveTo =
+      job.action === 'archive' || job.action === 'move'
+        ? moveDestination(account.id, group.folderPath, job.action, group.destinationPath)
+        : undefined;
+    if ((job.action === 'archive' || job.action === 'move') && !moveTo) {
+      throw new Error(
+        job.action === 'archive'
+          ? 'This account does not have an Archive folder.'
+          : 'Choose a different destination folder.',
+      );
+    }
 
     for (const uids of chunkMessageUids(group.uids, bulkMessageChunkSize)) {
       if (job.cancelRequested) return;
@@ -712,6 +779,8 @@ async function processBulkMessageGroup(
           ? await imap.messageFlagsAdd(uids, ['\\Seen'], { uid: true })
           : job.action === 'unread'
             ? await imap.messageFlagsRemove(uids, ['\\Seen'], { uid: true })
+            : moveTo
+              ? await imap.messageMove(uids, moveTo.path, { uid: true })
             : trash && trash.path !== group.folderPath
               ? await imap.messageMove(uids, trash.path, { uid: true })
               : await imap.messageDelete(uids, { uid: true });
@@ -719,6 +788,8 @@ async function processBulkMessageGroup(
 
       if (job.action === 'delete') {
         mailCache().deleteMessages(account.id, group.folderPath, uids);
+      } else if (moveTo) {
+        mailCache().moveMessages(account.id, group.folderPath, moveTo.path, uids);
       } else {
         mailCache().setMessagesUnread(account.id, group.folderPath, uids, job.action === 'unread');
       }
@@ -1150,6 +1221,32 @@ export function registerAccountHandlers(): void {
   );
 
   ipcMain.handle(
+    ACCOUNT_CHANNELS.moveMessages,
+    async (
+      event,
+      accountId: unknown,
+      folderPath: unknown,
+      uids: unknown,
+      destinationPath: unknown,
+    ) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (
+        typeof accountId !== 'string' ||
+        typeof folderPath !== 'string' ||
+        !folderPath ||
+        !validUids(uids) ||
+        typeof destinationPath !== 'string' ||
+        !destinationPath
+      ) {
+        return { ok: false, message: 'Invalid messages.' } satisfies MessageOperationResult;
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return { ok: false, message: 'Account not found.' } satisfies MessageOperationResult;
+      return moveFolderMessages(account, folderPath, uids, destinationPath);
+    },
+  );
+
+  ipcMain.handle(
     ACCOUNT_CHANNELS.startBulkMessageJob,
     (event, value: unknown) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
@@ -1171,6 +1268,7 @@ export function registerAccountHandlers(): void {
           accountId: group.accountId,
           folderPath: group.folderPath,
           uids: [...new Set(group.uids)],
+          ...(group.destinationPath ? { destinationPath: group.destinationPath } : {}),
         })),
       };
       const job: ActiveBulkMessageJob = {
