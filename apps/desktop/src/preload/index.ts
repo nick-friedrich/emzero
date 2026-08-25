@@ -62,6 +62,7 @@ export interface EmzeroDesktopApi {
       accountId: string,
       folderPath: string,
       uids: number[],
+      destinationAccountId: string,
       destinationPath: string,
     ) => Promise<MessageOperationResult>;
     startBulkJob: (request: BulkMessageJobRequest) => Promise<BulkMessageJobStartResult>;
@@ -113,12 +114,13 @@ contextBridge.exposeInMainWorld('emzero', {
       ipcRenderer.invoke(ACCOUNT_CHANNELS.setMessageUnread, accountId, folderPath, uids, unread),
     delete: (accountId, folderPath, uids) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.deleteMessages, accountId, folderPath, uids),
-    move: (accountId, folderPath, uids, destinationPath) =>
+    move: (accountId, folderPath, uids, destinationAccountId, destinationPath) =>
       ipcRenderer.invoke(
         ACCOUNT_CHANNELS.moveMessages,
         accountId,
         folderPath,
         uids,
+        destinationAccountId,
         destinationPath,
       ),
     startBulkJob: (request) =>

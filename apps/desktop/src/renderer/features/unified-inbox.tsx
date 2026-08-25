@@ -21,6 +21,7 @@ import {
 import {
   type AccountSummary,
   type BulkMessageJobRequest,
+  type MessageMoveDestination,
   findArchiveFolder,
   findInboxFolder,
 } from '../../shared/accounts';
@@ -197,12 +198,7 @@ export function UnifiedInbox({
       total + messageCountInFolder(item.conversation, item.selection.folder.path),
     0,
   );
-  const selectedAccountIds = new Set(
-    selectedItems.map((item) => item.selection.account.id),
-  );
-  const bulkMoveFolders = selectedAccountIds.size === 1
-    ? (selectedItems[0]?.folders ?? [])
-    : [];
+  const bulkMoveFolders = selectedItems[0]?.folders ?? [];
   const bulkMoveSourcePath = selectedItems[0]?.selection.folder.path ?? '';
 
   useEffect(() => {
@@ -310,7 +306,7 @@ export function UnifiedInbox({
   const runAction = async (
     item: UnifiedConversationItem,
     action: ConversationAction,
-    destinationPath?: string,
+    destination?: MessageMoveDestination,
   ) => {
     const key = itemKey(item);
     if (pendingActions.current.has(key)) return false;
@@ -352,7 +348,7 @@ export function UnifiedInbox({
         item.selection.folder.path,
         item.conversation,
         action,
-        destinationPath,
+        destination,
       );
       if (error) {
         setActionError(error);
@@ -401,7 +397,7 @@ export function UnifiedInbox({
 
   const runBulkAction = async (
     action: BulkMessageJobRequest['action'],
-    destinationPath?: string,
+    destination?: MessageMoveDestination,
   ) => {
     if (bulkBusy) return;
     const groups = new Map<string, BulkMessageJobRequest['groups'][number]>();
@@ -412,7 +408,12 @@ export function UnifiedInbox({
         accountId: account.id,
         folderPath: folder.path,
         uids: [],
-        ...(destinationPath ? { destinationPath } : {}),
+        ...(destination
+          ? {
+              destinationAccountId: destination.accountId,
+              destinationPath: destination.folderPath,
+            }
+          : {}),
       };
       group.uids.push(
         ...item.conversation.messages
@@ -448,6 +449,7 @@ export function UnifiedInbox({
   if (selectedItem) {
     return (
       <ConversationReader
+        accounts={accounts}
         key={`${selectedItem.selection.account.id}:${selectedItem.conversation.id}`}
         selection={selectedItem.selection}
         folders={selectedItem.folders}
@@ -458,7 +460,7 @@ export function UnifiedInbox({
         onSetUnread={(unread) =>
           void runAction(selectedItem, unread ? 'unread' : 'read')
         }
-        onMove={(destinationPath) => void runAction(selectedItem, 'move', destinationPath)}
+        onMove={(destination) => void runAction(selectedItem, 'move', destination)}
         onDelete={() => void runAction(selectedItem, 'delete')}
         onReplySent={(message) => {
           setSelectedItem((current) =>
@@ -565,6 +567,12 @@ export function UnifiedInbox({
 
       {state.status === 'loaded' && selectedItemKeys.size > 0 && (
         <BulkActionToolbar
+          accounts={accounts}
+          sourceAccountId={selectedItems[0]?.selection.account.id ?? accounts[0]?.id ?? ''}
+          sourceLocations={selectedItems.map((item) => ({
+            accountId: item.selection.account.id,
+            folderPath: item.selection.folder.path,
+          }))}
           folders={bulkMoveFolders}
           sourcePath={bulkMoveSourcePath}
           canArchive={selectedItems.every((item) => {
@@ -594,7 +602,7 @@ export function UnifiedInbox({
             setSelectionCursorKey(null);
           }}
           onAction={(action) => void runBulkAction(action)}
-          onMove={(destinationPath) => void runBulkAction('move', destinationPath)}
+          onMove={(destination) => void runBulkAction('move', destination)}
         />
       )}
 
@@ -723,6 +731,8 @@ export function UnifiedInbox({
                 </button>
                 <div className="pr-3 lg:pr-5">
                   <ConversationActions
+                    accounts={accounts}
+                    sourceAccountId={selection.account.id}
                     folders={item.folders}
                     sourcePath={selection.folder.path}
                     messageCount={messageCountInFolder(item.conversation, selection.folder.path)}
@@ -732,7 +742,7 @@ export function UnifiedInbox({
                     onSetUnread={(nextUnread) =>
                       void runAction(item, nextUnread ? 'unread' : 'read')
                     }
-                    onMove={(destinationPath) => void runAction(item, 'move', destinationPath)}
+                    onMove={(destination) => void runAction(item, 'move', destination)}
                     onDelete={() => void runAction(item, 'delete')}
                   />
                 </div>

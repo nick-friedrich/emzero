@@ -784,6 +784,16 @@ export class MailCache {
     destinationPath: string,
     uids: number[],
   ): void {
+    this.transferMessages(accountId, folderPath, accountId, destinationPath, uids);
+  }
+
+  transferMessages(
+    sourceAccountId: string,
+    sourcePath: string,
+    destinationAccountId: string,
+    destinationPath: string,
+    uids: number[],
+  ): void {
     const messageState = this.#database.prepare(`
       SELECT unread FROM messages
       WHERE account_id = ? AND folder_path = ? AND uid = ?
@@ -813,15 +823,20 @@ export class MailCache {
       let moved = 0;
       let unread = 0;
       for (const uid of uids) {
-        const row = messageState.get(accountId, folderPath, uid) as
+        const row = messageState.get(sourceAccountId, sourcePath, uid) as
           | Pick<MessageRow, 'unread'>
           | undefined;
         if (!row) continue;
-        moved += Number(remove.run(accountId, folderPath, uid).changes);
+        moved += Number(remove.run(sourceAccountId, sourcePath, uid).changes);
         unread += row.unread;
       }
-      updateSource.run(moved, unread, accountId, folderPath);
-      invalidateDestination.run(moved, unread, accountId, destinationPath);
+      updateSource.run(moved, unread, sourceAccountId, sourcePath);
+      invalidateDestination.run(
+        moved,
+        unread,
+        destinationAccountId,
+        destinationPath,
+      );
       this.#database.exec('COMMIT');
     } catch (error) {
       this.#database.exec('ROLLBACK');

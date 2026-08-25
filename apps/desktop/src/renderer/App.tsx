@@ -280,6 +280,7 @@ export function App() {
       ) : selection.kind === 'folder' ? (
         <MessageList
           key={`${selection.account.id}:${selection.folder.path}:${syncRevision}`}
+          accounts={accounts}
           selection={selection}
           onStartBulkOperation={startBulkOperation}
         />

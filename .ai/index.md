@@ -47,6 +47,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/message-list.tsx` — one account-folder conversation list, selection, and folder-scoped actions.
 - `features/unified-inbox.tsx` — multi-account inbox aggregation, selection, and actions.
 - `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: action controls, selection toolbar, and mail-view types/helpers.
+- `features/message-move.tsx` — account-and-folder destination picker for single and bulk message moves.
 - `features/conversation-reader.tsx` — conversation reader, message body/thread cards, quoted-content display, and inline reply composer.
 - `features/bulk-operation.tsx` — persistent progress/status bar for background bulk message jobs.
 - `features/app-shared.ts` — small cross-feature status and send-shortcut preferences/hooks.

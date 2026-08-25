@@ -19,9 +19,11 @@ import {
   keysInRange,
 } from '@/lib/utils';
 import {
+  type AccountSummary,
   type BulkMessageJobRequest,
   type MailFolderSummary,
   type MailMessageSummary,
+  type MessageMoveDestination,
   displayFolderName,
 } from '../../shared/accounts';
 import {
@@ -47,9 +49,11 @@ import {
 import { ConversationReader } from './conversation-reader';
 
 export function MessageList({
+  accounts,
   selection,
   onStartBulkOperation,
 }: {
+  accounts: AccountSummary[];
   selection: FolderSelection;
   onStartBulkOperation: StartBulkOperation;
 }) {
@@ -240,7 +244,7 @@ export function MessageList({
   const runAction = async (
     conversation: MailConversation,
     action: ConversationAction,
-    destinationPath?: string,
+    destination?: MessageMoveDestination,
   ) => {
     if (pendingActions.current.has(conversation.id)) return false;
     pendingActions.current.add(conversation.id);
@@ -288,7 +292,7 @@ export function MessageList({
         selection.folder.path,
         conversation,
         action,
-        destinationPath,
+        destination,
       );
       if (error) {
         setActionError(error);
@@ -335,7 +339,7 @@ export function MessageList({
 
   const runBulkAction = async (
     action: BulkMessageJobRequest['action'],
-    destinationPath?: string,
+    destination?: MessageMoveDestination,
   ) => {
     if (bulkBusy) return;
     const uids = [
@@ -356,7 +360,12 @@ export function MessageList({
             accountId: selection.account.id,
             folderPath: selection.folder.path,
             uids,
-            ...(destinationPath ? { destinationPath } : {}),
+            ...(destination
+              ? {
+                  destinationAccountId: destination.accountId,
+                  destinationPath: destination.folderPath,
+                }
+              : {}),
           }],
         },
         displayFolderName(selection.folder),
@@ -376,6 +385,7 @@ export function MessageList({
   if (selectedConversation) {
     return (
       <ConversationReader
+        accounts={accounts}
         key={selectedConversation.id}
         selection={selection}
         folders={folders}
@@ -386,8 +396,8 @@ export function MessageList({
         onSetUnread={(unread) =>
           void runAction(selectedConversation, unread ? 'unread' : 'read')
         }
-        onMove={(destinationPath) =>
-          void runAction(selectedConversation, 'move', destinationPath)
+        onMove={(destination) =>
+          void runAction(selectedConversation, 'move', destination)
         }
         onDelete={() => void runAction(selectedConversation, 'delete')}
         onReplySent={(message) => {
@@ -508,6 +518,8 @@ export function MessageList({
 
       {state.status === 'loaded' && selectedConversationIds.size > 0 && (
         <BulkActionToolbar
+          accounts={accounts}
+          sourceAccountId={selection.account.id}
           folders={folders}
           sourcePath={selection.folder.path}
           selectedRows={selectedConversationIds.size}
@@ -532,7 +544,7 @@ export function MessageList({
             setSelectionCursorId(null);
           }}
           onAction={(action) => void runBulkAction(action)}
-          onMove={(destinationPath) => void runBulkAction('move', destinationPath)}
+          onMove={(destination) => void runBulkAction('move', destination)}
         />
       )}
 
@@ -629,6 +641,8 @@ export function MessageList({
                 </button>
                 <div className="pr-3 lg:pr-5">
                   <ConversationActions
+                    accounts={accounts}
+                    sourceAccountId={selection.account.id}
                     folders={folders}
                     sourcePath={selection.folder.path}
                     messageCount={messageCountInFolder(conversation, selection.folder.path)}
@@ -638,8 +652,8 @@ export function MessageList({
                     onSetUnread={(nextUnread) =>
                       void runAction(conversation, nextUnread ? 'unread' : 'read')
                     }
-                    onMove={(destinationPath) =>
-                      void runAction(conversation, 'move', destinationPath)
+                    onMove={(destination) =>
+                      void runAction(conversation, 'move', destination)
                     }
                     onDelete={() => void runAction(conversation, 'delete')}
                   />

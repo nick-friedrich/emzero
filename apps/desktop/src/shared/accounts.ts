@@ -277,7 +277,13 @@ export interface BulkMessageGroup {
   accountId: string;
   folderPath: string;
   uids: number[];
+  destinationAccountId?: string;
   destinationPath?: string;
+}
+
+export interface MessageMoveDestination {
+  accountId: string;
+  folderPath: string;
 }
 
 export interface BulkMessageJobRequest {

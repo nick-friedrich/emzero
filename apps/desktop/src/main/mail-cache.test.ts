@@ -353,4 +353,29 @@ describe('MailCache', () => {
       { path: 'Archive', unreadCount: 1 },
     ]);
   });
+
+  it('moves cached message state between accounts and invalidates the destination', () => {
+    cache = new MailCache(':memory:');
+    const destinationInbox = { ...inbox, unreadCount: 0 };
+    cache.replaceFolders('account-1', [inbox]);
+    cache.replaceFolders('account-2', [destinationInbox]);
+    cache.replaceRecentMessages('account-1', 'INBOX', [message(1), message(2)], 2, 'source-sync');
+    cache.replaceRecentMessages('account-2', 'INBOX', [], 0, 'destination-sync');
+
+    cache.transferMessages('account-1', 'INBOX', 'account-2', 'INBOX', [2]);
+
+    expect(cache.listMessages('account-1', 'INBOX')).toMatchObject({
+      messages: [{ uid: 1 }],
+      total: 1,
+    });
+    expect(cache.getFolderSyncState('account-2', 'INBOX')).toMatchObject({
+      messages: [],
+      total: 1,
+      syncedAt: null,
+      uidValidity: null,
+      uidNext: null,
+      highestModseq: null,
+    });
+    expect(cache.listFolders('account-2')[0]).toMatchObject({ unreadCount: 1 });
+  });
 });

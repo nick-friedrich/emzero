@@ -739,6 +739,8 @@ function validBulkMessageJobRequest(value: unknown): value is BulkMessageJobRequ
       !group.folderPath ||
       (request.action === 'move' &&
         (typeof group.destinationPath !== 'string' || !group.destinationPath)) ||
+      (group.destinationAccountId !== undefined &&
+        (typeof group.destinationAccountId !== 'string' || !group.destinationAccountId)) ||
       !validUids(group.uids)
     ) {
       return false;
@@ -870,8 +872,17 @@ async function moveFolderMessages(
   account: StoredAccount,
   folderPath: string,
   uids: number[],
+  destinationAccount: StoredAccount,
   destinationPath: string,
 ): Promise<MessageOperationResult> {
+  if (destinationAccount.id !== account.id) {
+    try {
+      await transferFolderMessages(account, folderPath, uids, destinationAccount, destinationPath);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: `Could not move messages: ${errorMessage(error, '')}` };
+    }
+  }
   const destination = moveDestination(account.id, folderPath, 'move', destinationPath);
   if (!destination) return { ok: false, message: 'Choose a different destination folder.' };
 
@@ -902,6 +913,101 @@ async function moveFolderMessages(
     lock?.release();
     if (imap?.usable) await imap.logout().catch(() => imap?.close());
     else imap?.close();
+  }
+}
+
+function appendableFlags(flags: Set<string> | undefined): string[] {
+  const supported = new Set(['\\seen', '\\answered', '\\flagged', '\\draft']);
+  return [...(flags ?? [])].filter((flag) => supported.has(flag.toLowerCase()));
+}
+
+async function transferFolderMessages(
+  sourceAccount: StoredAccount,
+  sourcePath: string,
+  uids: number[],
+  destinationAccount: StoredAccount,
+  destinationPath: string,
+  onTransferred?: (uid: number) => void,
+  shouldStop?: () => boolean,
+): Promise<void> {
+  const destination = mailCache()
+    .listFolders(destinationAccount.id)
+    .find((folder) => folder.path === destinationPath && folder.selectable);
+  if (!destination) throw new Error('Choose a valid destination folder.');
+
+  let sourcePassword = '';
+  let destinationPassword = '';
+  let sourceImap: ImapFlow | null = null;
+  let destinationImap: ImapFlow | null = null;
+  let sourceLock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
+  try {
+    [sourcePassword, destinationPassword] = await Promise.all([
+      decryptPassword(sourceAccount),
+      decryptPassword(destinationAccount),
+    ]);
+    sourceImap = new ImapFlow({
+      host: sourceAccount.imap.host,
+      port: sourceAccount.imap.port,
+      secure: sourceAccount.imap.secure,
+      auth: { user: sourceAccount.username, pass: sourcePassword },
+      logger: false,
+      connectionTimeout: 12_000,
+      greetingTimeout: 12_000,
+      socketTimeout: 30_000,
+    });
+    destinationImap = new ImapFlow({
+      host: destinationAccount.imap.host,
+      port: destinationAccount.imap.port,
+      secure: destinationAccount.imap.secure,
+      auth: { user: destinationAccount.username, pass: destinationPassword },
+      logger: false,
+      connectionTimeout: 12_000,
+      greetingTimeout: 12_000,
+      socketTimeout: 30_000,
+    });
+    await Promise.all([sourceImap.connect(), destinationImap.connect()]);
+    sourceLock = await sourceImap.getMailboxLock(sourcePath);
+
+    for (const uid of uids) {
+      if (shouldStop?.()) return;
+      const message = await sourceImap.fetchOne(
+        uid,
+        { source: true, flags: true, internalDate: true },
+        { uid: true },
+      );
+      if (!message || !message.source) throw new Error('A source message is no longer available.');
+      const appended = await destinationImap.append(
+        destination.path,
+        message.source,
+        appendableFlags(message.flags),
+        message.internalDate,
+      );
+      if (!appended) throw new Error('The destination server did not accept a message.');
+      const deleted = await sourceImap.messageDelete(uid, { uid: true });
+      if (!deleted) {
+        throw new Error('A message was copied, but could not be removed from the source account.');
+      }
+      mailCache().transferMessages(
+        sourceAccount.id,
+        sourcePath,
+        destinationAccount.id,
+        destination.path,
+        [uid],
+      );
+      onTransferred?.(uid);
+    }
+  } catch (error) {
+    const sourceSafeMessage = errorMessage(error, sourcePassword);
+    const safeMessage = destinationPassword
+      ? sourceSafeMessage.replaceAll(destinationPassword, '••••••••')
+      : sourceSafeMessage;
+    throw new Error(safeMessage, { cause: error });
+  } finally {
+    sourceLock?.release();
+    for (const imap of [sourceImap, destinationImap]) {
+      if (imap?.usable) await imap.logout().catch(() => imap.close());
+      else imap?.close();
+    }
   }
 }
 
@@ -1013,7 +1119,38 @@ async function runBulkMessageJob(
       if (job.cancelRequested) break;
       const account = accounts.find((candidate) => candidate.id === group.accountId);
       if (!account) throw new Error('Account not found.');
-      await processBulkMessageGroup(job, account, group);
+      const destinationAccount = group.destinationAccountId
+        ? accounts.find((candidate) => candidate.id === group.destinationAccountId)
+        : account;
+      if (job.action === 'move' && destinationAccount?.id !== account.id) {
+        if (!destinationAccount || !group.destinationPath) {
+          throw new Error('Destination account not found.');
+        }
+        await transferFolderMessages(
+          account,
+          group.folderPath,
+          group.uids,
+          destinationAccount,
+          group.destinationPath,
+          (uid) => {
+            job.processed += 1;
+            const folder = mailCache()
+              .listFolders(account.id)
+              .find((candidate) => candidate.path === group.folderPath);
+            publishBulkMessageProgress(
+              bulkJobProgress(job, job.cancelRequested ? 'stopping' : 'running', {
+                accountId: account.id,
+                folderPath: group.folderPath,
+                processedUids: [uid],
+                folder,
+              }),
+            );
+          },
+          () => job.cancelRequested,
+        );
+      } else {
+        await processBulkMessageGroup(job, account, group);
+      }
     }
     if (!job.cancelRequested) {
       for (const accountId of new Set(request.groups.map((group) => group.accountId))) {
@@ -1476,6 +1613,7 @@ export function registerAccountHandlers(): void {
       accountId: unknown,
       folderPath: unknown,
       uids: unknown,
+      destinationAccountId: unknown,
       destinationPath: unknown,
     ) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
@@ -1484,14 +1622,21 @@ export function registerAccountHandlers(): void {
         typeof folderPath !== 'string' ||
         !folderPath ||
         !validUids(uids) ||
+        typeof destinationAccountId !== 'string' ||
+        !destinationAccountId ||
         typeof destinationPath !== 'string' ||
         !destinationPath
       ) {
         return { ok: false, message: 'Invalid messages.' } satisfies MessageOperationResult;
       }
-      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      const accounts = await readAccounts();
+      const account = accounts.find((candidate) => candidate.id === accountId);
       if (!account) return { ok: false, message: 'Account not found.' } satisfies MessageOperationResult;
-      return moveFolderMessages(account, folderPath, uids, destinationPath);
+      const destinationAccount = accounts.find((candidate) => candidate.id === destinationAccountId);
+      if (!destinationAccount) {
+        return { ok: false, message: 'Destination account not found.' } satisfies MessageOperationResult;
+      }
+      return moveFolderMessages(account, folderPath, uids, destinationAccount, destinationPath);
     },
   );
 
@@ -1517,6 +1662,9 @@ export function registerAccountHandlers(): void {
           accountId: group.accountId,
           folderPath: group.folderPath,
           uids: [...new Set(group.uids)],
+          ...(group.destinationAccountId
+            ? { destinationAccountId: group.destinationAccountId }
+            : {}),
           ...(group.destinationPath ? { destinationPath: group.destinationPath } : {}),
         })),
       };

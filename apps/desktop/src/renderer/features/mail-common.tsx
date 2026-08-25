@@ -30,13 +30,6 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
   cn,
 } from '@/lib/utils';
 import {
@@ -51,10 +44,11 @@ import {
   type MailFolderSummary,
   type MailMessageDetail,
   type MailMessageSummary,
-  displayFolderName,
+  type MessageMoveDestination,
   findArchiveFolder,
 } from '../../shared/accounts';
 import type { MailConversation } from '../../shared/conversations';
+import { MoveToDialog } from './message-move';
 
 export type MailboxSelection =
   | { kind: 'unified' }
@@ -244,96 +238,25 @@ export async function performConversationAction(
   folderPath: string,
   conversation: MailConversation,
   action: ConversationAction,
-  destinationPath?: string,
+  destination?: MessageMoveDestination,
 ): Promise<string | null> {
-  if (action === 'move' && !destinationPath) return 'Choose a destination folder.';
+  if (action === 'move' && !destination) return 'Choose a destination folder.';
   const uids = conversation.messages
     .filter((message) => message.folderPath === folderPath)
     .map((message) => message.uid);
   const result =
     action === 'delete'
       ? await window.emzero.messages.delete(accountId, folderPath, uids)
-      : action === 'move' && destinationPath
-        ? await window.emzero.messages.move(accountId, folderPath, uids, destinationPath)
+      : action === 'move' && destination
+        ? await window.emzero.messages.move(
+            accountId,
+            folderPath,
+            uids,
+            destination.accountId,
+            destination.folderPath,
+          )
       : await window.emzero.messages.setUnread(accountId, folderPath, uids, action === 'unread');
   return result.ok ? null : result.message ?? 'The action could not be completed.';
-}
-
-function MoveToDialog({
-  folders,
-  sourcePath,
-  count,
-  busy,
-  compact = false,
-  onMove,
-}: {
-  folders: MailFolderSummary[];
-  sourcePath: string;
-  count: number;
-  busy: boolean;
-  compact?: boolean;
-  onMove: (destinationPath: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [destinationPath, setDestinationPath] = useState('');
-  const destinations = folders.filter(
-    (folder) => folder.selectable && folder.path !== sourcePath,
-  );
-  const effectiveDestinationPath = destinations.some(
-    (folder) => folder.path === destinationPath,
-  )
-    ? destinationPath
-    : (destinations[0]?.path ?? '');
-
-  return (
-    <>
-      <Button
-        variant="ghost"
-        className={compact ? 'size-8 px-0' : 'px-3'}
-        aria-label="Move to folder"
-        title="Move to folder"
-        disabled={busy || destinations.length === 0}
-        onClick={() => setOpen(true)}
-      >
-        <Folder className="size-4" />
-        {!compact && <span className="hidden sm:inline">Move to</span>}
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Move {count === 1 ? 'email' : `${count} emails`}</DialogTitle>
-            <DialogDescription>Choose a destination folder in this account.</DialogDescription>
-          </DialogHeader>
-          <label className="mt-2 block text-sm font-medium">
-            <span className="mb-2 block">Destination</span>
-            <select
-              className="field"
-              value={effectiveDestinationPath}
-              onChange={(event) => setDestinationPath(event.target.value)}
-            >
-              {destinations.map((folder) => (
-                <option key={folder.path} value={folder.path}>
-                  {displayFolderName(folder)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button
-              disabled={!effectiveDestinationPath}
-              onClick={() => {
-                onMove(effectiveDestinationPath);
-                setOpen(false);
-              }}
-            >
-              Move
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
 }
 
 export function conversationWithUnreadValues(
@@ -366,6 +289,8 @@ export function conversationWithMessage(
 }
 
 export function ConversationActions({
+  accounts,
+  sourceAccountId,
   folders,
   sourcePath,
   messageCount,
@@ -376,6 +301,8 @@ export function ConversationActions({
   onMove,
   onDelete,
 }: {
+  accounts: AccountSummary[];
+  sourceAccountId: string;
   folders: MailFolderSummary[];
   sourcePath: string;
   messageCount: number;
@@ -383,7 +310,7 @@ export function ConversationActions({
   busy: boolean;
   confirmPermanentDelete: boolean;
   onSetUnread: (unread: boolean) => void;
-  onMove: (destinationPath: string) => void;
+  onMove: (destination: MessageMoveDestination) => void;
   onDelete: () => void;
 }) {
   const archive = findArchiveFolder(folders);
@@ -419,13 +346,15 @@ export function ConversationActions({
           aria-label="Archive conversation"
           title="Archive conversation"
           disabled={busy}
-          onClick={() => onMove(archive.path)}
+          onClick={() => onMove({ accountId: sourceAccountId, folderPath: archive.path })}
         >
           <Archive className="size-4" />
         </Button>
       )}
       <MoveToDialog
-        folders={folders}
+        accounts={accounts}
+        sourceAccountId={sourceAccountId}
+        sourceFolders={folders}
         sourcePath={sourcePath}
         count={messageCount}
         busy={busy}
@@ -503,6 +432,9 @@ export function SelectionCheckbox({
 }
 
 export function BulkActionToolbar({
+  accounts,
+  sourceAccountId,
+  sourceLocations,
   folders,
   sourcePath,
   canArchive: canArchiveOverride,
@@ -516,6 +448,9 @@ export function BulkActionToolbar({
   onAction,
   onMove,
 }: {
+  accounts: AccountSummary[];
+  sourceAccountId: string;
+  sourceLocations?: MessageMoveDestination[];
   folders: MailFolderSummary[];
   sourcePath: string;
   canArchive?: boolean;
@@ -527,7 +462,7 @@ export function BulkActionToolbar({
   onToggleAll: () => void;
   onClear: () => void;
   onAction: (action: BulkMessageJobRequest['action']) => void;
-  onMove: (destinationPath: string) => void;
+  onMove: (destination: MessageMoveDestination) => void;
 }) {
   const [pendingAction, setPendingAction] = useState<BulkMessageJobRequest['action'] | null>(null);
   const allSelected = selectedRows === totalRows;
@@ -575,8 +510,11 @@ export function BulkActionToolbar({
           </Button>
         )}
         <MoveToDialog
-          folders={folders}
+          accounts={accounts}
+          sourceAccountId={sourceAccountId}
+          sourceFolders={folders}
           sourcePath={sourcePath}
+          sourceLocations={sourceLocations}
           count={selectedEmails}
           busy={busy}
           onMove={onMove}

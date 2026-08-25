@@ -33,6 +33,7 @@ import type {
   MailMessageDetail,
   MailMessageSummary,
   MailSendDraft,
+  MessageMoveDestination,
 } from '../../shared/accounts';
 import { displayFolderName } from '../../shared/accounts';
 import {
@@ -487,6 +488,7 @@ function ThreadMessageCard({
 }
 
 export function ConversationReader({
+  accounts,
   selection,
   folders,
   conversation,
@@ -498,6 +500,7 @@ export function ConversationReader({
   onDelete,
   onReplySent,
 }: {
+  accounts: AccountSummary[];
   selection: FolderSelection;
   folders: MailFolderSummary[];
   conversation: MailConversation;
@@ -505,7 +508,7 @@ export function ConversationReader({
   busy: boolean;
   actionError: string | null;
   onSetUnread: (unread: boolean) => void;
-  onMove: (destinationPath: string) => void;
+  onMove: (destination: MessageMoveDestination) => void;
   onDelete: () => void;
   onReplySent: (message: MailMessageSummary) => void;
 }) {
@@ -524,6 +527,8 @@ export function ConversationReader({
         </span>
         <div className="ml-auto">
           <ConversationActions
+            accounts={accounts}
+            sourceAccountId={selection.account.id}
             folders={folders}
             sourcePath={selection.folder.path}
             messageCount={messageCountInFolder(conversation, selection.folder.path)}

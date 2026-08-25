@@ -18,6 +18,7 @@ import {
   type AccountSummary,
   type MailFolderSummary,
   type MailSearchItem,
+  type MessageMoveDestination,
   displayFolderName,
 } from '../../shared/accounts';
 import {
@@ -136,7 +137,7 @@ export function MailSearch({
         account,
         folder: selected.item.folder,
       };
-      const runAction = async (action: ConversationAction, destinationPath?: string) => {
+      const runAction = async (action: ConversationAction, destination?: MessageMoveDestination) => {
         if (actionBusy) return;
         setActionBusy(true);
         setActionError(null);
@@ -146,7 +147,7 @@ export function MailSearch({
             selection.folder.path,
             selected.conversation,
             action,
-            destinationPath,
+            destination,
           );
           if (error) {
             setActionError(error);
@@ -193,6 +194,7 @@ export function MailSearch({
 
       return (
         <ConversationReader
+          accounts={accounts}
           selection={selection}
           folders={selectedFolders}
           conversation={selected.conversation}
@@ -200,7 +202,7 @@ export function MailSearch({
           busy={actionBusy}
           actionError={actionError}
           onSetUnread={(unread) => void runAction(unread ? 'unread' : 'read')}
-          onMove={(destinationPath) => void runAction('move', destinationPath)}
+          onMove={(destination) => void runAction('move', destination)}
           onDelete={() => void runAction('delete')}
           onReplySent={(message) => {
             setSelected((current) =>
