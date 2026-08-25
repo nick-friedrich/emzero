@@ -4321,7 +4321,11 @@ function Sidebar({
                                 title={canManage ? `${folder.path} · drag to move` : folder.path}
                                 onClick={() => onSelect({ kind: 'folder', account, folder })}
                               >
-                                {canManage && <GripVertical className="size-3 cursor-grab text-muted-foreground opacity-0 group-hover/folder:opacity-100" />}
+                                <span className="grid size-3 shrink-0 place-items-center">
+                                  {canManage && (
+                                    <GripVertical className="size-3 cursor-grab text-muted-foreground opacity-0 group-hover/folder:opacity-100" />
+                                  )}
+                                </span>
                                 <FolderIcon specialUse={folder.specialUse} />
                                 <span className="min-w-0 flex-1 truncate text-left text-xs leading-4">
                                   {displayFolderName(folder)}
