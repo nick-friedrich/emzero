@@ -23,6 +23,8 @@ import {
   type MailSendDraft,
   type MailSendResult,
   type MailSyncStatus,
+  type MailDraftReference,
+  type MailDraftSaveResult,
   type ProviderDiscoveryResult,
   type RecipientSuggestion,
   type AttachmentSaveResult,
@@ -55,6 +57,12 @@ export interface EmzeroDesktopApi {
       uids: number[],
       unread: boolean,
     ) => Promise<MessageOperationResult>;
+    setFlagged: (
+      accountId: string,
+      folderPath: string,
+      uids: number[],
+      flagged: boolean,
+    ) => Promise<MessageOperationResult>;
     delete: (
       accountId: string,
       folderPath: string,
@@ -80,6 +88,15 @@ export interface EmzeroDesktopApi {
       uid: number,
       attachmentIndex: number,
     ) => Promise<AttachmentSaveResult>;
+    saveDraft: (
+      accountId: string,
+      draft: MailSendDraft,
+      previous?: MailDraftReference,
+    ) => Promise<MailDraftSaveResult>;
+    deleteDraft: (
+      accountId: string,
+      draft: MailDraftReference,
+    ) => Promise<MessageOperationResult>;
   };
   sync: {
     status: () => Promise<MailSyncStatus>;
@@ -121,6 +138,8 @@ contextBridge.exposeInMainWorld('emzero', {
       ipcRenderer.invoke(ACCOUNT_CHANNELS.getMessage, accountId, folderPath, uid),
     setUnread: (accountId, folderPath, uids, unread) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.setMessageUnread, accountId, folderPath, uids, unread),
+    setFlagged: (accountId, folderPath, uids, flagged) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.setMessageFlagged, accountId, folderPath, uids, flagged),
     delete: (accountId, folderPath, uids) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.deleteMessages, accountId, folderPath, uids),
     move: (accountId, folderPath, uids, destinationAccountId, destinationPath) =>
@@ -156,6 +175,10 @@ contextBridge.exposeInMainWorld('emzero', {
         uid,
         attachmentIndex,
       ),
+    saveDraft: (accountId, draft, previous) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.saveDraft, accountId, draft, previous),
+    deleteDraft: (accountId, draft) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.deleteDraft, accountId, draft),
   },
   sync: {
     status: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.syncStatus),

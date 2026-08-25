@@ -13,6 +13,7 @@ import {
   Mail,
   MailOpen,
   Send,
+  Star,
   Trash2,
 } from 'lucide-react';
 import {
@@ -209,7 +210,7 @@ export type MessageDetailLoadState =
   | { status: 'loaded'; message: MailMessageDetail }
   | { status: 'error'; message: string };
 
-export type ConversationAction = 'read' | 'unread' | 'move' | 'delete';
+export type ConversationAction = 'read' | 'unread' | 'star' | 'unstar' | 'move' | 'delete';
 
 export type StartBulkOperation = (
   request: BulkMessageJobRequest,
@@ -255,7 +256,9 @@ export async function performConversationAction(
             destination.accountId,
             destination.folderPath,
           )
-      : await window.emzero.messages.setUnread(accountId, folderPath, uids, action === 'unread');
+        : action === 'star' || action === 'unstar'
+          ? await window.emzero.messages.setFlagged(accountId, folderPath, uids, action === 'star')
+          : await window.emzero.messages.setUnread(accountId, folderPath, uids, action === 'unread');
   return result.ok ? null : result.message ?? 'The action could not be completed.';
 }
 
@@ -268,6 +271,19 @@ export function conversationWithUnreadValues(
     messages: conversation.messages.map((message) => {
       const unread = unreadByMessage.get(`${message.folderPath}:${message.uid}`);
       return unread === undefined ? message : { ...message, unread };
+    }),
+  };
+}
+
+export function conversationWithFlaggedValues(
+  conversation: MailConversation,
+  flaggedByMessage: ReadonlyMap<string, boolean>,
+): MailConversation {
+  return {
+    ...conversation,
+    messages: conversation.messages.map((message) => {
+      const flagged = flaggedByMessage.get(`${message.folderPath}:${message.uid}`);
+      return flagged === undefined ? message : { ...message, flagged };
     }),
   };
 }
@@ -295,9 +311,11 @@ export function ConversationActions({
   sourcePath,
   messageCount,
   unread,
+  flagged,
   busy,
   confirmPermanentDelete,
   onSetUnread,
+  onSetFlagged,
   onMove,
   onDelete,
 }: {
@@ -307,9 +325,11 @@ export function ConversationActions({
   sourcePath: string;
   messageCount: number;
   unread: boolean;
+  flagged: boolean;
   busy: boolean;
   confirmPermanentDelete: boolean;
   onSetUnread: (unread: boolean) => void;
+  onSetFlagged: (flagged: boolean) => void;
   onMove: (destination: MessageMoveDestination) => void;
   onDelete: () => void;
 }) {
@@ -338,6 +358,16 @@ export function ConversationActions({
         onClick={() => onSetUnread(!unread)}
       >
         {unread ? <MailOpen className="size-4" /> : <Mail className="size-4" />}
+      </Button>
+      <Button
+        variant="ghost"
+        className="size-8 px-0"
+        aria-label={flagged ? 'Remove star' : 'Add star'}
+        title={flagged ? 'Remove star' : 'Add star'}
+        disabled={busy}
+        onClick={() => onSetFlagged(!flagged)}
+      >
+        <Star className={cn('size-4', flagged && 'fill-primary text-primary')} />
       </Button>
       {archive && archive.path !== sourcePath && (
         <Button
@@ -479,6 +509,10 @@ export function BulkActionToolbar({
       ? 'mark as read'
       : pendingAction === 'unread'
         ? 'mark as unread'
+        : pendingAction === 'star'
+          ? 'add a star to'
+          : pendingAction === 'unstar'
+            ? 'remove the star from'
         : pendingAction === 'archive'
           ? 'archive'
         : 'delete';
@@ -502,6 +536,14 @@ export function BulkActionToolbar({
         <Button variant="ghost" className="px-3" disabled={busy} onClick={() => requestAction('unread')}>
           <Mail className="size-4" />
           <span className="hidden sm:inline">Mark unread</span>
+        </Button>
+        <Button variant="ghost" className="px-3" disabled={busy} onClick={() => requestAction('star')}>
+          <Star className="size-4" />
+          <span className="hidden sm:inline">Star</span>
+        </Button>
+        <Button variant="ghost" className="px-3" disabled={busy} onClick={() => requestAction('unstar')}>
+          <Star className="size-4" />
+          <span className="hidden sm:inline">Unstar</span>
         </Button>
         {canArchive && (
           <Button variant="ghost" className="px-3" disabled={busy} onClick={() => requestAction('archive')}>
@@ -531,7 +573,7 @@ export function BulkActionToolbar({
             <AlertDialogTitle>
               {pendingAction === 'delete' && permanentDelete
                 ? `Permanently delete ${selectedEmails} emails?`
-                : `${pendingAction === 'delete' ? 'Delete' : pendingAction === 'read' ? 'Mark as read' : pendingAction === 'unread' ? 'Mark as unread' : 'Archive'} ${selectedEmails} emails?`}
+                : `${pendingAction === 'delete' ? 'Delete' : pendingAction === 'read' ? 'Mark as read' : pendingAction === 'unread' ? 'Mark as unread' : pendingAction === 'star' ? 'Star' : pendingAction === 'unstar' ? 'Unstar' : 'Archive'} ${selectedEmails} emails?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingAction === 'delete' && permanentDelete

@@ -321,6 +321,45 @@ describe('MailCache', () => {
     expect(cache.listFolders('account-1')[0].unreadCount).toBe(1);
   });
 
+  it('updates flagged state in the cache', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox]);
+    cache.replaceRecentMessages('account-1', 'INBOX', [message(1), message(2)], 2);
+
+    cache.setMessagesFlagged('account-1', 'INBOX', [1], true);
+    expect(
+      cache.listMessages('account-1', 'INBOX').messages
+        .map(({ uid, flagged }) => ({ uid, flagged })),
+    ).toEqual([
+      { uid: 2, flagged: true },
+      { uid: 1, flagged: true },
+    ]);
+
+    cache.setMessagesFlagged('account-1', 'INBOX', [2], false);
+    expect(
+      cache.listMessages('account-1', 'INBOX').messages
+        .map(({ uid, flagged }) => ({ uid, flagged })),
+    ).toEqual([
+      { uid: 2, flagged: false },
+      { uid: 1, flagged: true },
+    ]);
+  });
+
+  it('invalidates folder sync metadata after an external change', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox]);
+    cache.replaceRecentMessages('account-1', 'INBOX', [message(1)], 1, 'now');
+    expect(cache.getFolderSyncState('account-1', 'INBOX').syncedAt).toBe('now');
+
+    cache.invalidateFolder('account-1', 'INBOX');
+    expect(cache.getFolderSyncState('account-1', 'INBOX')).toMatchObject({
+      syncedAt: null,
+      uidValidity: null,
+      uidNext: null,
+      highestModseq: null,
+    });
+  });
+
   it('removes moved messages and invalidates the destination cache', () => {
     cache = new MailCache(':memory:');
     const archive = { ...inbox, path: 'Archive', name: 'Archive', specialUse: '\\Archive', unreadCount: 0 };

@@ -20,8 +20,9 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential decryption, safe error formatting, and IMAP client lifecycle helpers.
 - `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization, message parsing, and cached/server message reading.
 - `apps/desktop/src/main/message-sender.ts` — SMTP delivery, IMAP Sent-copy persistence, and sent-message cache updates.
+- `apps/desktop/src/main/mail-drafts.ts` — MIME draft compilation plus append-first IMAP draft autosave and deletion.
 - `apps/desktop/src/main/attachment-files.ts` — native file selection, opaque outgoing-file authorization, attachment limits, and received-attachment saving.
-- `apps/desktop/src/main/message-actions.ts` — read/unread, delete, same-account move, and cross-account message-transfer operations.
+- `apps/desktop/src/main/message-actions.ts` — read/unread, star/unstar, delete, same-account move, and cross-account message-transfer operations.
 - `apps/desktop/src/main/bulk-message-jobs.ts` — bulk-action request validation, execution, cancellation, and progress publication.
 - `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache and search.
 - `apps/desktop/src/main/message-html.ts` — sanitization and quoted-content detection for message HTML.
@@ -60,6 +61,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/message-move.tsx` — account-and-folder destination picker for single and bulk message moves.
 - `features/conversation-reader.tsx` — conversation reader, message body/thread cards, received-attachment saving, quoted-content display, and inline reply composer.
 - `features/attachment-picker.tsx` — reusable outgoing-attachment selection and removal UI for compose and reply.
+- `features/draft-autosave.ts` — debounced, sequential IMAP autosave state shared by compose and inline reply.
 - `features/bulk-operation.tsx` — persistent progress/status bar for background bulk message jobs.
 - `features/app-shared.ts` — small cross-feature status and send-shortcut preferences/hooks.
 - `features/form-field.tsx` — shared labeled form-field wrapper.
@@ -69,7 +71,7 @@ All paths in this section are relative to `apps/desktop/src/renderer/`.
 ## Tests
 
 - Tests live beside their implementation as `*.test.ts` or `*.test.tsx`.
-- `apps/desktop/src/main/` tests cover cache, HTML sanitization, provider discovery, folder subscriptions, folder input rules, message parsing helpers, message-action rules, and bulk-job validation/progress.
+- `apps/desktop/src/main/` tests cover cache, HTML sanitization, provider discovery, folder subscriptions, folder input rules, message parsing helpers, message-action rules, draft-folder discovery, and bulk-job validation/progress.
 - `apps/desktop/src/shared/` tests cover domain helpers and contracts.
 - `apps/desktop/src/renderer/` tests cover renderer utilities and theming.
 - Run the complete suite with `pnpm check` from the repository root.

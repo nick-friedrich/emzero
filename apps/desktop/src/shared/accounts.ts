@@ -271,7 +271,7 @@ export interface MailSearchResult {
   message?: string;
 }
 
-export type BulkMessageAction = 'read' | 'unread' | 'archive' | 'move' | 'delete';
+export type BulkMessageAction = 'read' | 'unread' | 'star' | 'unstar' | 'archive' | 'move' | 'delete';
 
 export interface BulkMessageGroup {
   accountId: string;
@@ -390,6 +390,15 @@ export interface MailSendResult extends MessageOperationResult {
   sentMessage?: MailMessageSummary;
 }
 
+export interface MailDraftReference {
+  folderPath: string;
+  uid: number;
+}
+
+export interface MailDraftSaveResult extends MessageOperationResult {
+  draft?: MailDraftReference;
+}
+
 export interface RecipientSuggestion extends MailAddressSummary {
   address: string;
 }
@@ -442,6 +451,7 @@ export const ACCOUNT_CHANNELS = {
   searchMessages: 'messages:search',
   getMessage: 'messages:get',
   setMessageUnread: 'messages:set-unread',
+  setMessageFlagged: 'messages:set-flagged',
   deleteMessages: 'messages:delete',
   moveMessages: 'messages:move',
   startBulkMessageJob: 'messages:bulk-start',
@@ -452,6 +462,8 @@ export const ACCOUNT_CHANNELS = {
   suggestRecipients: 'messages:suggest-recipients',
   selectAttachments: 'attachments:select',
   saveAttachment: 'attachments:save',
+  saveDraft: 'drafts:save',
+  deleteDraft: 'drafts:delete',
   syncStatus: 'sync:status',
   syncNow: 'sync:now',
   syncChanged: 'sync:changed',

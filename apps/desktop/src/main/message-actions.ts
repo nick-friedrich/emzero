@@ -76,6 +76,34 @@ export async function changeMessageUnread(
   }
 }
 
+export async function changeMessageFlagged(
+  account: StoredAccount,
+  folderPath: string,
+  uids: number[],
+  flagged: boolean,
+): Promise<MessageOperationResult> {
+  let password = '';
+  let imap: ImapFlow | null = null;
+  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
+  try {
+    password = await decryptPassword(account);
+    imap = createImapClient(account, password);
+    await imap.connect();
+    lock = await imap.getMailboxLock(folderPath);
+    const changed = flagged
+      ? await imap.messageFlagsAdd(uids, ['\\Flagged'], { uid: true })
+      : await imap.messageFlagsRemove(uids, ['\\Flagged'], { uid: true });
+    if (!changed) return { ok: false, message: 'The messages are no longer available.' };
+    mailCache().setMessagesFlagged(account.id, folderPath, uids, flagged);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: `Could not update messages: ${errorMessage(error, password)}` };
+  } finally {
+    lock?.release();
+    await closeImap(imap);
+  }
+}
+
 export async function deleteFolderMessages(
   account: StoredAccount,
   folderPath: string,

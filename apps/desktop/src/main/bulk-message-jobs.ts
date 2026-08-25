@@ -45,7 +45,7 @@ function publishBulkMessageProgress(progress: BulkMessageJobProgress): void {
 export function validBulkMessageJobRequest(value: unknown): value is BulkMessageJobRequest {
   if (!value || typeof value !== 'object') return false;
   const request = value as Partial<BulkMessageJobRequest>;
-  if (!['read', 'unread', 'archive', 'move', 'delete'].includes(request.action ?? '')) return false;
+  if (!['read', 'unread', 'star', 'unstar', 'archive', 'move', 'delete'].includes(request.action ?? '')) return false;
   if (!Array.isArray(request.groups) || request.groups.length === 0 || request.groups.length > 100) {
     return false;
   }
@@ -123,6 +123,10 @@ async function processBulkMessageGroup(
           ? await imap.messageFlagsAdd(uids, ['\\Seen'], { uid: true })
           : job.action === 'unread'
             ? await imap.messageFlagsRemove(uids, ['\\Seen'], { uid: true })
+            : job.action === 'star'
+              ? await imap.messageFlagsAdd(uids, ['\\Flagged'], { uid: true })
+              : job.action === 'unstar'
+                ? await imap.messageFlagsRemove(uids, ['\\Flagged'], { uid: true })
             : moveTo
               ? await imap.messageMove(uids, moveTo.path, { uid: true })
               : trash && trash.path !== group.folderPath
@@ -134,8 +138,10 @@ async function processBulkMessageGroup(
         mailCache().deleteMessages(account.id, group.folderPath, uids);
       } else if (moveTo) {
         mailCache().moveMessages(account.id, group.folderPath, moveTo.path, uids);
-      } else {
+      } else if (job.action === 'read' || job.action === 'unread') {
         mailCache().setMessagesUnread(account.id, group.folderPath, uids, job.action === 'unread');
+      } else {
+        mailCache().setMessagesFlagged(account.id, group.folderPath, uids, job.action === 'star');
       }
       job.processed += uids.length;
       const folder = mailCache()

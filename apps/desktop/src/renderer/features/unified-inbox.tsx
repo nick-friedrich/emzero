@@ -35,6 +35,7 @@ import {
   SelectionCheckbox,
   conversationOpponent,
   conversationWithMessage,
+  conversationWithFlaggedValues,
   conversationWithUnreadValues,
   isEditableTarget,
   messageCountInFolder,
@@ -271,7 +272,8 @@ export function UnifiedInbox({
             ? [{ ...item, conversation: { ...item.conversation, messages } }]
             : [];
         }
-        const unread = progress.action === 'unread';
+        const isFlagAction = progress.action === 'star' || progress.action === 'unstar';
+        const nextValue = progress.action === 'unread' || progress.action === 'star';
         return [
           {
             ...item,
@@ -279,7 +281,9 @@ export function UnifiedInbox({
               ...item.conversation,
               messages: item.conversation.messages.map((message) =>
                 message.folderPath === progress.folderPath && processed.has(message.uid)
-                  ? { ...message, unread }
+                  ? isFlagAction
+                    ? { ...message, flagged: nextValue }
+                    : { ...message, unread: nextValue }
                   : message,
               ),
             },
@@ -318,6 +322,11 @@ export function UnifiedInbox({
         .filter((message) => message.folderPath === item.selection.folder.path)
         .map((message) => [`${message.folderPath}:${message.uid}`, message.unread]),
     );
+    const previousFlagged = new Map(
+      item.conversation.messages
+        .filter((message) => message.folderPath === item.selection.folder.path)
+        .map((message) => [`${message.folderPath}:${message.uid}`, message.flagged]),
+    );
     const updateUnread = (unreadByMessage: ReadonlyMap<string, boolean>) => {
       const updateItem = (candidate: UnifiedConversationItem): UnifiedConversationItem =>
         itemKey(candidate) === key
@@ -336,10 +345,30 @@ export function UnifiedInbox({
       );
       setSelectedItem((current) => (current ? updateItem(current) : current));
     };
+    const updateFlagged = (flaggedByMessage: ReadonlyMap<string, boolean>) => {
+      const updateItem = (candidate: UnifiedConversationItem): UnifiedConversationItem =>
+        itemKey(candidate) === key
+          ? {
+              ...candidate,
+              conversation: conversationWithFlaggedValues(
+                candidate.conversation,
+                flaggedByMessage,
+              ),
+            }
+          : candidate;
+      setState((current) =>
+        current.status === 'loaded' ? { ...current, items: current.items.map(updateItem) } : current,
+      );
+      setSelectedItem((current) => (current ? updateItem(current) : current));
+    };
 
     if (action === 'read' || action === 'unread') {
       const unread = action === 'unread';
       updateUnread(new Map([...previousUnread.keys()].map((messageKey) => [messageKey, unread])));
+    }
+    if (action === 'star' || action === 'unstar') {
+      const flagged = action === 'star';
+      updateFlagged(new Map([...previousFlagged.keys()].map((messageKey) => [messageKey, flagged])));
     }
 
     try {
@@ -353,6 +382,7 @@ export function UnifiedInbox({
       if (error) {
         setActionError(error);
         if (action === 'read' || action === 'unread') updateUnread(previousUnread);
+        if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
         return false;
       }
       if (action === 'delete' || action === 'move') {
@@ -384,6 +414,7 @@ export function UnifiedInbox({
     } catch {
       setActionError('The action could not be completed.');
       if (action === 'read' || action === 'unread') updateUnread(previousUnread);
+      if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
       return false;
     } finally {
       pendingActions.current.delete(key);
@@ -459,6 +490,9 @@ export function UnifiedInbox({
         actionError={actionError}
         onSetUnread={(unread) =>
           void runAction(selectedItem, unread ? 'unread' : 'read')
+        }
+        onSetFlagged={(flagged) =>
+          void runAction(selectedItem, flagged ? 'star' : 'unstar')
         }
         onMove={(destination) => void runAction(selectedItem, 'move', destination)}
         onDelete={() => void runAction(selectedItem, 'delete')}
@@ -737,10 +771,14 @@ export function UnifiedInbox({
                     sourcePath={selection.folder.path}
                     messageCount={messageCountInFolder(item.conversation, selection.folder.path)}
                     unread={unread}
+                    flagged={flagged}
                     busy={busyConversations.has(itemKey(item))}
                     confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
                     onSetUnread={(nextUnread) =>
                       void runAction(item, nextUnread ? 'unread' : 'read')
+                    }
+                    onSetFlagged={(nextFlagged) =>
+                      void runAction(item, nextFlagged ? 'star' : 'unstar')
                     }
                     onMove={(destination) => void runAction(item, 'move', destination)}
                     onDelete={() => void runAction(item, 'delete')}

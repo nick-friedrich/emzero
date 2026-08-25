@@ -36,6 +36,7 @@ import {
   SelectionCheckbox,
   conversationOpponent,
   conversationWithMessage,
+  conversationWithFlaggedValues,
   conversationWithUnreadValues,
   isEditableTarget,
   messageCountInFolder,
@@ -229,11 +230,16 @@ export function MessageList({
               total: Math.max(0, current.total - removed),
             };
           }
-          const unread = progress.action === 'unread';
+          const isFlagAction = progress.action === 'star' || progress.action === 'unstar';
+          const nextValue = progress.action === 'unread' || progress.action === 'star';
           return {
             ...current,
             messages: current.messages.map((message) =>
-              processed.has(message.uid) ? { ...message, unread } : message,
+              processed.has(message.uid)
+                ? isFlagAction
+                  ? { ...message, flagged: nextValue }
+                  : { ...message, unread: nextValue }
+                : message,
             ),
           };
         });
@@ -260,6 +266,11 @@ export function MessageList({
         .filter((message) => keys.has(`${message.folderPath}:${message.uid}`))
         .map((message) => [`${message.folderPath}:${message.uid}`, message.unread]),
     );
+    const previousFlagged = new Map(
+      conversation.messages
+        .filter((message) => keys.has(`${message.folderPath}:${message.uid}`))
+        .map((message) => [`${message.folderPath}:${message.uid}`, message.flagged]),
+    );
     const updateUnread = (unreadByMessage: ReadonlyMap<string, boolean>) => {
       const update = (message: MailMessageSummary) => {
         const unread = unreadByMessage.get(`${message.folderPath}:${message.uid}`);
@@ -280,10 +291,34 @@ export function MessageList({
           : current,
       );
     };
+    const updateFlagged = (flaggedByMessage: ReadonlyMap<string, boolean>) => {
+      const update = (message: MailMessageSummary) => {
+        const flagged = flaggedByMessage.get(`${message.folderPath}:${message.uid}`);
+        return flagged === undefined ? message : { ...message, flagged };
+      };
+      setState((current) =>
+        current.status === 'loaded'
+          ? {
+              ...current,
+              messages: current.messages.map(update),
+              relatedMessages: current.relatedMessages.map(update),
+            }
+          : current,
+      );
+      setSelectedConversation((current) =>
+        current?.id === conversation.id
+          ? conversationWithFlaggedValues(current, flaggedByMessage)
+          : current,
+      );
+    };
 
     if (action === 'read' || action === 'unread') {
       const unread = action === 'unread';
       updateUnread(new Map([...keys].map((key) => [key, unread])));
+    }
+    if (action === 'star' || action === 'unstar') {
+      const flagged = action === 'star';
+      updateFlagged(new Map([...keys].map((key) => [key, flagged])));
     }
 
     try {
@@ -297,6 +332,7 @@ export function MessageList({
       if (error) {
         setActionError(error);
         if (action === 'read' || action === 'unread') updateUnread(previousUnread);
+        if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
         return false;
       }
       if (action === 'delete' || action === 'move') {
@@ -326,6 +362,7 @@ export function MessageList({
     } catch {
       setActionError('The action could not be completed.');
       if (action === 'read' || action === 'unread') updateUnread(previousUnread);
+      if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
       return false;
     } finally {
       pendingActions.current.delete(conversation.id);
@@ -395,6 +432,9 @@ export function MessageList({
         actionError={actionError}
         onSetUnread={(unread) =>
           void runAction(selectedConversation, unread ? 'unread' : 'read')
+        }
+        onSetFlagged={(flagged) =>
+          void runAction(selectedConversation, flagged ? 'star' : 'unstar')
         }
         onMove={(destination) =>
           void runAction(selectedConversation, 'move', destination)
@@ -647,10 +687,14 @@ export function MessageList({
                     sourcePath={selection.folder.path}
                     messageCount={messageCountInFolder(conversation, selection.folder.path)}
                     unread={unread}
+                    flagged={flagged}
                     busy={busyConversations.has(conversation.id)}
                     confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
                     onSetUnread={(nextUnread) =>
                       void runAction(conversation, nextUnread ? 'unread' : 'read')
+                    }
+                    onSetFlagged={(nextFlagged) =>
+                      void runAction(conversation, nextFlagged ? 'star' : 'unstar')
                     }
                     onMove={(destination) =>
                       void runAction(conversation, 'move', destination)

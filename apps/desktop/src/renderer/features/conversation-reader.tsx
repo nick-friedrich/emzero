@@ -66,6 +66,7 @@ import {
   type MessageDetailLoadState,
 } from './mail-common';
 import { AttachmentPicker } from './attachment-picker';
+import { useDraftAutosave } from './draft-autosave';
 
 function MessageBody({
   accountId,
@@ -224,6 +225,12 @@ function ReplyComposer({
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<MailSendDraft | null>(null);
   const confirmationActionRef = useRef<HTMLButtonElement>(null);
+  const currentDraft = { ...createReplyDraft(account, summary, message, text), attachments };
+  const { status: draftStatus, discardSavedDraft } = useDraftAutosave(
+    account.id,
+    currentDraft,
+    open && Boolean(text.trim() || attachments.length),
+  );
 
   const deliver = async (draft: MailSendDraft) => {
     setBusy(true);
@@ -235,6 +242,7 @@ function ReplyComposer({
         message: result.message ?? (result.ok ? 'Reply sent.' : 'Could not send reply.'),
       });
       if (result.ok) {
+        await discardSavedDraft();
         if (result.sentMessage) onSent(result.sentMessage);
         setText('');
         setAttachments([]);
@@ -248,7 +256,7 @@ function ReplyComposer({
   };
 
   const requestSend = () => {
-    const draft = { ...createReplyDraft(account, summary, message, text), attachments };
+    const draft = currentDraft;
     const validationError = validateReplyDraft(draft);
     if (validationError) {
       setStatus({ kind: 'error', message: validationError });
@@ -334,6 +342,14 @@ function ReplyComposer({
             onError={(errorMessage) => setStatus({ kind: 'error', message: errorMessage })}
           />
         </div>
+        {draftStatus.state !== 'idle' && (
+          <p
+            className={draftStatus.state === 'error' ? 'mt-2 text-xs text-danger' : 'mt-2 text-xs text-muted-foreground'}
+            role="status"
+          >
+            {draftStatus.state === 'saving' ? 'Saving draft…' : draftStatus.message}
+          </p>
+        )}
         {status?.kind === 'error' && (
           <p className="mt-2 text-xs text-danger" role="status">
             {status.message}
@@ -571,6 +587,7 @@ export function ConversationReader({
   busy,
   actionError,
   onSetUnread,
+  onSetFlagged,
   onMove,
   onDelete,
   onReplySent,
@@ -583,12 +600,16 @@ export function ConversationReader({
   busy: boolean;
   actionError: string | null;
   onSetUnread: (unread: boolean) => void;
+  onSetFlagged: (flagged: boolean) => void;
   onMove: (destination: MessageMoveDestination) => void;
   onDelete: () => void;
   onReplySent: (message: MailMessageSummary) => void;
 }) {
   const unread = conversation.messages.some(
     (message) => message.folderPath === selection.folder.path && message.unread,
+  );
+  const flagged = conversation.messages.some(
+    (message) => message.folderPath === selection.folder.path && message.flagged,
   );
   return (
     <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
@@ -608,9 +629,11 @@ export function ConversationReader({
             sourcePath={selection.folder.path}
             messageCount={messageCountInFolder(conversation, selection.folder.path)}
             unread={unread}
+            flagged={flagged}
             busy={busy}
             confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
             onSetUnread={onSetUnread}
+            onSetFlagged={onSetFlagged}
             onMove={onMove}
             onDelete={onDelete}
           />

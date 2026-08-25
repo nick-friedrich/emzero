@@ -226,17 +226,15 @@ export function App() {
           />
         </SheetContent>
       </Sheet>
-      {composeOpen && (
-        <ComposeDialog
-          open
-          accounts={accounts}
-          defaultAccountId={
-            selection.kind === 'folder' ? selection.account.id : (accounts[0]?.id ?? null)
-          }
-          onOpenChange={setComposeOpen}
-          onSent={() => setSyncRevision((current) => current + 1)}
-        />
-      )}
+      <ComposeDialog
+        open={composeOpen}
+        accounts={accounts}
+        defaultAccountId={
+          selection.kind === 'folder' ? selection.account.id : (accounts[0]?.id ?? null)
+        }
+        onOpenChange={setComposeOpen}
+        onSent={() => setSyncRevision((current) => current + 1)}
+      />
       <AccountSettingsDialog
         open={settingsOpen}
         accounts={accounts}

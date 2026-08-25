@@ -15,6 +15,12 @@ describe('bulk message jobs', () => {
     ).toBe(true);
     expect(
       validBulkMessageJobRequest({
+        action: 'star',
+        groups: [{ accountId: 'a', folderPath: 'INBOX', uids: [1] }],
+      }),
+    ).toBe(true);
+    expect(
+      validBulkMessageJobRequest({
         action: 'move',
         groups: [{ accountId: 'a', folderPath: 'INBOX', uids: [1] }],
       }),

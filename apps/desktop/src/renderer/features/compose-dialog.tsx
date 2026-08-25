@@ -47,6 +47,7 @@ import { sendShortcutLabel, skipSendConfirmationStorageKey, storedSkipSendConfir
 import { Field } from './form-field';
 import { addressDetails } from './mail-common';
 import { AttachmentPicker } from './attachment-picker';
+import { useDraftAutosave } from './draft-autosave';
 
 function recipientQuery(value: string): string {
   return value.slice(Math.max(value.lastIndexOf(','), value.lastIndexOf(';')) + 1).trim();
@@ -220,6 +221,24 @@ export function ComposeDialog({
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<MailSendDraft | null>(null);
   const confirmationActionRef = useRef<HTMLButtonElement>(null);
+  const currentDraft: MailSendDraft = {
+    to: parseAddressList(to),
+    cc: parseAddressList(cc),
+    bcc: parseAddressList(bcc),
+    subject,
+    text: body,
+    inReplyTo: null,
+    references: [],
+    attachments,
+  };
+  const hasDraftContent = Boolean(
+    to.trim() || cc.trim() || bcc.trim() || subject.trim() || body.trim() || attachments.length,
+  );
+  const { status: draftStatus, discardSavedDraft } = useDraftAutosave(
+    accountId,
+    currentDraft,
+    hasDraftContent,
+  );
 
   const deliver = async (draft: MailSendDraft) => {
     setBusy(true);
@@ -230,6 +249,12 @@ export function ComposeDialog({
         setStatus({ kind: 'error', message: result.message ?? 'Could not send message.' });
         return;
       }
+      await discardSavedDraft();
+      setTo('');
+      setCc('');
+      setBcc('');
+      setSubject('');
+      setBody('');
       onSent();
       setAttachments([]);
       onOpenChange(false);
@@ -241,16 +266,7 @@ export function ComposeDialog({
   };
 
   const requestSend = () => {
-    const draft: MailSendDraft = {
-      to: parseAddressList(to),
-      cc: parseAddressList(cc),
-      bcc: parseAddressList(bcc),
-      subject,
-      text: body,
-      inReplyTo: null,
-      references: [],
-      attachments,
-    };
+    const draft = currentDraft;
     const validationError = validateSendDraft(draft);
     if (validationError) {
       setStatus({ kind: 'error', message: validationError });
@@ -279,7 +295,18 @@ export function ComposeDialog({
         if (!busy) onOpenChange(nextOpen);
       }}
     >
-      <DialogContent className="w-[min(44rem,calc(100%-2rem))]">
+      <DialogContent
+        className="w-[min(44rem,calc(100%-2rem))]"
+        onOpenAutoFocus={() => {
+          if (
+            !hasDraftContent &&
+            defaultAccountId &&
+            accounts.some((account) => account.id === defaultAccountId)
+          ) {
+            setAccountId(defaultAccountId);
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>New message</DialogTitle>
           <DialogDescription>Send an email with optional attachments from any connected account.</DialogDescription>
@@ -375,6 +402,14 @@ export function ComposeDialog({
             }}
             onError={(message) => setStatus({ kind: 'error', message })}
           />
+          {draftStatus.state !== 'idle' && (
+            <p
+              className={draftStatus.state === 'error' ? 'text-xs text-danger' : 'text-xs text-muted-foreground'}
+              role="status"
+            >
+              {draftStatus.state === 'saving' ? 'Saving draft…' : draftStatus.message}
+            </p>
+          )}
           {status && (
             <p
               className={status.kind === 'success' ? 'text-sm text-success' : 'text-sm text-danger'}

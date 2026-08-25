@@ -750,6 +750,34 @@ export class MailCache {
     }
   }
 
+  setMessagesFlagged(
+    accountId: string,
+    folderPath: string,
+    uids: number[],
+    flagged: boolean,
+  ): void {
+    const update = this.#database.prepare(`
+      UPDATE messages SET flagged = ?
+      WHERE account_id = ? AND folder_path = ? AND uid = ?
+    `);
+    this.#database.exec('BEGIN');
+    try {
+      for (const uid of uids) update.run(flagged ? 1 : 0, accountId, folderPath, uid);
+      this.#database.exec('COMMIT');
+    } catch (error) {
+      this.#database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  invalidateFolder(accountId: string, folderPath: string): void {
+    this.#database.prepare(`
+      UPDATE folders
+      SET synced_at = NULL, uid_validity = NULL, uid_next = NULL, highest_modseq = NULL
+      WHERE account_id = ? AND path = ?
+    `).run(accountId, folderPath);
+  }
+
   deleteMessages(accountId: string, folderPath: string, uids: number[]): void {
     const remove = this.#database.prepare(`
       DELETE FROM messages WHERE account_id = ? AND folder_path = ? AND uid = ?

@@ -5,6 +5,7 @@ import {
   Folder,
   Mail,
   MailOpen,
+  Star,
   Trash2,
   XCircle,
 } from 'lucide-react';
@@ -44,6 +45,10 @@ export function BulkOperationBar({
       ? 'mark as read'
       : progress.action === 'unread'
         ? 'mark as unread'
+        : progress.action === 'star'
+          ? 'star'
+          : progress.action === 'unstar'
+            ? 'unstar'
         : progress.action === 'archive'
           ? 'archive'
           : progress.action === 'move'
@@ -54,6 +59,10 @@ export function BulkOperationBar({
       ? 'Marking emails as read'
       : progress.action === 'unread'
         ? 'Marking emails as unread'
+        : progress.action === 'star'
+          ? 'Starring emails'
+          : progress.action === 'unstar'
+            ? 'Removing stars'
         : progress.action === 'archive'
           ? 'Archiving emails'
           : progress.action === 'move'
@@ -61,7 +70,7 @@ export function BulkOperationBar({
         : 'Deleting emails';
   const title =
     progress.state === 'completed'
-      ? `${progress.total} ${progress.total === 1 ? 'email' : 'emails'} ${verb === 'delete' ? 'deleted' : progress.action === 'read' ? 'marked as read' : progress.action === 'unread' ? 'marked as unread' : progress.action === 'archive' ? 'archived' : 'moved'}`
+      ? `${progress.total} ${progress.total === 1 ? 'email' : 'emails'} ${verb === 'delete' ? 'deleted' : progress.action === 'read' ? 'marked as read' : progress.action === 'unread' ? 'marked as unread' : progress.action === 'star' ? 'starred' : progress.action === 'unstar' ? 'unstarred' : progress.action === 'archive' ? 'archived' : 'moved'}`
       : progress.state === 'stopped'
         ? `Stopped after ${progress.processed} of ${progress.total}`
         : progress.state === 'error'
@@ -87,6 +96,8 @@ export function BulkOperationBar({
             <Folder className="size-4" />
           ) : progress.action === 'read' ? (
             <MailOpen className="size-4" />
+          ) : progress.action === 'star' || progress.action === 'unstar' ? (
+            <Star className="size-4" />
           ) : (
             <Mail className="size-4" />
           )}

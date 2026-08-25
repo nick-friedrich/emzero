@@ -169,17 +169,21 @@ export function MailSearch({
             );
             setSelected(null);
           } else {
-            const unread = action === 'unread';
+            const isFlagAction = action === 'star' || action === 'unstar';
+            const nextValue = action === 'unread' || action === 'star';
             setSelected((current) =>
               current
                 ? {
                     ...current,
                     conversation: {
                       ...current.conversation,
-                      messages: current.conversation.messages.map((message) => ({
-                        ...message,
-                        unread,
-                      })),
+                      messages: current.conversation.messages.map((message) =>
+                        message.folderPath !== selection.folder.path
+                          ? message
+                          : isFlagAction
+                            ? { ...message, flagged: nextValue }
+                            : { ...message, unread: nextValue },
+                      ),
                     },
                   }
                 : current,
@@ -202,6 +206,7 @@ export function MailSearch({
           busy={actionBusy}
           actionError={actionError}
           onSetUnread={(unread) => void runAction(unread ? 'unread' : 'read')}
+          onSetFlagged={(flagged) => void runAction(flagged ? 'star' : 'unstar')}
           onMove={(destination) => void runAction('move', destination)}
           onDelete={() => void runAction('delete')}
           onReplySent={(message) => {

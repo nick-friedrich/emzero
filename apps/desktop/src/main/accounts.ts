@@ -13,6 +13,7 @@ import {
   type MailSearchRequest,
   type MailSearchResult,
   type MailSendDraft,
+  type MailDraftReference,
   type MailSendResult,
   type MessageDetailResult,
   type MessageListResult,
@@ -37,12 +38,14 @@ import { getBackgroundSyncStatus, runBackgroundSync } from './background-sync.js
 import { cancelBulkMessageJob, startBulkMessageJob } from './bulk-message-jobs.js';
 import {
   changeMessageUnread,
+  changeMessageFlagged,
   deleteFolderMessages,
   moveFolderMessages,
   validMessageUids,
 } from './message-actions.js';
 import { mailCache } from './mail-runtime.js';
 import { getFolderMessage, listFolderMessages } from './message-reader.js';
+import { deleteMailDraft, saveMailDraft } from './mail-drafts.js';
 import { sendMessage } from './message-sender.js';
 import { discoverProvider, listProviders } from './provider-discovery.js';
 
@@ -93,6 +96,18 @@ function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
     return senderUrl.startsWith(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   }
   return senderUrl.startsWith('file://');
+}
+
+function validDraftReference(value: unknown): value is MailDraftReference {
+  if (!value || typeof value !== 'object') return false;
+  const draft = value as Partial<MailDraftReference>;
+  return (
+    typeof draft.folderPath === 'string' &&
+    Boolean(draft.folderPath) &&
+    typeof draft.uid === 'number' &&
+    Number.isSafeInteger(draft.uid) &&
+    draft.uid > 0
+  );
 }
 
 export function registerAccountHandlers(): void {
@@ -321,6 +336,25 @@ export function registerAccountHandlers(): void {
   );
 
   ipcMain.handle(
+    ACCOUNT_CHANNELS.setMessageFlagged,
+    async (event, accountId: unknown, folderPath: unknown, uids: unknown, flagged: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (
+        typeof accountId !== 'string' ||
+        typeof folderPath !== 'string' ||
+        !folderPath ||
+        !validMessageUids(uids) ||
+        typeof flagged !== 'boolean'
+      ) {
+        return { ok: false, message: 'Invalid messages.' } satisfies MessageOperationResult;
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return { ok: false, message: 'Account not found.' } satisfies MessageOperationResult;
+      return changeMessageFlagged(account, folderPath, uids, flagged);
+    },
+  );
+
+  ipcMain.handle(
     ACCOUNT_CHANNELS.deleteMessages,
     async (event, accountId: unknown, folderPath: unknown, uids: unknown) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
@@ -381,6 +415,36 @@ export function registerAccountHandlers(): void {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return cancelBulkMessageJob(jobId);
   });
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.saveDraft,
+    async (event, accountId: unknown, value: unknown, previous: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (
+        typeof accountId !== 'string' ||
+        !validSendDraft(value) ||
+        (previous !== undefined && !validDraftReference(previous))
+      ) {
+        return { ok: false, message: 'Invalid draft.' };
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return { ok: false, message: 'Account not found.' };
+      return saveMailDraft(account, value, previous);
+    },
+  );
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.deleteDraft,
+    async (event, accountId: unknown, value: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (typeof accountId !== 'string' || !validDraftReference(value)) {
+        return { ok: false, message: 'Invalid draft.' };
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return { ok: false, message: 'Account not found.' };
+      return deleteMailDraft(account, value);
+    },
+  );
 
   ipcMain.handle(ACCOUNT_CHANNELS.selectAttachments, (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
