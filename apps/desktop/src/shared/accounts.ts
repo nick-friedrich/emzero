@@ -412,6 +412,12 @@ export interface AccountOperationResult {
   account?: AccountSummary;
 }
 
+export interface AccountReorderResult {
+  ok: boolean;
+  message: string;
+  accounts?: AccountSummary[];
+}
+
 export interface AccountNameUpdate {
   name: string;
 }
@@ -454,7 +460,9 @@ export const ACCOUNT_CHANNELS = {
   beginMicrosoftAuth: 'accounts:microsoft-auth-begin',
   finishMicrosoftAuth: 'accounts:microsoft-auth-finish',
   cancelMicrosoftAuth: 'accounts:microsoft-auth-cancel',
+  openGmailAppPasswordHelp: 'accounts:gmail-app-password-help',
   update: 'accounts:update',
+  reorder: 'accounts:reorder',
   remove: 'accounts:remove',
   providers: 'providers:list',
   discoverProvider: 'providers:discover',

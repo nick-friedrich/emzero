@@ -5,6 +5,7 @@ import {
   type AccountDraft,
   type AccountNameUpdate,
   type AccountOperationResult,
+  type AccountReorderResult,
   type FolderCreateRequest,
   type FolderListResult,
   type FolderMoveRequest,
@@ -213,6 +214,31 @@ export function registerAccountHandlers(): void {
       } satisfies AccountOperationResult;
     },
   );
+
+  ipcMain.handle(ACCOUNT_CHANNELS.reorder, async (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    const accounts = await readAccounts();
+    if (
+      !Array.isArray(value) ||
+      value.length !== accounts.length ||
+      value.some((id) => typeof id !== 'string') ||
+      new Set(value).size !== accounts.length
+    ) {
+      return { ok: false, message: 'Invalid account order.' } satisfies AccountReorderResult;
+    }
+    const byId = new Map(accounts.map((account) => [account.id, account]));
+    const reordered = value.map((id) => byId.get(id));
+    if (reordered.some((account) => !account)) {
+      return { ok: false, message: 'Invalid account order.' } satisfies AccountReorderResult;
+    }
+    const nextAccounts = reordered as StoredAccount[];
+    await writeAccounts(nextAccounts);
+    return {
+      ok: true,
+      message: 'Account order updated.',
+      accounts: nextAccounts.map(toAccountSummary),
+    } satisfies AccountReorderResult;
+  });
 
   ipcMain.handle(ACCOUNT_CHANNELS.remove, async (event, accountId: unknown) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
@@ -630,5 +656,10 @@ export function registerAccountHandlers(): void {
   ipcMain.handle(ACCOUNT_CHANNELS.cancelMicrosoftAuth, (event, sessionId: unknown) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return typeof sessionId === 'string' && cancelMicrosoftAuth(sessionId);
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.openGmailAppPasswordHelp, async (event) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    await shell.openExternal('https://support.google.com/accounts/answer/185833');
   });
 }

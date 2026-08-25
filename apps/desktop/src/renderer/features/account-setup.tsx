@@ -373,6 +373,15 @@ export function AccountSetup({
                     ? 'Use a 16-character Google app password. It requires 2-Step Verification; your normal Google password will not work.'
                     : 'Some providers require an app-specific password.'}
                 </p>
+                {preset === 'gmail' && (
+                  <button
+                    className="mt-1 text-xs font-medium text-primary underline-offset-4 hover:underline"
+                    type="button"
+                    onClick={() => void window.emzero.accounts.openGmailAppPasswordHelp()}
+                  >
+                    Learn how to create a Google app password
+                  </button>
+                )}
               </div>
             ) : (
               <div className="sm:col-span-2">

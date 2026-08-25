@@ -3,6 +3,7 @@ import {
   ACCOUNT_CHANNELS,
   type AccountDraft,
   type AccountOperationResult,
+  type AccountReorderResult,
   type AccountNameUpdate,
   type AccountSummary,
   type BulkMessageJobProgress,
@@ -44,7 +45,9 @@ export interface EmzeroDesktopApi {
       draft: AccountDraft,
     ) => Promise<AccountOperationResult>;
     cancelMicrosoftAuth: (sessionId: string) => Promise<boolean>;
+    openGmailAppPasswordHelp: () => Promise<void>;
     update: (accountId: string, update: AccountNameUpdate) => Promise<AccountOperationResult>;
+    reorder: (accountIds: string[]) => Promise<AccountReorderResult>;
     remove: (accountId: string) => Promise<AccountOperationResult>;
   };
   folders: {
@@ -128,7 +131,10 @@ contextBridge.exposeInMainWorld('emzero', {
       ipcRenderer.invoke(ACCOUNT_CHANNELS.finishMicrosoftAuth, sessionId, draft),
     cancelMicrosoftAuth: (sessionId) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.cancelMicrosoftAuth, sessionId),
+    openGmailAppPasswordHelp: () =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.openGmailAppPasswordHelp),
     update: (accountId, update) => ipcRenderer.invoke(ACCOUNT_CHANNELS.update, accountId, update),
+    reorder: (accountIds) => ipcRenderer.invoke(ACCOUNT_CHANNELS.reorder, accountIds),
     remove: (accountId) => ipcRenderer.invoke(ACCOUNT_CHANNELS.remove, accountId),
   },
   folders: {

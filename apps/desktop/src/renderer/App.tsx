@@ -182,6 +182,23 @@ export function App() {
         }}
         onAdd={() => setShowSetup(true)}
         onManage={() => setSettingsOpen(true)}
+        onReorder={async (accountIds) => {
+          const previous = accounts;
+          const byId = new Map(accounts.map((account) => [account.id, account]));
+          setAccounts(accountIds.flatMap((id) => byId.get(id) ?? []));
+          try {
+            const result = await window.emzero.accounts.reorder(accountIds);
+            if (!result.ok || !result.accounts) {
+              setAccounts(previous);
+              return false;
+            }
+            setAccounts(result.accounts);
+            return true;
+          } catch {
+            setAccounts(previous);
+            return false;
+          }
+        }}
         onCompose={() => setComposeOpen(true)}
       />
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
@@ -218,6 +235,23 @@ export function App() {
             onManage={() => {
               setSettingsOpen(true);
               setSidebarOpen(false);
+            }}
+            onReorder={async (accountIds) => {
+              const previous = accounts;
+              const byId = new Map(accounts.map((account) => [account.id, account]));
+              setAccounts(accountIds.flatMap((id) => byId.get(id) ?? []));
+              try {
+                const result = await window.emzero.accounts.reorder(accountIds);
+                if (!result.ok || !result.accounts) {
+                  setAccounts(previous);
+                  return false;
+                }
+                setAccounts(result.accounts);
+                return true;
+              } catch {
+                setAccounts(previous);
+                return false;
+              }
             }}
             onCompose={() => {
               setComposeOpen(true);

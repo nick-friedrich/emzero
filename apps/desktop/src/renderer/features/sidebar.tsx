@@ -172,6 +172,7 @@ export function Sidebar({
   onSelect,
   onAdd,
   onManage,
+  onReorder,
   onCompose,
   className,
 }: {
@@ -182,6 +183,7 @@ export function Sidebar({
   onSelect: (selection: MailboxSelection) => void;
   onAdd: () => void;
   onManage: () => void;
+  onReorder: (accountIds: string[]) => Promise<boolean>;
   onCompose: () => void;
   className?: string;
 }) {
@@ -201,6 +203,26 @@ export function Sidebar({
     folderPath: string;
   } | null>(null);
   const [dropTarget, setDropTarget] = useState<FolderDropTarget | null>(null);
+  const [draggedAccountId, setDraggedAccountId] = useState<string | null>(null);
+  const [accountDropTarget, setAccountDropTarget] = useState<{
+    accountId: string;
+    position: 'before' | 'after';
+  } | null>(null);
+  const [accountReorderError, setAccountReorderError] = useState<string | null>(null);
+
+  const dropAccount = async (targetId: string, position: 'before' | 'after') => {
+    if (!draggedAccountId || draggedAccountId === targetId) return;
+    const nextIds = accounts.map((account) => account.id);
+    const sourceIndex = nextIds.indexOf(draggedAccountId);
+    if (sourceIndex < 0) return;
+    nextIds.splice(sourceIndex, 1);
+    const targetIndex = nextIds.indexOf(targetId);
+    nextIds.splice(targetIndex + (position === 'after' ? 1 : 0), 0, draggedAccountId);
+    setAccountReorderError(null);
+    if (!(await onReorder(nextIds))) setAccountReorderError('Could not save the account order.');
+    setDraggedAccountId(null);
+    setAccountDropTarget(null);
+  };
 
   const applyFolderResult = (accountId: string, result: FolderMutationResult): boolean => {
     if (!result.ok) {
@@ -502,13 +524,51 @@ export function Sidebar({
                   ? accountUnreadCount(folderState.folders)
                   : 0;
               return (
-                <div key={account.id}>
-                  <Button
-                    variant="ghost"
-                    className="h-auto w-full justify-start gap-2 py-2 focus-visible:ring-inset"
-                    aria-expanded={isExpanded}
-                    onClick={() => toggleAccount(account)}
+                <div
+                  key={account.id}
+                  className={cn(
+                    'relative',
+                    accountDropTarget?.accountId === account.id && accountDropTarget.position === 'before' &&
+                      'before:absolute before:inset-x-1 before:top-0 before:z-10 before:h-0.5 before:bg-primary',
+                    accountDropTarget?.accountId === account.id && accountDropTarget.position === 'after' &&
+                      'after:absolute after:inset-x-1 after:bottom-0 after:z-10 after:h-0.5 after:bg-primary',
+                    draggedAccountId === account.id && 'opacity-50',
+                  )}
+                >
+                  <div
+                    onDragOver={(event) => {
+                      if (!draggedAccountId || draggedAccountId === account.id) return;
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = 'move';
+                      const bounds = event.currentTarget.getBoundingClientRect();
+                      setAccountDropTarget({
+                        accountId: account.id,
+                        position: event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after',
+                      });
+                    }}
+                    onDrop={(event) => {
+                      if (!accountDropTarget) return;
+                      event.preventDefault();
+                      void dropAccount(account.id, accountDropTarget.position);
+                    }}
                   >
+                    <Button
+                      variant="ghost"
+                      className="h-auto w-full cursor-grab justify-start gap-2 py-2 focus-visible:ring-inset active:cursor-grabbing"
+                      aria-expanded={isExpanded}
+                      draggable
+                      title="Drag to reorder account"
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData('text/plain', account.id);
+                        setDraggedAccountId(account.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedAccountId(null);
+                        setAccountDropTarget(null);
+                      }}
+                      onClick={() => toggleAccount(account)}
+                    >
                     {isExpanded ? (
                       <ChevronDown className="size-3.5 text-muted-foreground" />
                     ) : (
@@ -524,7 +584,8 @@ export function Sidebar({
                       </span>
                     </span>
                     {!isExpanded && <UnreadBadge count={accountUnread} />}
-                  </Button>
+                    </Button>
+                  </div>
 
                   {isExpanded && (
                     <div className="mb-2 ml-5 border-l border-border pl-2">
@@ -727,6 +788,9 @@ export function Sidebar({
                 </div>
               );
             })}
+            {accountReorderError && (
+              <p className="px-3 pt-2 text-xs text-danger">{accountReorderError}</p>
+            )}
           </div>
         )}
       </nav>
