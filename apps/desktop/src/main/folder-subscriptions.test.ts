@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ListResponse } from 'imapflow';
-import { subscribeListedFolders } from './folder-subscriptions.js';
+import { deleteSubscribedFolder, subscribeListedFolders } from './folder-subscriptions.js';
 
 function folder(
   path: string,
@@ -41,5 +41,27 @@ describe('subscribeListedFolders', () => {
     );
 
     expect(mailboxSubscribe).not.toHaveBeenCalled();
+  });
+});
+
+describe('deleteSubscribedFolder', () => {
+  it('unsubscribes around deletion so other clients do not retain a ghost folder', async () => {
+    const calls: string[] = [];
+    const mailboxUnsubscribe = vi.fn(async () => {
+      calls.push('unsubscribe');
+      return true;
+    });
+    const mailboxDelete = vi.fn(async () => {
+      calls.push('delete');
+      return { path: 'Archive/Old' };
+    });
+
+    await deleteSubscribedFolder({ mailboxDelete, mailboxUnsubscribe }, 'Archive/Old');
+
+    expect(calls).toEqual(['unsubscribe', 'delete', 'unsubscribe']);
+    expect(mailboxUnsubscribe).toHaveBeenCalledTimes(2);
+    expect(mailboxUnsubscribe).toHaveBeenNthCalledWith(1, 'Archive/Old');
+    expect(mailboxUnsubscribe).toHaveBeenNthCalledWith(2, 'Archive/Old');
+    expect(mailboxDelete).toHaveBeenCalledWith('Archive/Old');
   });
 });

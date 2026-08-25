@@ -41,7 +41,7 @@ import {
 import { validateReplyDraft, validateSendDraft } from '../shared/replies.js';
 import { discoverProvider, listProviders } from './provider-discovery.js';
 import { hasQuotedHtml, sanitizedMessageHtml } from './message-html.js';
-import { subscribeListedFolders } from './folder-subscriptions.js';
+import { deleteSubscribedFolder, subscribeListedFolders } from './folder-subscriptions.js';
 import { MailCache } from './mail-cache.js';
 
 interface StoredAccount extends AccountSummary {
@@ -468,7 +468,7 @@ async function deleteAccountFolder(
     return { ok: false, folders, message: 'This provider-managed folder cannot be deleted.' };
   }
   return mutateAccountFolders(account, async (imap) => {
-    await imap.mailboxDelete(folder.path);
+    await deleteSubscribedFolder(imap, folder.path);
   });
 }
 
