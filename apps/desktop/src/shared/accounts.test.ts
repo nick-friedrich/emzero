@@ -7,6 +7,7 @@ import {
   findArchiveFolder,
   findInboxFolder,
   folderMoveRequestForDrop,
+  optimisticFolderMove,
   manageableFolder,
   orderedFolderTree,
   type AccountDraft,
@@ -191,6 +192,29 @@ describe('folder organization', () => {
       beforePath: null,
     });
     expect(folderMoveRequestForDrop(folders, 'Projects', 'Projects/Alpha', 'inside')).toBeNull();
+  });
+
+  it('optimistically moves a folder subtree and retains the requested sibling position', () => {
+    const projects = folder('Projects');
+    const alpha = folder('Projects/Alpha', 'Projects');
+    const notes = folder('Projects/Alpha/Notes', 'Projects/Alpha');
+    const receipts = folder('Receipts');
+    const invoices = folder('Invoices');
+
+    const moved = optimisticFolderMove(
+      [projects, alpha, notes, receipts, invoices],
+      { folderPath: 'Projects/Alpha', parentPath: '', beforePath: 'Invoices' },
+    );
+
+    expect(moved).not.toBeNull();
+    expect(orderedFolderTree(moved!).map(({ path }) => path)).toEqual([
+      'Projects',
+      'Receipts',
+      'Alpha',
+      'Alpha/Notes',
+      'Invoices',
+    ]);
+    expect(moved?.find(({ path }) => path === 'Alpha/Notes')?.parentPath).toBe('Alpha');
   });
 });
 

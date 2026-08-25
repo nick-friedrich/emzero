@@ -41,6 +41,7 @@ import {
 import { validateReplyDraft, validateSendDraft } from '../shared/replies.js';
 import { discoverProvider, listProviders } from './provider-discovery.js';
 import { hasQuotedHtml, sanitizedMessageHtml } from './message-html.js';
+import { subscribeListedFolders } from './folder-subscriptions.js';
 import { MailCache } from './mail-cache.js';
 
 interface StoredAccount extends AccountSummary {
@@ -232,9 +233,9 @@ async function decryptPassword(account: StoredAccount): Promise<string> {
 }
 
 async function refreshedFolders(imap: ImapFlow, accountId: string): Promise<MailFolderSummary[]> {
-  const folders: MailFolderSummary[] = (
-    await imap.list({ statusQuery: { unseen: true } })
-  ).map((folder) => ({
+  const listedFolders = await imap.list({ statusQuery: { unseen: true } });
+  await subscribeListedFolders(imap, listedFolders);
+  const folders: MailFolderSummary[] = listedFolders.map((folder) => ({
     path: folder.path,
     name: folder.name,
     parentPath: folder.parentPath,

@@ -102,6 +102,7 @@ import {
   findInboxFolder,
   folderMoveRequestForDrop,
   manageableFolder,
+  optimisticFolderMove,
   orderedFolderTree,
 } from '../shared/accounts';
 import {
@@ -4003,24 +4004,50 @@ function Sidebar({
       target.mode,
     );
     if (!request) return;
+    const previousFolders = folderState.folders;
+    const optimisticFolders = optimisticFolderMove(previousFolders, request);
+    if (!optimisticFolders) return;
+    const nextPath = joinedFolderPath(request.parentPath, source.name, source.delimiter);
+    const selectedPath =
+      selection.kind === 'folder' &&
+      selection.account.id === account.id &&
+      (selection.folder.path === source.path ||
+        selection.folder.path.startsWith(`${source.path}${source.delimiter}`))
+        ? selection.folder.path.replace(source.path, nextPath)
+        : null;
+    setFolderStates((current) => ({
+      ...current,
+      [account.id]: { status: 'loaded', folders: optimisticFolders },
+    }));
+    if (selectedPath) {
+      const selectedFolder = optimisticFolders.find((folder) => folder.path === selectedPath);
+      if (selectedFolder) onSelect({ kind: 'folder', account, folder: selectedFolder });
+    }
     setFolderBusy(true);
     setFolderError(null);
     try {
       const result = await window.emzero.folders.move(account.id, request);
-      if (!applyFolderResult(account.id, result)) return;
-      if (
-        selection.kind === 'folder' &&
-        selection.account.id === account.id &&
-        (selection.folder.path === source.path ||
-          selection.folder.path.startsWith(`${source.path}${source.delimiter}`))
-      ) {
-        const nextPath = joinedFolderPath(request.parentPath, source.name, source.delimiter);
-        const selectedPath = selection.folder.path.replace(source.path, nextPath);
+      if (!result.ok) {
+        setFolderStates((current) => ({
+          ...current,
+          [account.id]: { status: 'loaded', folders: previousFolders },
+        }));
+        setFolderError(result.message ?? 'The folder could not be moved.');
+        if (selectedPath && selection.kind === 'folder') onSelect(selection);
+        return;
+      }
+      applyFolderResult(account.id, result);
+      if (selectedPath) {
         const selectedFolder = result.folders.find((folder) => folder.path === selectedPath);
         if (selectedFolder) onSelect({ kind: 'folder', account, folder: selectedFolder });
       }
     } catch {
+      setFolderStates((current) => ({
+        ...current,
+        [account.id]: { status: 'loaded', folders: previousFolders },
+      }));
       setFolderError('The folder could not be moved.');
+      if (selectedPath && selection.kind === 'folder') onSelect(selection);
     } finally {
       setFolderBusy(false);
       setDraggedFolder(null);

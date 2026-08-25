@@ -141,6 +141,46 @@ export function folderMoveRequestForDrop(
   };
 }
 
+export function optimisticFolderMove(
+  folders: MailFolderSummary[],
+  request: FolderMoveRequest,
+): MailFolderSummary[] | null {
+  const source = folders.find((folder) => folder.path === request.folderPath);
+  if (!source) return null;
+  const nextPath = request.parentPath
+    ? `${request.parentPath}${source.delimiter}${source.name}`
+    : source.name;
+  const descendantPrefix = `${source.path}${source.delimiter}`;
+  const movedPaths = new Set(
+    folders
+      .filter(
+        (folder) => folder.path === source.path || folder.path.startsWith(descendantPrefix),
+      )
+      .map((folder) => folder.path),
+  );
+  const updated = folders.map((folder) => {
+    if (!movedPaths.has(folder.path)) return folder;
+    if (folder.path === source.path) {
+      return { ...folder, path: nextPath, parentPath: request.parentPath };
+    }
+    return {
+      ...folder,
+      path: `${nextPath}${folder.path.slice(source.path.length)}`,
+      parentPath: `${nextPath}${folder.parentPath.slice(source.path.length)}`,
+    };
+  });
+  const moved = updated.filter((_, index) => movedPaths.has(folders[index].path));
+  const remaining = updated.filter((_, index) => !movedPaths.has(folders[index].path));
+  if (request.beforePath) {
+    const beforeIndex = remaining.findIndex((folder) => folder.path === request.beforePath);
+    if (beforeIndex < 0) return null;
+    remaining.splice(beforeIndex, 0, ...moved);
+  } else {
+    remaining.push(...moved);
+  }
+  return remaining;
+}
+
 export function manageableFolder(folder: MailFolderSummary): boolean {
   return folder.specialUse === null;
 }
