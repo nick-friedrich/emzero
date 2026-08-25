@@ -328,6 +328,22 @@ export interface MailAttachmentSummary {
   related: boolean;
 }
 
+export interface MailOutgoingAttachment {
+  id: string;
+  filename: string;
+  size: number;
+}
+
+export interface AttachmentSelectionResult {
+  ok: boolean;
+  attachments: MailOutgoingAttachment[];
+  message?: string;
+}
+
+export interface AttachmentSaveResult extends MessageOperationResult {
+  canceled?: boolean;
+}
+
 export interface MailMessageDetail {
   uid: number;
   messageId: string | null;
@@ -363,6 +379,7 @@ export interface MailSendDraft {
   text: string;
   inReplyTo: string | null;
   references: string[];
+  attachments: MailOutgoingAttachment[];
 }
 
 export type MailReplyDraft = MailSendDraft;
@@ -433,6 +450,8 @@ export const ACCOUNT_CHANNELS = {
   sendReply: 'messages:send-reply',
   sendMessage: 'messages:send',
   suggestRecipients: 'messages:suggest-recipients',
+  selectAttachments: 'attachments:select',
+  saveAttachment: 'attachments:save',
   syncStatus: 'sync:status',
   syncNow: 'sync:now',
   syncChanged: 'sync:changed',

@@ -25,6 +25,8 @@ import {
   type MailSyncStatus,
   type ProviderDiscoveryResult,
   type RecipientSuggestion,
+  type AttachmentSaveResult,
+  type AttachmentSelectionResult,
 } from '../shared/accounts.js';
 
 export interface EmzeroDesktopApi {
@@ -71,6 +73,13 @@ export interface EmzeroDesktopApi {
     sendReply: (accountId: string, draft: MailReplyDraft) => Promise<MailSendResult>;
     send: (accountId: string, draft: MailSendDraft) => Promise<MailSendResult>;
     suggestRecipients: (accountId: string, query: string) => Promise<RecipientSuggestion[]>;
+    selectAttachments: () => Promise<AttachmentSelectionResult>;
+    saveAttachment: (
+      accountId: string,
+      folderPath: string,
+      uid: number,
+      attachmentIndex: number,
+    ) => Promise<AttachmentSaveResult>;
   };
   sync: {
     status: () => Promise<MailSyncStatus>;
@@ -138,6 +147,15 @@ contextBridge.exposeInMainWorld('emzero', {
     send: (accountId, draft) => ipcRenderer.invoke(ACCOUNT_CHANNELS.sendMessage, accountId, draft),
     suggestRecipients: (accountId, query) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.suggestRecipients, accountId, query),
+    selectAttachments: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.selectAttachments),
+    saveAttachment: (accountId, folderPath, uid, attachmentIndex) =>
+      ipcRenderer.invoke(
+        ACCOUNT_CHANNELS.saveAttachment,
+        accountId,
+        folderPath,
+        uid,
+        attachmentIndex,
+      ),
   },
   sync: {
     status: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.syncStatus),

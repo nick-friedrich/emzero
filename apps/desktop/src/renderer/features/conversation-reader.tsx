@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronRight,
+  Download,
   LoaderCircle,
   Paperclip,
   Reply,
@@ -32,6 +33,7 @@ import type {
   MailFolderSummary,
   MailMessageDetail,
   MailMessageSummary,
+  MailOutgoingAttachment,
   MailSendDraft,
   MessageMoveDestination,
 } from '../../shared/accounts';
@@ -63,11 +65,22 @@ import {
   type FolderSelection,
   type MessageDetailLoadState,
 } from './mail-common';
+import { AttachmentPicker } from './attachment-picker';
 
-function MessageBody({ message }: { message: MailMessageDetail }) {
+function MessageBody({
+  accountId,
+  folderPath,
+  message,
+}: {
+  accountId: string;
+  folderPath: string;
+  message: MailMessageDetail;
+}) {
   const { theme } = useTheme();
   const [view, setView] = useState<'html' | 'text'>('html');
   const [showQuoted, setShowQuoted] = useState(false);
+  const [savingAttachment, setSavingAttachment] = useState<number | null>(null);
+  const [attachmentStatus, setAttachmentStatus] = useState<Status | null>(null);
   const textParts = splitQuotedText(message.text);
   const hasQuotedText = view === 'html' ? message.htmlHasQuotedText : Boolean(textParts.quoted);
 
@@ -135,17 +148,55 @@ function MessageBody({ message }: { message: MailMessageDetail }) {
           </h3>
           <div className="mt-3 flex flex-wrap gap-2">
             {message.attachments
-              .filter(({ related }) => !related)
-              .map((attachment, index) => (
-                <div
+              .map((attachment, index) => ({ attachment, index }))
+              .filter(({ attachment }) => !attachment.related)
+              .map(({ attachment, index }) => (
+                <button
+                  type="button"
                   key={`${attachment.filename}:${index}`}
-                  className="rounded-md border border-border bg-background px-3 py-2 text-xs"
+                  className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-left text-xs hover:bg-accent disabled:opacity-60"
+                  disabled={savingAttachment !== null}
+                  title={`Save ${attachment.filename}`}
+                  onClick={() => {
+                    setSavingAttachment(index);
+                    setAttachmentStatus(null);
+                    void window.emzero.messages
+                      .saveAttachment(accountId, folderPath, message.uid, index)
+                      .then((result) => {
+                        if (!result.canceled) {
+                          setAttachmentStatus({
+                            kind: result.ok ? 'success' : 'error',
+                            message: result.message ?? (result.ok ? 'Attachment saved.' : 'Could not save attachment.'),
+                          });
+                        }
+                      })
+                      .catch(() =>
+                        setAttachmentStatus({ kind: 'error', message: 'Could not save attachment.' }),
+                      )
+                      .finally(() => setSavingAttachment(null));
+                  }}
                 >
+                  {savingAttachment === index ? (
+                    <LoaderCircle className="size-3.5 animate-spin" />
+                  ) : (
+                    <Download className="size-3.5" />
+                  )}
                   <span className="font-medium">{attachment.filename}</span>
-                  <span className="ml-2 text-muted-foreground">{fileSize(attachment.size)}</span>
-                </div>
+                  <span className="text-muted-foreground">{fileSize(attachment.size)}</span>
+                </button>
               ))}
           </div>
+          {attachmentStatus && (
+            <p
+              className={cn(
+                'mt-2 text-xs',
+                attachmentStatus.kind === 'success' ? 'text-success' : 'text-danger',
+              )}
+              role="status"
+            >
+              {attachmentStatus.message}
+            </p>
+          )}
         </section>
       )}
     </>
@@ -166,6 +217,7 @@ function ReplyComposer({
   const recipients = replyRecipients(account, message);
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
+  const [attachments, setAttachments] = useState<MailOutgoingAttachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
@@ -185,6 +237,7 @@ function ReplyComposer({
       if (result.ok) {
         if (result.sentMessage) onSent(result.sentMessage);
         setText('');
+        setAttachments([]);
         setOpen(false);
       }
     } catch {
@@ -195,7 +248,7 @@ function ReplyComposer({
   };
 
   const requestSend = () => {
-    const draft = createReplyDraft(account, summary, message, text);
+    const draft = { ...createReplyDraft(account, summary, message, text), attachments };
     const validationError = validateReplyDraft(draft);
     if (validationError) {
       setStatus({ kind: 'error', message: validationError });
@@ -270,6 +323,17 @@ function ReplyComposer({
             setStatus(null);
           }}
         />
+        <div className="mt-2">
+          <AttachmentPicker
+            attachments={attachments}
+            disabled={busy}
+            onChange={(nextAttachments) => {
+              setAttachments(nextAttachments);
+              setStatus(null);
+            }}
+            onError={(errorMessage) => setStatus({ kind: 'error', message: errorMessage })}
+          />
+        </div>
         {status?.kind === 'error' && (
           <p className="mt-2 text-xs text-danger" role="status">
             {status.message}
@@ -283,6 +347,7 @@ function ReplyComposer({
             onClick={() => {
               setOpen(false);
               setText('');
+              setAttachments([]);
               setStatus(null);
             }}
           >
@@ -342,6 +407,12 @@ function ReplyComposer({
                 <span className="text-muted-foreground">Subject: </span>
                 {pendingDraft.subject}
               </p>
+              {pendingDraft.attachments.length > 0 && (
+                <p className="mt-1 truncate">
+                  <span className="text-muted-foreground">Attachments: </span>
+                  {pendingDraft.attachments.length}
+                </p>
+              )}
             </div>
           )}
           <label className="flex cursor-pointer items-center gap-2 text-sm">
@@ -472,7 +543,11 @@ function ThreadMessageCard({
           )}
           {state.status === 'loaded' && (
             <>
-              <MessageBody message={state.message} />
+              <MessageBody
+                accountId={selection.account.id}
+                folderPath={summary.folderPath}
+                message={state.message}
+              />
               <ReplyComposer
                 account={selection.account}
                 summary={summary}

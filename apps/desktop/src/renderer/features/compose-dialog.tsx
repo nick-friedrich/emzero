@@ -36,6 +36,7 @@ import {
 import {
   type AccountSummary,
   type MailSendDraft,
+  type MailOutgoingAttachment,
   type RecipientSuggestion,
 } from '../../shared/accounts';
 import {
@@ -45,6 +46,7 @@ import {
 import { sendShortcutLabel, skipSendConfirmationStorageKey, storedSkipSendConfirmation, useSendShortcut, type Status } from './app-shared';
 import { Field } from './form-field';
 import { addressDetails } from './mail-common';
+import { AttachmentPicker } from './attachment-picker';
 
 function recipientQuery(value: string): string {
   return value.slice(Math.max(value.lastIndexOf(','), value.lastIndexOf(';')) + 1).trim();
@@ -208,6 +210,7 @@ export function ComposeDialog({
   const [bcc, setBcc] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [attachments, setAttachments] = useState<MailOutgoingAttachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
   const [skipSendConfirmation, setSkipSendConfirmation] = useState(
@@ -228,6 +231,7 @@ export function ComposeDialog({
         return;
       }
       onSent();
+      setAttachments([]);
       onOpenChange(false);
     } catch {
       setStatus({ kind: 'error', message: 'Could not send message.' });
@@ -245,6 +249,7 @@ export function ComposeDialog({
       text: body,
       inReplyTo: null,
       references: [],
+      attachments,
     };
     const validationError = validateSendDraft(draft);
     if (validationError) {
@@ -277,7 +282,7 @@ export function ComposeDialog({
       <DialogContent className="w-[min(44rem,calc(100%-2rem))]">
         <DialogHeader>
           <DialogTitle>New message</DialogTitle>
-          <DialogDescription>Send a plain-text email from any connected account.</DialogDescription>
+          <DialogDescription>Send an email with optional attachments from any connected account.</DialogDescription>
         </DialogHeader>
         <form
           className="space-y-4"
@@ -361,6 +366,15 @@ export function ComposeDialog({
               }}
             />
           </Field>
+          <AttachmentPicker
+            attachments={attachments}
+            disabled={busy}
+            onChange={(nextAttachments) => {
+              setAttachments(nextAttachments);
+              setStatus(null);
+            }}
+            onError={(message) => setStatus({ kind: 'error', message })}
+          />
           {status && (
             <p
               className={status.kind === 'success' ? 'text-sm text-success' : 'text-sm text-danger'}
@@ -433,6 +447,12 @@ export function ComposeDialog({
                 <span className="text-muted-foreground">Subject: </span>
                 {pendingDraft.subject}
               </p>
+              {pendingDraft.attachments.length > 0 && (
+                <p className="mt-1 truncate">
+                  <span className="text-muted-foreground">Attachments: </span>
+                  {pendingDraft.attachments.length}
+                </p>
+              )}
             </div>
           )}
           <label className="flex cursor-pointer items-center gap-2 text-sm">

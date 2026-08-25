@@ -104,6 +104,7 @@ describe('new message helpers', () => {
     text: 'A new message',
     inReplyTo: null,
     references: [],
+    attachments: [],
   };
 
   it('parses comma- and semicolon-separated recipients with optional names', () => {
@@ -122,5 +123,21 @@ describe('new message helpers', () => {
       validateSendDraft({ ...draft, cc: [{ name: null, address: 'not-an-address' }] }),
     ).toBe('Cc contains an invalid email address.');
     expect(validateSendDraft({ ...draft, subject: '' })).toBe('Enter a valid subject.');
+    expect(
+      validateSendDraft({
+        ...draft,
+        attachments: Array.from({ length: 21 }, (_, index) => ({
+          id: `attachment-${index}`,
+          filename: `${index}.txt`,
+          size: 1,
+        })),
+      }),
+    ).toBe('Attach no more than 20 files.');
+    expect(
+      validateSendDraft({
+        ...draft,
+        attachments: [{ id: 'large', filename: 'large.bin', size: 51 * 1024 * 1024 }],
+      }),
+    ).toBe('Attachments cannot exceed 50 MB in total.');
   });
 });

@@ -7,6 +7,7 @@ import type {
 } from '../shared/accounts.js';
 import { validateReplyDraft, validateSendDraft } from '../shared/replies.js';
 import type { StoredAccount } from './account-storage.js';
+import { releaseOutgoingAttachments, resolveOutgoingAttachments } from './attachment-files.js';
 import { closeImap, decryptPassword, errorMessage, mailCache } from './mail-runtime.js';
 
 export async function sendMessage(
@@ -22,6 +23,7 @@ export async function sendMessage(
   try {
     password = await decryptPassword(account);
     const sentAt = new Date();
+    const attachments = await resolveOutgoingAttachments(draft.attachments);
     const messageOptions = {
       from: { name: account.name, address: account.email },
       to: draft.to.map(({ name, address }) => ({ name: name ?? '', address: address! })),
@@ -32,6 +34,7 @@ export async function sendMessage(
       date: sentAt,
       inReplyTo: draft.inReplyTo ?? undefined,
       references: draft.references,
+      attachments,
     };
     const compiler = nodemailer.createTransport({
       streamTransport: true,
@@ -57,6 +60,7 @@ export async function sendMessage(
         envelope: compiled.envelope,
       });
       smtpMessageId = result.messageId || smtpMessageId;
+      releaseOutgoingAttachments(draft.attachments);
     } finally {
       smtp.close();
     }
@@ -148,7 +152,12 @@ export async function sendMessage(
           text: draft.text.trim(),
           html: null,
           htmlHasQuotedText: false,
-          attachments: [],
+          attachments: draft.attachments.map((attachment) => ({
+            filename: attachment.filename,
+            contentType: 'application/octet-stream',
+            size: attachment.size,
+            related: false,
+          })),
         });
       }
       return {

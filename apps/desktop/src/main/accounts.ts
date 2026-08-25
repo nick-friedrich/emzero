@@ -19,6 +19,7 @@ import {
   type MessageOperationResult,
 } from '../shared/accounts.js';
 import { verifyConnections } from './account-connection.js';
+import { saveMessageAttachment, selectOutgoingAttachments } from './attachment-files.js';
 import {
   createAccountFolder,
   deleteAccountFolder,
@@ -67,7 +68,21 @@ function validSendDraft(value: unknown): value is MailSendDraft {
     typeof draft.text === 'string' &&
     (draft.inReplyTo === null || typeof draft.inReplyTo === 'string') &&
     Array.isArray(draft.references) &&
-    draft.references.every((reference) => typeof reference === 'string')
+    draft.references.every((reference) => typeof reference === 'string') &&
+    Array.isArray(draft.attachments) &&
+    draft.attachments.length <= 20 &&
+    draft.attachments.every(
+      (attachment) =>
+        attachment !== null &&
+        typeof attachment === 'object' &&
+        typeof attachment.id === 'string' &&
+        Boolean(attachment.id) &&
+        typeof attachment.filename === 'string' &&
+        Boolean(attachment.filename) &&
+        typeof attachment.size === 'number' &&
+        Number.isSafeInteger(attachment.size) &&
+        attachment.size >= 0,
+    )
   );
 }
 
@@ -366,6 +381,40 @@ export function registerAccountHandlers(): void {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return cancelBulkMessageJob(jobId);
   });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.selectAttachments, (event) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    return selectOutgoingAttachments();
+  });
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.saveAttachment,
+    async (
+      event,
+      accountId: unknown,
+      folderPath: unknown,
+      uid: unknown,
+      attachmentIndex: unknown,
+    ) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (
+        typeof accountId !== 'string' ||
+        typeof folderPath !== 'string' ||
+        !folderPath ||
+        typeof uid !== 'number' ||
+        !Number.isSafeInteger(uid) ||
+        uid < 1 ||
+        typeof attachmentIndex !== 'number' ||
+        !Number.isSafeInteger(attachmentIndex) ||
+        attachmentIndex < 0
+      ) {
+        return { ok: false, message: 'Invalid attachment.' };
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return { ok: false, message: 'Account not found.' };
+      return saveMessageAttachment(account, folderPath, uid, attachmentIndex);
+    },
+  );
 
   ipcMain.handle(
     ACCOUNT_CHANNELS.sendReply,

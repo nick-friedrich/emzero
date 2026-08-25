@@ -20,6 +20,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential decryption, safe error formatting, and IMAP client lifecycle helpers.
 - `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization, message parsing, and cached/server message reading.
 - `apps/desktop/src/main/message-sender.ts` — SMTP delivery, IMAP Sent-copy persistence, and sent-message cache updates.
+- `apps/desktop/src/main/attachment-files.ts` — native file selection, opaque outgoing-file authorization, attachment limits, and received-attachment saving.
 - `apps/desktop/src/main/message-actions.ts` — read/unread, delete, same-account move, and cross-account message-transfer operations.
 - `apps/desktop/src/main/bulk-message-jobs.ts` — bulk-action request validation, execution, cancellation, and progress publication.
 - `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache and search.
@@ -51,13 +52,14 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/sidebar.tsx` — desktop/mobile navigation content, account folder trees, folder CRUD, drag-and-drop folder moves, sync status, and theme controls.
 - `features/account-setup.tsx` — provider detection and new-account connection form.
 - `features/account-settings.tsx` — account rename/removal dialog.
-- `features/compose-dialog.tsx` — new-message composer, recipient suggestions, validation, confirmation, and sending.
+- `features/compose-dialog.tsx` — new-message composer, recipient suggestions, attachments, validation, confirmation, and sending.
 - `features/mail-search.tsx` — search form/results and selected-result reader.
 - `features/message-list.tsx` — one account-folder conversation list, selection, and folder-scoped actions.
 - `features/unified-inbox.tsx` — multi-account inbox aggregation, selection, and actions.
 - `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: action controls, selection toolbar, and mail-view types/helpers.
 - `features/message-move.tsx` — account-and-folder destination picker for single and bulk message moves.
-- `features/conversation-reader.tsx` — conversation reader, message body/thread cards, quoted-content display, and inline reply composer.
+- `features/conversation-reader.tsx` — conversation reader, message body/thread cards, received-attachment saving, quoted-content display, and inline reply composer.
+- `features/attachment-picker.tsx` — reusable outgoing-attachment selection and removal UI for compose and reply.
 - `features/bulk-operation.tsx` — persistent progress/status bar for background bulk message jobs.
 - `features/app-shared.ts` — small cross-feature status and send-shortcut preferences/hooks.
 - `features/form-field.tsx` — shared labeled form-field wrapper.

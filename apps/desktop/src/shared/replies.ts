@@ -57,6 +57,7 @@ export function createReplyDraft(
     text,
     inReplyTo: detail.messageId,
     references: [...new Set([...summary.references, detail.messageId].filter(Boolean) as string[])],
+    attachments: [],
   };
 }
 
@@ -93,6 +94,10 @@ export function validateSendDraft(draft: MailSendDraft): string | null {
   if (draft.inReplyTo && /[\r\n]/.test(draft.inReplyTo)) return 'The message headers are invalid.';
   if (draft.references.some((reference) => /[\r\n]/.test(reference))) {
     return 'The message headers are invalid.';
+  }
+  if (draft.attachments.length > 20) return 'Attach no more than 20 files.';
+  if (draft.attachments.reduce((total, attachment) => total + attachment.size, 0) > 50 * 1024 * 1024) {
+    return 'Attachments cannot exceed 50 MB in total.';
   }
   return null;
 }
