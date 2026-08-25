@@ -1,0 +1,570 @@
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  LoaderCircle,
+  Paperclip,
+  Reply,
+  RefreshCw,
+  Send,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { cn } from '@/lib/utils';
+import { useTheme } from '@/theme';
+import type {
+  AccountSummary,
+  MailFolderSummary,
+  MailMessageDetail,
+  MailMessageSummary,
+  MailSendDraft,
+} from '../../shared/accounts';
+import { displayFolderName } from '../../shared/accounts';
+import {
+  splitQuotedText,
+  type MailConversation,
+} from '../../shared/conversations';
+import {
+  createReplyDraft,
+  replyRecipients,
+  validateReplyDraft,
+} from '../../shared/replies';
+import {
+  sendShortcutLabel,
+  skipSendConfirmationStorageKey,
+  storedSkipSendConfirmation,
+  useSendShortcut,
+  type Status,
+} from './app-shared';
+import {
+  ConversationActions,
+  addressLabel,
+  addressDetails,
+  fileSize,
+  htmlDocument,
+  messageCountInFolder,
+  messageDate,
+  type FolderSelection,
+  type MessageDetailLoadState,
+} from './mail-common';
+
+function MessageBody({ message }: { message: MailMessageDetail }) {
+  const { theme } = useTheme();
+  const [view, setView] = useState<'html' | 'text'>('html');
+  const [showQuoted, setShowQuoted] = useState(false);
+  const textParts = splitQuotedText(message.text);
+  const hasQuotedText = view === 'html' ? message.htmlHasQuotedText : Boolean(textParts.quoted);
+
+  return (
+    <>
+      {(message.cc.length > 0 || message.replyTo.length > 0) && (
+        <div className="mb-4 text-xs leading-5 text-muted-foreground">
+          {message.cc.length > 0 && <p>Cc: {addressDetails(message.cc)}</p>}
+          {message.replyTo.length > 0 && <p>Reply-To: {addressDetails(message.replyTo)}</p>}
+        </div>
+      )}
+      {message.html && (
+        <div className="flex justify-end gap-1" aria-label="Message format">
+          <Button
+            variant={view === 'html' ? 'secondary' : 'ghost'}
+            className="h-8 px-3 text-xs"
+            onClick={() => setView('html')}
+          >
+            HTML
+          </Button>
+          <Button
+            variant={view === 'text' ? 'secondary' : 'ghost'}
+            className="h-8 px-3 text-xs"
+            onClick={() => setView('text')}
+          >
+            Plain text
+          </Button>
+        </div>
+      )}
+
+      {message.html && view === 'html' ? (
+        <iframe
+          className="mt-4 h-[55vh] min-h-80 w-full rounded-md border border-border bg-card"
+          title="Email content"
+          sandbox=""
+          referrerPolicy="no-referrer"
+          srcDoc={htmlDocument(message.html, showQuoted, theme)}
+        />
+      ) : (
+        <div className="mt-5 whitespace-pre-wrap break-words text-sm leading-7 text-foreground">
+          {textParts.visible || 'No new text in this reply.'}
+          {showQuoted && textParts.quoted && (
+            <div className="mt-5 border-l-2 border-border pl-4 text-muted-foreground">
+              {textParts.quoted}
+            </div>
+          )}
+        </div>
+      )}
+
+      {hasQuotedText && (
+        <Button
+          variant="ghost"
+          className="mt-4 h-8 px-3 text-xs text-muted-foreground"
+          onClick={() => setShowQuoted((current) => !current)}
+        >
+          {showQuoted ? 'Hide quoted text' : 'Show quoted text'}
+        </Button>
+      )}
+
+      {message.attachments.some(({ related }) => !related) && (
+        <section className="mt-6 border-t border-border pt-5" aria-label="Attachments">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <Paperclip className="size-4" />
+            Attachments
+          </h3>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {message.attachments
+              .filter(({ related }) => !related)
+              .map((attachment, index) => (
+                <div
+                  key={`${attachment.filename}:${index}`}
+                  className="rounded-md border border-border bg-background px-3 py-2 text-xs"
+                >
+                  <span className="font-medium">{attachment.filename}</span>
+                  <span className="ml-2 text-muted-foreground">{fileSize(attachment.size)}</span>
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
+
+function ReplyComposer({
+  account,
+  summary,
+  message,
+  onSent,
+}: {
+  account: AccountSummary;
+  summary: MailMessageSummary;
+  message: MailMessageDetail;
+  onSent: (message: MailMessageSummary) => void;
+}) {
+  const recipients = replyRecipients(account, message);
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<Status | null>(null);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState<MailSendDraft | null>(null);
+  const confirmationActionRef = useRef<HTMLButtonElement>(null);
+
+  const deliver = async (draft: MailSendDraft) => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const result = await window.emzero.messages.sendReply(account.id, draft);
+      setStatus({
+        kind: result.ok ? 'success' : 'error',
+        message: result.message ?? (result.ok ? 'Reply sent.' : 'Could not send reply.'),
+      });
+      if (result.ok) {
+        if (result.sentMessage) onSent(result.sentMessage);
+        setText('');
+        setOpen(false);
+      }
+    } catch {
+      setStatus({ kind: 'error', message: 'Could not send reply.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const requestSend = () => {
+    const draft = createReplyDraft(account, summary, message, text);
+    const validationError = validateReplyDraft(draft);
+    if (validationError) {
+      setStatus({ kind: 'error', message: validationError });
+      return;
+    }
+    if (storedSkipSendConfirmation()) {
+      void deliver(draft);
+      return;
+    }
+    setPendingDraft(draft);
+    setDontShowAgain(false);
+    setConfirmationOpen(true);
+  };
+
+  useSendShortcut(open && !busy && !confirmationOpen, requestSend);
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    requestSend();
+  };
+
+  if (!open) {
+    return (
+      <div className="mt-6 border-t border-border pt-5">
+        <Button
+          variant="secondary"
+          disabled={recipients.length === 0}
+          title={recipients.length === 0 ? 'This message has no valid reply address.' : undefined}
+          onClick={() => {
+            setOpen(true);
+            setStatus(null);
+          }}
+        >
+          <Reply className="size-4" />
+          Reply
+        </Button>
+        {status && (
+          <span
+            className={cn(
+              'ml-3 text-xs',
+              status.kind === 'success' ? 'text-success' : 'text-danger',
+            )}
+            role="status"
+          >
+            {status.message}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <form
+        className="mt-6 border-t border-border pt-5"
+        onSubmit={submit}
+      >
+        <div className="mb-3 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+        <Reply className="size-4 shrink-0" />
+        <span className="shrink-0">Reply to</span>
+        <span className="truncate font-medium text-foreground">{addressDetails(recipients)}</span>
+        </div>
+        <textarea
+          className="field min-h-36 resize-y leading-6"
+          value={text}
+          placeholder="Write a reply…"
+          aria-label="Reply message"
+          autoFocus
+          disabled={busy}
+          onChange={(event) => {
+            setText(event.target.value);
+            setStatus(null);
+          }}
+        />
+        {status?.kind === 'error' && (
+          <p className="mt-2 text-xs text-danger" role="status">
+            {status.message}
+          </p>
+        )}
+        <div className="mt-3 flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => {
+              setOpen(false);
+              setText('');
+              setStatus(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            disabled={busy || !text.trim()}
+            title="Send reply (Ctrl+Enter)"
+            aria-keyshortcuts="Control+Enter Meta+Enter"
+          >
+            {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
+            Send reply
+          </Button>
+        </div>
+        <p className="mt-2 text-right text-[0.68rem] text-muted-foreground">
+          Send with {sendShortcutLabel()}
+        </p>
+      </form>
+      <AlertDialog
+        open={confirmationOpen}
+        onOpenChange={(nextOpen) => {
+          setConfirmationOpen(nextOpen);
+          if (!nextOpen) setPendingDraft(null);
+        }}
+      >
+        <AlertDialogContent
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            confirmationActionRef.current?.focus();
+          }}
+          onKeyDownCapture={(event) => {
+            if (event.key === 'Enter' && !event.repeat) {
+              event.preventDefault();
+              event.stopPropagation();
+              confirmationActionRef.current?.click();
+            }
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send this reply?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will send the reply immediately and cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {pendingDraft && (
+            <div className="rounded-lg border border-border bg-background px-4 py-3 text-sm">
+              <p className="truncate">
+                <span className="text-muted-foreground">From: </span>
+                {account.email}
+              </p>
+              <p className="mt-1 truncate">
+                <span className="text-muted-foreground">To: </span>
+                {addressDetails(pendingDraft.to)}
+              </p>
+              <p className="mt-1 truncate">
+                <span className="text-muted-foreground">Subject: </span>
+                {pendingDraft.subject}
+              </p>
+            </div>
+          )}
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              className="size-4 accent-primary"
+              type="checkbox"
+              checked={dontShowAgain}
+              onChange={(event) => setDontShowAgain(event.target.checked)}
+            />
+            Don’t show this confirmation again
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Press <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5">Enter</kbd>{' '}
+            to send or <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5">Esc</kbd>{' '}
+            to cancel. Open this dialog with {sendShortcutLabel()}.
+          </p>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              ref={confirmationActionRef}
+              variant="default"
+              onClick={() => {
+                if (!pendingDraft) return;
+                const draft = pendingDraft;
+                if (dontShowAgain) {
+                  try {
+                    window.localStorage.setItem(skipSendConfirmationStorageKey, 'true');
+                  } catch {
+                    // Sending should still work if preferences cannot be persisted.
+                  }
+                }
+                setPendingDraft(null);
+                void deliver(draft);
+              }}
+            >
+              <Send className="size-4" />
+              Send reply
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+function ThreadMessageCard({
+  selection,
+  summary,
+  defaultExpanded,
+  onReplySent,
+}: {
+  selection: FolderSelection;
+  summary: MailMessageSummary;
+  defaultExpanded: boolean;
+  onReplySent: (message: MailMessageSummary) => void;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [state, setState] = useState<MessageDetailLoadState>({ status: 'loading' });
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    if (!expanded || state.status !== 'loading') return;
+    let active = true;
+    void window.emzero.messages
+      .get(selection.account.id, summary.folderPath, summary.uid)
+      .then((result) => {
+        if (!active) return;
+        setState(
+          result.ok && result.messageDetail
+            ? { status: 'loaded', message: result.messageDetail }
+            : { status: 'error', message: result.message ?? 'Could not load message.' },
+        );
+      })
+      .catch(() => {
+        if (active) setState({ status: 'error', message: 'Could not load message.' });
+      });
+    return () => {
+      active = false;
+    };
+  }, [expanded, refreshKey, selection.account.id, state.status, summary.folderPath, summary.uid]);
+
+  const retry = () => {
+    setState({ status: 'loading' });
+    setRefreshKey((current) => current + 1);
+  };
+
+  return (
+    <article className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-accent/50 focus-visible:bg-accent focus-visible:outline-none"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-account text-xs font-semibold text-primary">
+            {addressLabel(summary.from).charAt(0).toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{addressLabel(summary.from)}</p>
+            <p className="truncate text-xs text-muted-foreground">To: {addressLabel(summary.to)}</p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+          <time dateTime={summary.sentAt ?? summary.receivedAt ?? undefined}>
+            {messageDate(summary.sentAt ?? summary.receivedAt)}
+          </time>
+          {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-border px-5 py-5">
+          {state.status === 'loading' && (
+            <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+              <LoaderCircle className="size-4 animate-spin" />
+              Loading message
+            </div>
+          )}
+          {state.status === 'error' && (
+            <div className="rounded-md bg-secondary p-4 text-sm">
+              <p className="text-danger">{state.message}</p>
+              <Button className="mt-3" variant="ghost" onClick={retry}>
+                <RefreshCw className="size-4" />
+                Try again
+              </Button>
+            </div>
+          )}
+          {state.status === 'loaded' && (
+            <>
+              <MessageBody message={state.message} />
+              <ReplyComposer
+                account={selection.account}
+                summary={summary}
+                message={state.message}
+                onSent={onReplySent}
+              />
+            </>
+          )}
+        </div>
+      )}
+    </article>
+  );
+}
+
+export function ConversationReader({
+  selection,
+  folders,
+  conversation,
+  onBack,
+  busy,
+  actionError,
+  onSetUnread,
+  onMove,
+  onDelete,
+  onReplySent,
+}: {
+  selection: FolderSelection;
+  folders: MailFolderSummary[];
+  conversation: MailConversation;
+  onBack: () => void;
+  busy: boolean;
+  actionError: string | null;
+  onSetUnread: (unread: boolean) => void;
+  onMove: (destinationPath: string) => void;
+  onDelete: () => void;
+  onReplySent: (message: MailMessageSummary) => void;
+}) {
+  const unread = conversation.messages.some(
+    (message) => message.folderPath === selection.folder.path && message.unread,
+  );
+  return (
+    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+      <header className="flex items-center gap-3 border-b border-border bg-card py-3 pl-16 pr-4 lg:px-4">
+        <Button variant="ghost" className="px-3" onClick={onBack}>
+          <ArrowLeft className="size-4" />
+          Back
+        </Button>
+        <span className="truncate text-sm text-muted-foreground">
+          {selection.account.name} / {displayFolderName(selection.folder)}
+        </span>
+        <div className="ml-auto">
+          <ConversationActions
+            folders={folders}
+            sourcePath={selection.folder.path}
+            messageCount={messageCountInFolder(conversation, selection.folder.path)}
+            unread={unread}
+            busy={busy}
+            confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
+            onSetUnread={onSetUnread}
+            onMove={onMove}
+            onDelete={onDelete}
+          />
+        </div>
+      </header>
+      {actionError && (
+        <div className="border-b border-danger/20 bg-danger/8 px-4 py-3 text-xs text-danger">
+          {actionError}
+        </div>
+      )}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-7 lg:px-10">
+        <div className="mx-auto max-w-4xl">
+          <div className="mb-6 flex items-end justify-between gap-4">
+            <h1 className="min-w-0 text-xl font-semibold leading-tight tracking-tight sm:text-2xl">
+              {conversation.subject}
+            </h1>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {conversation.messages.length}{' '}
+              {conversation.messages.length === 1 ? 'message' : 'messages'}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {conversation.messages.map((message, index) => (
+              <ThreadMessageCard
+                key={`${message.folderPath}:${message.uid}`}
+                selection={selection}
+                summary={message}
+                defaultExpanded={index === 0}
+                onReplySent={onReplySent}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
