@@ -1,24 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { BrowserWindow, ipcMain, safeStorage } from 'electron';
-import { ImapFlow } from 'imapflow';
+import { ipcMain, safeStorage } from 'electron';
 import {
   ACCOUNT_CHANNELS,
-  chunkMessageUids,
-  findArchiveFolder,
   type AccountDraft,
-  type AccountOperationResult,
   type AccountNameUpdate,
-  type BulkMessageAction,
-  type BulkMessageGroup,
-  type BulkMessageJobProgress,
-  type BulkMessageJobRequest,
-  type BulkMessageJobStartResult,
-  type FolderListResult,
+  type AccountOperationResult,
   type FolderCreateRequest,
+  type FolderListResult,
   type FolderMoveRequest,
   type FolderMutationResult,
   type FolderRenameRequest,
-  type MailFolderSummary,
   type MailSearchRequest,
   type MailSearchResult,
   type MailSendDraft,
@@ -27,7 +18,7 @@ import {
   type MessageListResult,
   type MessageOperationResult,
 } from '../shared/accounts.js';
-import { discoverProvider, listProviders } from './provider-discovery.js';
+import { verifyConnections } from './account-connection.js';
 import {
   createAccountFolder,
   deleteAccountFolder,
@@ -41,79 +32,18 @@ import {
   writeAccounts,
   type StoredAccount,
 } from './account-storage.js';
-import { decryptPassword, errorMessage, mailCache } from './mail-runtime.js';
+import { getBackgroundSyncStatus, runBackgroundSync } from './background-sync.js';
+import { cancelBulkMessageJob, startBulkMessageJob } from './bulk-message-jobs.js';
+import {
+  changeMessageUnread,
+  deleteFolderMessages,
+  moveFolderMessages,
+  validMessageUids,
+} from './message-actions.js';
+import { mailCache } from './mail-runtime.js';
 import { getFolderMessage, listFolderMessages } from './message-reader.js';
 import { sendMessage } from './message-sender.js';
-import { getBackgroundSyncStatus, runBackgroundSync } from './background-sync.js';
-import { verifyConnections } from './account-connection.js';
-
-
-interface ActiveBulkMessageJob {
-  id: string;
-  action: BulkMessageAction;
-  total: number;
-  processed: number;
-  cancelRequested: boolean;
-}
-
-let activeBulkMessageJob: ActiveBulkMessageJob | null = null;
-const bulkMessageChunkSize = 50;
-
-function publishBulkMessageProgress(progress: BulkMessageJobProgress): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    window.webContents.send(ACCOUNT_CHANNELS.bulkMessageJobChanged, progress);
-  }
-}
-
-function validUids(value: unknown): value is number[] {
-  return (
-    Array.isArray(value) &&
-    value.length > 0 &&
-    value.every((uid) => typeof uid === 'number' && Number.isInteger(uid) && uid > 0)
-  );
-}
-
-function validBulkMessageJobRequest(value: unknown): value is BulkMessageJobRequest {
-  if (!value || typeof value !== 'object') return false;
-  const request = value as Partial<BulkMessageJobRequest>;
-  if (!['read', 'unread', 'archive', 'move', 'delete'].includes(request.action ?? '')) return false;
-  if (!Array.isArray(request.groups) || request.groups.length === 0 || request.groups.length > 100) {
-    return false;
-  }
-  let total = 0;
-  for (const group of request.groups) {
-    if (
-      !group ||
-      typeof group.accountId !== 'string' ||
-      !group.accountId ||
-      typeof group.folderPath !== 'string' ||
-      !group.folderPath ||
-      (request.action === 'move' &&
-        (typeof group.destinationPath !== 'string' || !group.destinationPath)) ||
-      (group.destinationAccountId !== undefined &&
-        (typeof group.destinationAccountId !== 'string' || !group.destinationAccountId)) ||
-      !validUids(group.uids)
-    ) {
-      return false;
-    }
-    total += group.uids.length;
-  }
-  return total <= 20_000;
-}
-
-function moveDestination(
-  accountId: string,
-  folderPath: string,
-  action: 'archive' | 'move',
-  destinationPath?: string,
-): MailFolderSummary | undefined {
-  const folders = mailCache().listFolders(accountId);
-  const destination =
-    action === 'archive'
-      ? findArchiveFolder(folders)
-      : folders.find((folder) => folder.path === destinationPath && folder.selectable);
-  return destination?.path === folderPath ? undefined : destination;
-}
+import { discoverProvider, listProviders } from './provider-discovery.js';
 
 function validSendDraft(value: unknown): value is MailSendDraft {
   if (!value || typeof value !== 'object') return false;
@@ -139,399 +69,6 @@ function validSendDraft(value: unknown): value is MailSendDraft {
     Array.isArray(draft.references) &&
     draft.references.every((reference) => typeof reference === 'string')
   );
-}
-
-async function changeMessageUnread(
-  account: StoredAccount,
-  folderPath: string,
-  uids: number[],
-  unread: boolean,
-): Promise<MessageOperationResult> {
-  let password = '';
-  let imap: ImapFlow | null = null;
-  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
-  try {
-    password = await decryptPassword(account);
-    imap = new ImapFlow({
-      host: account.imap.host,
-      port: account.imap.port,
-      secure: account.imap.secure,
-      auth: { user: account.username, pass: password },
-      logger: false,
-      connectionTimeout: 12_000,
-      greetingTimeout: 12_000,
-      socketTimeout: 20_000,
-    });
-    await imap.connect();
-    lock = await imap.getMailboxLock(folderPath);
-    const changed = unread
-      ? await imap.messageFlagsRemove(uids, ['\\Seen'], { uid: true })
-      : await imap.messageFlagsAdd(uids, ['\\Seen'], { uid: true });
-    if (!changed) return { ok: false, message: 'The messages are no longer available.' };
-    mailCache().setMessagesUnread(account.id, folderPath, uids, unread);
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, message: `Could not update messages: ${errorMessage(error, password)}` };
-  } finally {
-    lock?.release();
-    if (imap?.usable) await imap.logout().catch(() => imap?.close());
-    else imap?.close();
-  }
-}
-
-async function deleteFolderMessages(
-  account: StoredAccount,
-  folderPath: string,
-  uids: number[],
-): Promise<MessageOperationResult> {
-  let password = '';
-  let imap: ImapFlow | null = null;
-  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
-  try {
-    password = await decryptPassword(account);
-    imap = new ImapFlow({
-      host: account.imap.host,
-      port: account.imap.port,
-      secure: account.imap.secure,
-      auth: { user: account.username, pass: password },
-      logger: false,
-      connectionTimeout: 12_000,
-      greetingTimeout: 12_000,
-      socketTimeout: 20_000,
-    });
-    await imap.connect();
-    lock = await imap.getMailboxLock(folderPath);
-    const trash = mailCache()
-      .listFolders(account.id)
-      .find((folder) => folder.selectable && folder.specialUse === '\\Trash');
-    const deleted = trash && trash.path !== folderPath
-      ? await imap.messageMove(uids, trash.path, { uid: true })
-      : await imap.messageDelete(uids, { uid: true });
-    if (!deleted) return { ok: false, message: 'The messages are no longer available.' };
-    mailCache().deleteMessages(account.id, folderPath, uids);
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, message: `Could not delete messages: ${errorMessage(error, password)}` };
-  } finally {
-    lock?.release();
-    if (imap?.usable) await imap.logout().catch(() => imap?.close());
-    else imap?.close();
-  }
-}
-
-async function moveFolderMessages(
-  account: StoredAccount,
-  folderPath: string,
-  uids: number[],
-  destinationAccount: StoredAccount,
-  destinationPath: string,
-): Promise<MessageOperationResult> {
-  if (destinationAccount.id !== account.id) {
-    try {
-      await transferFolderMessages(account, folderPath, uids, destinationAccount, destinationPath);
-      return { ok: true };
-    } catch (error) {
-      return { ok: false, message: `Could not move messages: ${errorMessage(error, '')}` };
-    }
-  }
-  const destination = moveDestination(account.id, folderPath, 'move', destinationPath);
-  if (!destination) return { ok: false, message: 'Choose a different destination folder.' };
-
-  let password = '';
-  let imap: ImapFlow | null = null;
-  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
-  try {
-    password = await decryptPassword(account);
-    imap = new ImapFlow({
-      host: account.imap.host,
-      port: account.imap.port,
-      secure: account.imap.secure,
-      auth: { user: account.username, pass: password },
-      logger: false,
-      connectionTimeout: 12_000,
-      greetingTimeout: 12_000,
-      socketTimeout: 20_000,
-    });
-    await imap.connect();
-    lock = await imap.getMailboxLock(folderPath);
-    const moved = await imap.messageMove(uids, destination.path, { uid: true });
-    if (!moved) return { ok: false, message: 'The messages are no longer available.' };
-    mailCache().moveMessages(account.id, folderPath, destination.path, uids);
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, message: `Could not move messages: ${errorMessage(error, password)}` };
-  } finally {
-    lock?.release();
-    if (imap?.usable) await imap.logout().catch(() => imap?.close());
-    else imap?.close();
-  }
-}
-
-function appendableFlags(flags: Set<string> | undefined): string[] {
-  const supported = new Set(['\\seen', '\\answered', '\\flagged', '\\draft']);
-  return [...(flags ?? [])].filter((flag) => supported.has(flag.toLowerCase()));
-}
-
-async function transferFolderMessages(
-  sourceAccount: StoredAccount,
-  sourcePath: string,
-  uids: number[],
-  destinationAccount: StoredAccount,
-  destinationPath: string,
-  onTransferred?: (uid: number) => void,
-  shouldStop?: () => boolean,
-): Promise<void> {
-  const destination = mailCache()
-    .listFolders(destinationAccount.id)
-    .find((folder) => folder.path === destinationPath && folder.selectable);
-  if (!destination) throw new Error('Choose a valid destination folder.');
-
-  let sourcePassword = '';
-  let destinationPassword = '';
-  let sourceImap: ImapFlow | null = null;
-  let destinationImap: ImapFlow | null = null;
-  let sourceLock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
-  try {
-    [sourcePassword, destinationPassword] = await Promise.all([
-      decryptPassword(sourceAccount),
-      decryptPassword(destinationAccount),
-    ]);
-    sourceImap = new ImapFlow({
-      host: sourceAccount.imap.host,
-      port: sourceAccount.imap.port,
-      secure: sourceAccount.imap.secure,
-      auth: { user: sourceAccount.username, pass: sourcePassword },
-      logger: false,
-      connectionTimeout: 12_000,
-      greetingTimeout: 12_000,
-      socketTimeout: 30_000,
-    });
-    destinationImap = new ImapFlow({
-      host: destinationAccount.imap.host,
-      port: destinationAccount.imap.port,
-      secure: destinationAccount.imap.secure,
-      auth: { user: destinationAccount.username, pass: destinationPassword },
-      logger: false,
-      connectionTimeout: 12_000,
-      greetingTimeout: 12_000,
-      socketTimeout: 30_000,
-    });
-    await Promise.all([sourceImap.connect(), destinationImap.connect()]);
-    sourceLock = await sourceImap.getMailboxLock(sourcePath);
-
-    for (const uid of uids) {
-      if (shouldStop?.()) return;
-      const message = await sourceImap.fetchOne(
-        uid,
-        { source: true, flags: true, internalDate: true },
-        { uid: true },
-      );
-      if (!message || !message.source) throw new Error('A source message is no longer available.');
-      const appended = await destinationImap.append(
-        destination.path,
-        message.source,
-        appendableFlags(message.flags),
-        message.internalDate,
-      );
-      if (!appended) throw new Error('The destination server did not accept a message.');
-      const deleted = await sourceImap.messageDelete(uid, { uid: true });
-      if (!deleted) {
-        throw new Error('A message was copied, but could not be removed from the source account.');
-      }
-      mailCache().transferMessages(
-        sourceAccount.id,
-        sourcePath,
-        destinationAccount.id,
-        destination.path,
-        [uid],
-      );
-      onTransferred?.(uid);
-    }
-  } catch (error) {
-    const sourceSafeMessage = errorMessage(error, sourcePassword);
-    const safeMessage = destinationPassword
-      ? sourceSafeMessage.replaceAll(destinationPassword, '••••••••')
-      : sourceSafeMessage;
-    throw new Error(safeMessage, { cause: error });
-  } finally {
-    sourceLock?.release();
-    for (const imap of [sourceImap, destinationImap]) {
-      if (imap?.usable) await imap.logout().catch(() => imap.close());
-      else imap?.close();
-    }
-  }
-}
-
-function bulkJobProgress(
-  job: ActiveBulkMessageJob,
-  state: BulkMessageJobProgress['state'],
-  update: Partial<BulkMessageJobProgress> = {},
-): BulkMessageJobProgress {
-  return {
-    jobId: job.id,
-    action: job.action,
-    state,
-    total: job.total,
-    processed: job.processed,
-    ...update,
-  };
-}
-
-async function processBulkMessageGroup(
-  job: ActiveBulkMessageJob,
-  account: StoredAccount,
-  group: BulkMessageGroup,
-): Promise<void> {
-  let password = '';
-  let imap: ImapFlow | null = null;
-  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
-  try {
-    password = await decryptPassword(account);
-    imap = new ImapFlow({
-      host: account.imap.host,
-      port: account.imap.port,
-      secure: account.imap.secure,
-      auth: { user: account.username, pass: password },
-      logger: false,
-      connectionTimeout: 12_000,
-      greetingTimeout: 12_000,
-      socketTimeout: 20_000,
-    });
-    await imap.connect();
-    lock = await imap.getMailboxLock(group.folderPath);
-    const trash =
-      job.action === 'delete'
-        ? mailCache()
-            .listFolders(account.id)
-            .find((folder) => folder.selectable && folder.specialUse === '\\Trash')
-        : undefined;
-    const moveTo =
-      job.action === 'archive' || job.action === 'move'
-        ? moveDestination(account.id, group.folderPath, job.action, group.destinationPath)
-        : undefined;
-    if ((job.action === 'archive' || job.action === 'move') && !moveTo) {
-      throw new Error(
-        job.action === 'archive'
-          ? 'This account does not have an Archive folder.'
-          : 'Choose a different destination folder.',
-      );
-    }
-
-    for (const uids of chunkMessageUids(group.uids, bulkMessageChunkSize)) {
-      if (job.cancelRequested) return;
-      const changed =
-        job.action === 'read'
-          ? await imap.messageFlagsAdd(uids, ['\\Seen'], { uid: true })
-          : job.action === 'unread'
-            ? await imap.messageFlagsRemove(uids, ['\\Seen'], { uid: true })
-            : moveTo
-              ? await imap.messageMove(uids, moveTo.path, { uid: true })
-            : trash && trash.path !== group.folderPath
-              ? await imap.messageMove(uids, trash.path, { uid: true })
-              : await imap.messageDelete(uids, { uid: true });
-      if (!changed) throw new Error('The messages are no longer available.');
-
-      if (job.action === 'delete') {
-        mailCache().deleteMessages(account.id, group.folderPath, uids);
-      } else if (moveTo) {
-        mailCache().moveMessages(account.id, group.folderPath, moveTo.path, uids);
-      } else {
-        mailCache().setMessagesUnread(account.id, group.folderPath, uids, job.action === 'unread');
-      }
-      job.processed += uids.length;
-      const folder = mailCache()
-        .listFolders(account.id)
-        .find((candidate) => candidate.path === group.folderPath);
-      publishBulkMessageProgress(
-        bulkJobProgress(job, job.cancelRequested ? 'stopping' : 'running', {
-          accountId: account.id,
-          folderPath: group.folderPath,
-          processedUids: uids,
-          folder,
-        }),
-      );
-    }
-  } catch (error) {
-    throw new Error(errorMessage(error, password), { cause: error });
-  } finally {
-    lock?.release();
-    if (imap?.usable) await imap.logout().catch(() => imap?.close());
-    else imap?.close();
-  }
-}
-
-async function runBulkMessageJob(
-  job: ActiveBulkMessageJob,
-  request: BulkMessageJobRequest,
-): Promise<void> {
-  try {
-    const accounts = await readAccounts();
-    for (const group of request.groups) {
-      if (job.cancelRequested) break;
-      const account = accounts.find((candidate) => candidate.id === group.accountId);
-      if (!account) throw new Error('Account not found.');
-      const destinationAccount = group.destinationAccountId
-        ? accounts.find((candidate) => candidate.id === group.destinationAccountId)
-        : account;
-      if (job.action === 'move' && destinationAccount?.id !== account.id) {
-        if (!destinationAccount || !group.destinationPath) {
-          throw new Error('Destination account not found.');
-        }
-        await transferFolderMessages(
-          account,
-          group.folderPath,
-          group.uids,
-          destinationAccount,
-          group.destinationPath,
-          (uid) => {
-            job.processed += 1;
-            const folder = mailCache()
-              .listFolders(account.id)
-              .find((candidate) => candidate.path === group.folderPath);
-            publishBulkMessageProgress(
-              bulkJobProgress(job, job.cancelRequested ? 'stopping' : 'running', {
-                accountId: account.id,
-                folderPath: group.folderPath,
-                processedUids: [uid],
-                folder,
-              }),
-            );
-          },
-          () => job.cancelRequested,
-        );
-      } else {
-        await processBulkMessageGroup(job, account, group);
-      }
-    }
-    if (!job.cancelRequested) {
-      for (const accountId of new Set(request.groups.map((group) => group.accountId))) {
-        const account = accounts.find((candidate) => candidate.id === accountId);
-        if (!account) continue;
-        const result = await listAccountFolders(account, true).catch(() => null);
-        if (!result?.ok) continue;
-        for (const group of request.groups.filter((candidate) => candidate.accountId === accountId)) {
-          publishBulkMessageProgress(
-            bulkJobProgress(job, job.cancelRequested ? 'stopping' : 'running', {
-              accountId,
-              folderPath: group.folderPath,
-              folder: result.folders.find((folder) => folder.path === group.folderPath),
-            }),
-          );
-        }
-      }
-    }
-    publishBulkMessageProgress(
-      bulkJobProgress(job, job.cancelRequested ? 'stopped' : 'completed'),
-    );
-  } catch (error) {
-    publishBulkMessageProgress(
-      bulkJobProgress(job, 'error', {
-        message: `The bulk action stopped: ${errorMessage(error, '')}`,
-      }),
-    );
-  } finally {
-    if (activeBulkMessageJob?.id === job.id) activeBulkMessageJob = null;
-  }
 }
 
 function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
@@ -691,21 +228,11 @@ export function registerAccountHandlers(): void {
     async (event, accountId: unknown, folderPath: unknown, refresh: unknown) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
       if (typeof accountId !== 'string' || typeof folderPath !== 'string' || !folderPath) {
-        return {
-          ok: false,
-          messages: [],
-          total: 0,
-          message: 'Invalid mailbox.',
-        } satisfies MessageListResult;
+        return { ok: false, messages: [], total: 0, message: 'Invalid mailbox.' } satisfies MessageListResult;
       }
       const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
       if (!account) {
-        return {
-          ok: false,
-          messages: [],
-          total: 0,
-          message: 'Account not found.',
-        } satisfies MessageListResult;
+        return { ok: false, messages: [], total: 0, message: 'Account not found.' } satisfies MessageListResult;
       }
       return listFolderMessages(account, folderPath, refresh === true);
     },
@@ -724,8 +251,7 @@ export function registerAccountHandlers(): void {
       (request.folderPath !== undefined && typeof request.folderPath !== 'string') ||
       (request.limit !== undefined &&
         (typeof request.limit !== 'number' || !Number.isInteger(request.limit))) ||
-      (request.sort !== undefined &&
-        !['relevance', 'newest', 'oldest'].includes(request.sort))
+      (request.sort !== undefined && !['relevance', 'newest', 'oldest'].includes(request.sort))
     ) {
       return { ok: false, items: [], message: 'Invalid search.' } satisfies MailSearchResult;
     }
@@ -755,9 +281,7 @@ export function registerAccountHandlers(): void {
         return { ok: false, message: 'Invalid message.' } satisfies MessageDetailResult;
       }
       const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
-      if (!account) {
-        return { ok: false, message: 'Account not found.' } satisfies MessageDetailResult;
-      }
+      if (!account) return { ok: false, message: 'Account not found.' } satisfies MessageDetailResult;
       return getFolderMessage(account, folderPath, uid);
     },
   );
@@ -766,7 +290,13 @@ export function registerAccountHandlers(): void {
     ACCOUNT_CHANNELS.setMessageUnread,
     async (event, accountId: unknown, folderPath: unknown, uids: unknown, unread: unknown) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-      if (typeof accountId !== 'string' || typeof folderPath !== 'string' || !folderPath || !validUids(uids) || typeof unread !== 'boolean') {
+      if (
+        typeof accountId !== 'string' ||
+        typeof folderPath !== 'string' ||
+        !folderPath ||
+        !validMessageUids(uids) ||
+        typeof unread !== 'boolean'
+      ) {
         return { ok: false, message: 'Invalid messages.' } satisfies MessageOperationResult;
       }
       const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
@@ -779,7 +309,12 @@ export function registerAccountHandlers(): void {
     ACCOUNT_CHANNELS.deleteMessages,
     async (event, accountId: unknown, folderPath: unknown, uids: unknown) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-      if (typeof accountId !== 'string' || typeof folderPath !== 'string' || !folderPath || !validUids(uids)) {
+      if (
+        typeof accountId !== 'string' ||
+        typeof folderPath !== 'string' ||
+        !folderPath ||
+        !validMessageUids(uids)
+      ) {
         return { ok: false, message: 'Invalid messages.' } satisfies MessageOperationResult;
       }
       const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
@@ -803,7 +338,7 @@ export function registerAccountHandlers(): void {
         typeof accountId !== 'string' ||
         typeof folderPath !== 'string' ||
         !folderPath ||
-        !validUids(uids) ||
+        !validMessageUids(uids) ||
         typeof destinationAccountId !== 'string' ||
         !destinationAccountId ||
         typeof destinationPath !== 'string' ||
@@ -822,58 +357,15 @@ export function registerAccountHandlers(): void {
     },
   );
 
-  ipcMain.handle(
-    ACCOUNT_CHANNELS.startBulkMessageJob,
-    (event, value: unknown) => {
-      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-      if (!validBulkMessageJobRequest(value)) {
-        return {
-          ok: false,
-          message: 'Invalid bulk message action.',
-        } satisfies BulkMessageJobStartResult;
-      }
-      if (activeBulkMessageJob) {
-        return {
-          ok: false,
-          message: 'Another bulk message action is already running.',
-        } satisfies BulkMessageJobStartResult;
-      }
-      const request: BulkMessageJobRequest = {
-        action: value.action,
-        groups: value.groups.map((group) => ({
-          accountId: group.accountId,
-          folderPath: group.folderPath,
-          uids: [...new Set(group.uids)],
-          ...(group.destinationAccountId
-            ? { destinationAccountId: group.destinationAccountId }
-            : {}),
-          ...(group.destinationPath ? { destinationPath: group.destinationPath } : {}),
-        })),
-      };
-      const job: ActiveBulkMessageJob = {
-        id: randomUUID(),
-        action: request.action,
-        total: request.groups.reduce((total, group) => total + group.uids.length, 0),
-        processed: 0,
-        cancelRequested: false,
-      };
-      activeBulkMessageJob = job;
-      publishBulkMessageProgress(bulkJobProgress(job, 'running'));
-      void runBulkMessageJob(job, request);
-      return { ok: true, jobId: job.id } satisfies BulkMessageJobStartResult;
-    },
-  );
+  ipcMain.handle(ACCOUNT_CHANNELS.startBulkMessageJob, (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    return startBulkMessageJob(value);
+  });
 
-  ipcMain.handle(
-    ACCOUNT_CHANNELS.cancelBulkMessageJob,
-    (event, jobId: unknown) => {
-      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-      if (typeof jobId !== 'string' || activeBulkMessageJob?.id !== jobId) return false;
-      activeBulkMessageJob.cancelRequested = true;
-      publishBulkMessageProgress(bulkJobProgress(activeBulkMessageJob, 'stopping'));
-      return true;
-    },
-  );
+  ipcMain.handle(ACCOUNT_CHANNELS.cancelBulkMessageJob, (event, jobId: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    return cancelBulkMessageJob(jobId);
+  });
 
   ipcMain.handle(
     ACCOUNT_CHANNELS.sendReply,
