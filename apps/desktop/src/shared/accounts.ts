@@ -205,6 +205,21 @@ export function orderedFolderTree(folders: MailFolderSummary[]): MailFolderSumma
   return ordered;
 }
 
+export function visibleFolderTree(
+  folders: MailFolderSummary[],
+  collapsedPaths: ReadonlySet<string>,
+): MailFolderSummary[] {
+  const byPath = new Map(folders.map((folder) => [folder.path, folder]));
+  return orderedFolderTree(folders).filter((folder) => {
+    let parentPath = folder.parentPath;
+    while (parentPath) {
+      if (collapsedPaths.has(parentPath)) return false;
+      parentPath = byPath.get(parentPath)?.parentPath ?? '';
+    }
+    return true;
+  });
+}
+
 export interface MailAddressSummary {
   name: string | null;
   address: string | null;

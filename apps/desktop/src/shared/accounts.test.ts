@@ -10,6 +10,7 @@ import {
   optimisticFolderMove,
   manageableFolder,
   orderedFolderTree,
+  visibleFolderTree,
   type AccountDraft,
   type MailFolderSummary,
   validateAccountDraft,
@@ -215,6 +216,26 @@ describe('folder organization', () => {
       'Invoices',
     ]);
     expect(moved?.find(({ path }) => path === 'Alpha/Notes')?.parentPath).toBe('Alpha');
+  });
+
+  it('hides every descendant of a collapsed folder', () => {
+    const projects = folder('Projects');
+    const alpha = folder('Projects/Alpha', 'Projects');
+    const notes = folder('Projects/Alpha/Notes', 'Projects/Alpha');
+    const receipts = folder('Receipts');
+
+    expect(
+      visibleFolderTree(
+        [projects, alpha, notes, receipts],
+        new Set(['Projects']),
+      ).map(({ path }) => path),
+    ).toEqual(['Projects', 'Receipts']);
+    expect(
+      visibleFolderTree(
+        [projects, alpha, notes, receipts],
+        new Set(['Projects/Alpha']),
+      ).map(({ path }) => path),
+    ).toEqual(['Projects', 'Projects/Alpha', 'Receipts']);
   });
 });
 

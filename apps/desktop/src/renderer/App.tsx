@@ -104,6 +104,7 @@ import {
   manageableFolder,
   optimisticFolderMove,
   orderedFolderTree,
+  visibleFolderTree,
 } from '../shared/accounts';
 import {
   groupMessagesWithRelated,
@@ -3897,6 +3898,7 @@ function Sidebar({
 }) {
   const { theme, setTheme, interfaceFont, setInterfaceFont } = useTheme();
   const [expanded, setExpanded] = useState(() => new Set<string>());
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, Set<string>>>({});
   const [folderStates, setFolderStates] = useState<Record<string, FolderLoadState>>({});
   const [folderEditor, setFolderEditor] = useState<FolderEditorState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -4205,6 +4207,7 @@ function Sidebar({
             {accounts.map((account) => {
               const isExpanded = expanded.has(account.id);
               const folderState = folderStates[account.id];
+              const collapsedPaths = collapsedFolders[account.id] ?? new Set<string>();
               const accountUnread =
                 folderState?.status === 'loaded'
                   ? accountUnreadCount(folderState.folders)
@@ -4254,10 +4257,14 @@ function Sidebar({
                         </button>
                       )}
                       {folderState?.status === 'loaded' &&
-                        orderedFolderTree(folderState.folders).map((folder) => {
+                        visibleFolderTree(folderState.folders, collapsedPaths).map((folder) => {
                           const depth = folder.parentPath
                             ? folder.parentPath.split(folder.delimiter).length
                             : 0;
+                          const hasChildren = folderState.folders.some(
+                            (candidate) => candidate.parentPath === folder.path,
+                          );
+                          const isCollapsed = collapsedPaths.has(folder.path);
                           const canManage = manageableFolder(folder);
                           const isSelected =
                             selection.kind === 'folder' &&
@@ -4313,10 +4320,30 @@ function Sidebar({
                                 if (dropTarget) void moveDraggedFolder(account, dropTarget);
                               }}
                             >
+                              <button
+                                type="button"
+                                className="grid size-5 shrink-0 place-items-center self-center rounded text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none"
+                                style={{ marginLeft: `${depth * 0.75}rem` }}
+                                aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${folder.name}`}
+                                aria-expanded={hasChildren ? !isCollapsed : undefined}
+                                disabled={!hasChildren}
+                                onClick={() => {
+                                  if (!hasChildren) return;
+                                  setCollapsedFolders((current) => {
+                                    const next = new Set(current[account.id] ?? []);
+                                    if (next.has(folder.path)) next.delete(folder.path);
+                                    else next.add(folder.path);
+                                    return { ...current, [account.id]: next };
+                                  });
+                                }}
+                              >
+                                {hasChildren && (isCollapsed
+                                  ? <ChevronRight className="size-3.5" />
+                                  : <ChevronDown className="size-3.5" />)}
+                              </button>
                               <Button
                                 variant={isSelected ? 'secondary' : 'ghost'}
                                 className="h-7 min-w-0 flex-1 justify-start gap-1.5 px-2 font-normal"
-                                style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
                                 disabled={!folder.selectable}
                                 title={canManage ? `${folder.path} · drag to move` : folder.path}
                                 onClick={() => onSelect({ kind: 'folder', account, folder })}
