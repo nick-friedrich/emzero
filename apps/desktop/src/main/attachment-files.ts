@@ -10,7 +10,7 @@ import type {
   MailOutgoingAttachment,
 } from '../shared/accounts.js';
 import type { StoredAccount } from './account-storage.js';
-import { closeImap, createImapClient, decryptPassword, errorMessage } from './mail-runtime.js';
+import { closeImap, createImapClient, errorMessage, resolveMailSecret } from './mail-runtime.js';
 
 interface SelectedAttachment extends MailOutgoingAttachment {
   path: string;
@@ -105,7 +105,7 @@ export async function saveMessageAttachment(
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
-    password = await decryptPassword(account);
+    password = await resolveMailSecret(account);
     imap = createImapClient(account, password, 30_000);
     await imap.connect();
     lock = await imap.getMailboxLock(folderPath, { readOnly: true });

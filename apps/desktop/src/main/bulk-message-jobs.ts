@@ -20,9 +20,9 @@ import {
 import {
   closeImap,
   createImapClient,
-  decryptPassword,
   errorMessage,
   mailCache,
+  resolveMailSecret,
 } from './mail-runtime.js';
 
 interface ActiveBulkMessageJob {
@@ -94,7 +94,7 @@ async function processBulkMessageGroup(
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
-    password = await decryptPassword(account);
+    password = await resolveMailSecret(account);
     imap = createImapClient(account, password);
     await imap.connect();
     lock = await imap.getMailboxLock(group.folderPath);

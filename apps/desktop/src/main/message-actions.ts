@@ -8,9 +8,9 @@ import type { StoredAccount } from './account-storage.js';
 import {
   closeImap,
   createImapClient,
-  decryptPassword,
   errorMessage,
   mailCache,
+  resolveMailSecret,
 } from './mail-runtime.js';
 
 export function validMessageUids(value: unknown): value is number[] {
@@ -58,7 +58,7 @@ export async function changeMessageUnread(
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
-    password = await decryptPassword(account);
+    password = await resolveMailSecret(account);
     imap = createImapClient(account, password);
     await imap.connect();
     lock = await imap.getMailboxLock(folderPath);
@@ -86,7 +86,7 @@ export async function changeMessageFlagged(
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
-    password = await decryptPassword(account);
+    password = await resolveMailSecret(account);
     imap = createImapClient(account, password);
     await imap.connect();
     lock = await imap.getMailboxLock(folderPath);
@@ -113,7 +113,7 @@ export async function deleteFolderMessages(
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
-    password = await decryptPassword(account);
+    password = await resolveMailSecret(account);
     imap = createImapClient(account, password);
     await imap.connect();
     lock = await imap.getMailboxLock(folderPath);
@@ -157,7 +157,7 @@ export async function moveFolderMessages(
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
-    password = await decryptPassword(account);
+    password = await resolveMailSecret(account);
     imap = createImapClient(account, password);
     await imap.connect();
     lock = await imap.getMailboxLock(folderPath);
@@ -199,8 +199,8 @@ export async function transferFolderMessages(
   let sourceLock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
     [sourcePassword, destinationPassword] = await Promise.all([
-      decryptPassword(sourceAccount),
-      decryptPassword(destinationAccount),
+      resolveMailSecret(sourceAccount),
+      resolveMailSecret(destinationAccount),
     ]);
     sourceImap = createImapClient(sourceAccount, sourcePassword, 30_000);
     destinationImap = createImapClient(destinationAccount, destinationPassword, 30_000);

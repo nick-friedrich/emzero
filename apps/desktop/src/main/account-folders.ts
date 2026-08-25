@@ -13,9 +13,9 @@ import { deleteSubscribedFolder, subscribeListedFolders } from './folder-subscri
 import {
   closeImap,
   createImapClient,
-  decryptPassword,
   errorMessage,
   mailCache,
+  resolveMailSecret,
 } from './mail-runtime.js';
 
 async function refreshedFolders(imap: ImapFlow, accountId: string): Promise<MailFolderSummary[]> {
@@ -47,7 +47,7 @@ export async function listAccountFolders(
   }
 
   try {
-    password = await decryptPassword(account);
+    password = await resolveMailSecret(account);
     imap = createImapClient(account, password, 15_000);
     await imap.connect();
     const folders = await refreshedFolders(imap, account.id);
@@ -92,7 +92,7 @@ async function mutateAccountFolders(
   let password = '';
   let imap: ImapFlow | null = null;
   try {
-    password = await decryptPassword(account);
+    password = await resolveMailSecret(account);
     imap = createImapClient(account, password);
     await imap.connect();
     await operation(imap);

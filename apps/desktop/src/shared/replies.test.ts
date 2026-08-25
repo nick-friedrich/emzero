@@ -21,6 +21,7 @@ const account: AccountSummary = {
   username: 'me@example.com',
   imap: { host: 'imap.example.com', port: 993, secure: true },
   smtp: { host: 'smtp.example.com', port: 465, secure: true },
+  authentication: 'password',
   createdAt: '2026-01-01T00:00:00.000Z',
 };
 

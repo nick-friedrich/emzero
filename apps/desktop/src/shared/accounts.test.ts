@@ -20,7 +20,7 @@ const validDraft: AccountDraft = {
   name: 'Personal',
   email: 'hello@example.com',
   username: 'hello@example.com',
-  password: 'secret',
+  credentials: { type: 'password', password: 'secret' },
   imap: { host: 'imap.example.com', port: 993, secure: true },
   smtp: { host: 'smtp.example.com', port: 465, secure: true },
 };
@@ -35,6 +35,24 @@ describe('validateAccountDraft', () => {
     expect(
       validateAccountDraft({ ...validDraft, imap: { ...validDraft.imap, port: 70_000 } }),
     ).toMatch(/valid IMAP port/);
+  });
+
+  it('validates Microsoft application IDs', () => {
+    expect(
+      validateAccountDraft({
+        ...validDraft,
+        credentials: { type: 'microsoft-oauth', clientId: 'not-an-id' },
+      }),
+    ).toMatch(/Application \(client\) ID/);
+    expect(
+      validateAccountDraft({
+        ...validDraft,
+        credentials: {
+          type: 'microsoft-oauth',
+          clientId: '00000000-0000-4000-8000-000000000000',
+        },
+      }),
+    ).toBeNull();
   });
 });
 

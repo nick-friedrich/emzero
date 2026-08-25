@@ -8,7 +8,14 @@ import type {
 import { validateReplyDraft, validateSendDraft } from '../shared/replies.js';
 import type { StoredAccount } from './account-storage.js';
 import { releaseOutgoingAttachments, resolveOutgoingAttachments } from './attachment-files.js';
-import { closeImap, decryptPassword, errorMessage, mailCache } from './mail-runtime.js';
+import {
+  closeImap,
+  createImapClient,
+  errorMessage,
+  mailCache,
+  resolveMailSecret,
+  smtpAuthentication,
+} from './mail-runtime.js';
 
 export async function sendMessage(
   account: StoredAccount,
@@ -21,7 +28,7 @@ export async function sendMessage(
 
   let password = '';
   try {
-    password = await decryptPassword(account);
+    password = await resolveMailSecret(account);
     const sentAt = new Date();
     const attachments = await resolveOutgoingAttachments(draft.attachments);
     const messageOptions = {
@@ -48,7 +55,7 @@ export async function sendMessage(
       host: account.smtp.host,
       port: account.smtp.port,
       secure: account.smtp.secure,
-      auth: { user: account.username, pass: password },
+      auth: smtpAuthentication(account, password),
       connectionTimeout: 12_000,
       greetingTimeout: 12_000,
       socketTimeout: 30_000,
@@ -68,16 +75,7 @@ export async function sendMessage(
     let imap: ImapFlow | null = null;
     let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
     try {
-      imap = new ImapFlow({
-        host: account.imap.host,
-        port: account.imap.port,
-        secure: account.imap.secure,
-        auth: { user: account.username, pass: password },
-        logger: false,
-        connectionTimeout: 12_000,
-        greetingTimeout: 12_000,
-        socketTimeout: 30_000,
-      });
+      imap = createImapClient(account, password, 30_000);
       await imap.connect();
       const folders = await imap.list();
       const sentFolder = folders.find(

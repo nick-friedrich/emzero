@@ -8,7 +8,9 @@ export interface AccountDraft {
   name: string;
   email: string;
   username: string;
-  password: string;
+  credentials:
+    | { type: 'password'; password: string }
+    | { type: 'microsoft-oauth'; clientId: string };
   imap: MailServerSettings;
   smtp: MailServerSettings;
 }
@@ -20,6 +22,7 @@ export interface AccountSummary {
   username: string;
   imap: MailServerSettings;
   smtp: MailServerSettings;
+  authentication: 'password' | 'microsoft-oauth';
   createdAt: string;
 }
 
@@ -413,6 +416,15 @@ export interface AccountNameUpdate {
   name: string;
 }
 
+export interface MicrosoftAuthStartResult {
+  ok: boolean;
+  message: string;
+  sessionId?: string;
+  userCode?: string;
+  verificationUri?: string;
+  expiresAt?: string;
+}
+
 export interface MailSyncStatus {
   state: 'idle' | 'syncing' | 'error';
   lastSyncedAt: string | null;
@@ -426,6 +438,7 @@ export interface MailProvider {
   mxPatterns: string[];
   imap: MailServerSettings;
   smtp: MailServerSettings;
+  authentication?: 'password' | 'microsoft-oauth';
   documentationUrl: string;
 }
 
@@ -438,6 +451,9 @@ export const ACCOUNT_CHANNELS = {
   list: 'accounts:list',
   test: 'accounts:test',
   save: 'accounts:save',
+  beginMicrosoftAuth: 'accounts:microsoft-auth-begin',
+  finishMicrosoftAuth: 'accounts:microsoft-auth-finish',
+  cancelMicrosoftAuth: 'accounts:microsoft-auth-cancel',
   update: 'accounts:update',
   remove: 'accounts:remove',
   providers: 'providers:list',
@@ -479,7 +495,20 @@ export function validateAccountDraft(value: AccountDraft): string | null {
   if (!value.name.trim()) return 'Enter a name for this account.';
   if (!emailPattern.test(value.email.trim())) return 'Enter a valid email address.';
   if (!value.username.trim()) return 'Enter the username used by your mail provider.';
-  if (!value.password) return 'Enter your password or app password.';
+  if (!value.credentials || typeof value.credentials !== 'object') {
+    return 'Choose how to authenticate this account.';
+  }
+  if (value.credentials.type === 'password' && !value.credentials.password) {
+    return 'Enter your password or app password.';
+  }
+  if (
+    value.credentials.type === 'microsoft-oauth' &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      value.credentials.clientId.trim(),
+    )
+  ) {
+    return 'Enter the Application (client) ID from your Microsoft app registration.';
+  }
 
   for (const [label, server] of [
     ['IMAP', value.imap],

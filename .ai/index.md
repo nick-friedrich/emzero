@@ -15,6 +15,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/accounts.ts` — trusted IPC validation and handler registration; delegates privileged work to focused main-process services.
 - `apps/desktop/src/main/account-storage.ts` — persisted account records and conversion to renderer-safe account summaries.
 - `apps/desktop/src/main/account-connection.ts` — IMAP/SMTP account connectivity verification.
+- `apps/desktop/src/main/microsoft-oauth.ts` — personal Microsoft device-code authorization, token exchange, and refresh-token renewal.
 - `apps/desktop/src/main/account-folders.ts` — cached/server folder listing, validation, creation, rename, move, deletion, and ordering.
 - `apps/desktop/src/main/background-sync.ts` — scheduled and on-demand multi-account synchronization state and execution.
 - `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential decryption, safe error formatting, and IMAP client lifecycle helpers.
@@ -51,7 +52,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 ## Renderer features
 
 - `features/sidebar.tsx` — desktop/mobile navigation content, account folder trees, folder CRUD, drag-and-drop folder moves, sync status, and theme controls.
-- `features/account-setup.tsx` — provider detection and new-account connection form.
+- `features/account-setup.tsx` — provider detection, password/app-password setup, and personal Microsoft device-code connection flow.
 - `features/account-settings.tsx` — account rename/removal dialog.
 - `features/compose-dialog.tsx` — new-message composer, recipient suggestions, attachments, validation, confirmation, and sending.
 - `features/mail-search.tsx` — search form/results and selected-result reader.

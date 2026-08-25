@@ -23,6 +23,7 @@ import {
   type MailSendDraft,
   type MailSendResult,
   type MailSyncStatus,
+  type MicrosoftAuthStartResult,
   type MailDraftReference,
   type MailDraftSaveResult,
   type ProviderDiscoveryResult,
@@ -37,6 +38,12 @@ export interface EmzeroDesktopApi {
     list: () => Promise<AccountSummary[]>;
     test: (draft: AccountDraft) => Promise<AccountOperationResult>;
     save: (draft: AccountDraft) => Promise<AccountOperationResult>;
+    beginMicrosoftAuth: (clientId: string) => Promise<MicrosoftAuthStartResult>;
+    finishMicrosoftAuth: (
+      sessionId: string,
+      draft: AccountDraft,
+    ) => Promise<AccountOperationResult>;
+    cancelMicrosoftAuth: (sessionId: string) => Promise<boolean>;
     update: (accountId: string, update: AccountNameUpdate) => Promise<AccountOperationResult>;
     remove: (accountId: string) => Promise<AccountOperationResult>;
   };
@@ -115,6 +122,12 @@ contextBridge.exposeInMainWorld('emzero', {
     list: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.list),
     test: (draft) => ipcRenderer.invoke(ACCOUNT_CHANNELS.test, draft),
     save: (draft) => ipcRenderer.invoke(ACCOUNT_CHANNELS.save, draft),
+    beginMicrosoftAuth: (clientId) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.beginMicrosoftAuth, clientId),
+    finishMicrosoftAuth: (sessionId, draft) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.finishMicrosoftAuth, sessionId, draft),
+    cancelMicrosoftAuth: (sessionId) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.cancelMicrosoftAuth, sessionId),
     update: (accountId, update) => ipcRenderer.invoke(ACCOUNT_CHANNELS.update, accountId, update),
     remove: (accountId) => ipcRenderer.invoke(ACCOUNT_CHANNELS.remove, accountId),
   },

@@ -19,6 +19,7 @@ import {
   type AccountSummary,
   type MailProvider,
   defaultAccountName,
+  validateAccountDraft,
 } from '../../shared/accounts';
 import type { Status } from './app-shared';
 import { Field } from './form-field';
@@ -28,7 +29,7 @@ const initialDraft: AccountDraft = {
   name: '',
   email: '',
   username: '',
-  password: '',
+  credentials: { type: 'password', password: '' },
   imap: { host: '', port: 993, secure: true },
   smtp: { host: '', port: 465, secure: true },
 };
@@ -99,15 +100,50 @@ export function AccountSetup({
   const [draft, setDraft] = useState(initialDraft);
   const [preset, setPreset] = useState('custom');
   const [detection, setDetection] = useState<string | null>(null);
-  const [busy, setBusy] = useState<'test' | 'save' | null>(null);
+  const [busy, setBusy] = useState<'test' | 'save' | 'microsoft' | null>(null);
+  const [microsoftPrompt, setMicrosoftPrompt] = useState<{
+    sessionId: string;
+    message: string;
+    userCode: string;
+    verificationUri: string;
+  } | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
 
   const choosePreset = (nextPreset: string) => {
     setPreset(nextPreset);
     const provider = providers.find((candidate) => candidate.id === nextPreset);
     if (provider) {
-      setDraft((current) => ({ ...current, imap: provider.imap, smtp: provider.smtp }));
+      setDraft((current) => ({
+        ...current,
+        imap: provider.imap,
+        smtp: provider.smtp,
+        credentials:
+          provider.authentication === 'microsoft-oauth'
+            ? {
+                type: 'microsoft-oauth',
+                clientId:
+                  current.credentials.type === 'microsoft-oauth'
+                    ? current.credentials.clientId
+                    : '',
+              }
+            : {
+                type: 'password',
+                password:
+                  current.credentials.type === 'password'
+                    ? current.credentials.password
+                    : '',
+              },
+      }));
+    } else {
+      setDraft((current) => ({
+        ...current,
+        credentials: {
+          type: 'password',
+          password: current.credentials.type === 'password' ? current.credentials.password : '',
+        },
+      }));
     }
+    setMicrosoftPrompt(null);
     setDetection(null);
     setStatus(null);
   };
@@ -127,7 +163,27 @@ export function AccountSetup({
           setPreset(provider.id);
           setDraft((current) =>
             current.email.trim() === email
-              ? { ...current, imap: provider.imap, smtp: provider.smtp }
+              ? {
+                  ...current,
+                  imap: provider.imap,
+                  smtp: provider.smtp,
+                  credentials:
+                    provider.authentication === 'microsoft-oauth'
+                      ? {
+                          type: 'microsoft-oauth',
+                          clientId:
+                            current.credentials.type === 'microsoft-oauth'
+                              ? current.credentials.clientId
+                              : '',
+                        }
+                      : {
+                          type: 'password',
+                          password:
+                            current.credentials.type === 'password'
+                              ? current.credentials.password
+                              : '',
+                        },
+                }
               : current,
           );
           setDetection(
@@ -171,9 +227,48 @@ export function AccountSetup({
     }
   };
 
+  const connectMicrosoft = async () => {
+    const validationError = validateAccountDraft(draft);
+    if (validationError || draft.credentials.type !== 'microsoft-oauth') {
+      setStatus({ kind: 'error', message: validationError ?? 'Choose Microsoft sign-in.' });
+      return;
+    }
+    setBusy('microsoft');
+    setStatus(null);
+    setMicrosoftPrompt(null);
+    try {
+      const start = await window.emzero.accounts.beginMicrosoftAuth(draft.credentials.clientId);
+      if (!start.ok || !start.sessionId || !start.userCode || !start.verificationUri) {
+        setStatus({ kind: 'error', message: start.message });
+        return;
+      }
+      setMicrosoftPrompt({
+        sessionId: start.sessionId,
+        message: start.message,
+        userCode: start.userCode,
+        verificationUri: start.verificationUri,
+      });
+      const result = await window.emzero.accounts.finishMicrosoftAuth(start.sessionId, draft);
+      setStatus({ kind: result.ok ? 'success' : 'error', message: result.message });
+      if (result.ok && result.account) onSaved(result.account);
+    } catch {
+      setStatus({ kind: 'error', message: 'Emzero could not complete Microsoft sign-in.' });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    void run('save');
+    if (draft.credentials.type === 'microsoft-oauth') void connectMicrosoft();
+    else void run('save');
+  };
+
+  const cancel = () => {
+    if (microsoftPrompt) {
+      void window.emzero.accounts.cancelMicrosoftAuth(microsoftPrompt.sessionId);
+    }
+    onCancel();
   };
 
   return (
@@ -185,8 +280,8 @@ export function AccountSetup({
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Connect an email account</h1>
           <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-            Emzero connects directly to your mail provider. Your password is encrypted
-            by your operating system and never exposed to the web view.
+            Emzero connects directly to your mail provider. Credentials are encrypted by
+            your operating system and never exposed to the web view.
           </p>
         </div>
 
@@ -256,21 +351,55 @@ export function AccountSetup({
                 </span>
               )}
             </Field>
-            <div className="sm:col-span-2">
-              <Field label="Password or app password">
-                <input
-                  className="field"
-                  type="password"
-                  value={draft.password}
-                  onChange={(event) => setDraft({ ...draft, password: event.target.value })}
-                  autoComplete="current-password"
-                />
-              </Field>
-              <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <LockKeyhole className="size-3.5" />
-                Some providers require an app-specific password.
-              </p>
-            </div>
+            {draft.credentials.type === 'password' ? (
+              <div className="sm:col-span-2">
+                <Field label={preset === 'gmail' ? 'Google app password' : 'Password or app password'}>
+                  <input
+                    className="field"
+                    type="password"
+                    value={draft.credentials.password}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        credentials: { type: 'password', password: event.target.value },
+                      })
+                    }
+                    autoComplete="current-password"
+                  />
+                </Field>
+                <p className="mt-2 flex items-start gap-1.5 text-xs leading-5 text-muted-foreground">
+                  <LockKeyhole className="mt-0.5 size-3.5 shrink-0" />
+                  {preset === 'gmail'
+                    ? 'Use a 16-character Google app password. It requires 2-Step Verification; your normal Google password will not work.'
+                    : 'Some providers require an app-specific password.'}
+                </p>
+              </div>
+            ) : (
+              <div className="sm:col-span-2">
+                <Field label="Microsoft Application (client) ID">
+                  <input
+                    className="field font-mono text-sm"
+                    placeholder="00000000-0000-0000-0000-000000000000"
+                    value={draft.credentials.clientId}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        credentials: {
+                          type: 'microsoft-oauth',
+                          clientId: event.target.value,
+                        },
+                      })
+                    }
+                    autoComplete="off"
+                  />
+                </Field>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  For this early personal setup, create a Microsoft Entra app registration that
+                  supports organizational and personal accounts, enable public client flows, and
+                  paste its client ID here. Emzero will open Microsoft’s device sign-in page.
+                </p>
+              </div>
+            )}
           </fieldset>
 
           <div className="h-px bg-border" />
@@ -290,6 +419,17 @@ export function AccountSetup({
             />
           </div>
         </div>
+
+        {microsoftPrompt && (
+          <div className="mt-4 rounded-lg border border-border bg-card px-4 py-3 text-sm" role="status">
+            <p className="font-medium">Complete Microsoft sign-in in your browser</p>
+            <p className="mt-1 text-muted-foreground">{microsoftPrompt.message}</p>
+            <p className="mt-2 font-mono text-base font-semibold tracking-wider">
+              {microsoftPrompt.userCode}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{microsoftPrompt.verificationUri}</p>
+          </div>
+        )}
 
         {status && (
           <div
@@ -312,24 +452,30 @@ export function AccountSetup({
         <div className="mt-6 flex items-center justify-between">
           <div>
             {canCancel && (
-              <Button type="button" variant="ghost" onClick={onCancel}>
+              <Button type="button" variant="ghost" onClick={cancel}>
                 Cancel
               </Button>
             )}
           </div>
           <div className="flex gap-3">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy !== null}
-              onClick={() => void run('test')}
-            >
-              {busy === 'test' && <LoaderCircle className="size-4 animate-spin" />}
-              Test connection
-            </Button>
+            {draft.credentials.type === 'password' && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy !== null}
+                onClick={() => void run('test')}
+              >
+                {busy === 'test' && <LoaderCircle className="size-4 animate-spin" />}
+                Test connection
+              </Button>
+            )}
             <Button type="submit" disabled={busy !== null}>
-              {busy === 'save' && <LoaderCircle className="size-4 animate-spin" />}
-              Connect account
+              {(busy === 'save' || busy === 'microsoft') && (
+                <LoaderCircle className="size-4 animate-spin" />
+              )}
+              {draft.credentials.type === 'microsoft-oauth'
+                ? 'Connect with Microsoft'
+                : 'Connect account'}
             </Button>
           </div>
         </div>

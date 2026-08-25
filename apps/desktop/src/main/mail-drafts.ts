@@ -8,7 +8,7 @@ import type {
 } from '../shared/accounts.js';
 import type { StoredAccount } from './account-storage.js';
 import { resolveOutgoingAttachments } from './attachment-files.js';
-import { closeImap, createImapClient, decryptPassword, errorMessage, mailCache } from './mail-runtime.js';
+import { closeImap, createImapClient, errorMessage, mailCache, resolveMailSecret } from './mail-runtime.js';
 
 export function findDraftsFolder(
   folders: Array<{ path: string; specialUse?: string | null; flags: Set<string> }>,
@@ -27,7 +27,7 @@ export async function saveMailDraft(
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
-    password = await decryptPassword(account);
+    password = await resolveMailSecret(account);
     const attachments = await resolveOutgoingAttachments(draft.attachments);
     const compiler = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: 'windows' });
     const compiled = await compiler.sendMail({
@@ -80,7 +80,7 @@ export async function deleteMailDraft(
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
-    password = await decryptPassword(account);
+    password = await resolveMailSecret(account);
     imap = createImapClient(account, password);
     await imap.connect();
     lock = await imap.getMailboxLock(draft.folderPath);

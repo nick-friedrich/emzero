@@ -22,7 +22,7 @@ A fast, private desktop mail client for Linux and macOS. It connects directly to
 - Mail data stays local except when communicating with configured mail servers
 - Account state and folders remain separate even when shown in unified views
 - UI must stay responsive while syncing large mailboxes
-- Provider-specific OAuth can be added after standard IMAP/SMTP authentication works
+- Provider authentication is introduced incrementally: passwords/app passwords remain the generic baseline, with Microsoft device-code OAuth as the first provider-specific path and native provider APIs left behind explicit adapters
 
 ## Initial Stack
 

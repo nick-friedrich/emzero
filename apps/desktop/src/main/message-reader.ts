@@ -12,9 +12,9 @@ import { hasQuotedHtml, sanitizedMessageHtml } from './message-html.js';
 import {
   closeImap,
   createImapClient,
-  decryptPassword,
   errorMessage,
   mailCache,
+  resolveMailSecret,
 } from './mail-runtime.js';
 
 export function mailAddresses(
@@ -103,7 +103,7 @@ export async function listFolderMessages(
   }
 
   try {
-    password = await decryptPassword(account);
+    password = await resolveMailSecret(account);
     imap = createImapClient(account, password);
     await imap.connect();
     lock = await imap.getMailboxLock(folderPath, { readOnly: true });
@@ -201,7 +201,7 @@ export async function getFolderMessage(
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
 
   try {
-    password = await decryptPassword(account);
+    password = await resolveMailSecret(account);
     imap = createImapClient(account, password, 30_000);
     await imap.connect();
     lock = await imap.getMailboxLock(folderPath, { readOnly: true });

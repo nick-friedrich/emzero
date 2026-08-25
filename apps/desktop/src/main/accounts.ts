@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ipcMain, safeStorage } from 'electron';
+import { ipcMain, safeStorage, shell } from 'electron';
 import {
   ACCOUNT_CHANNELS,
   type AccountDraft,
@@ -19,7 +19,7 @@ import {
   type MessageListResult,
   type MessageOperationResult,
 } from '../shared/accounts.js';
-import { verifyConnections } from './account-connection.js';
+import { verifyConnections, verifyMicrosoftConnections } from './account-connection.js';
 import { saveMessageAttachment, selectOutgoingAttachments } from './attachment-files.js';
 import {
   createAccountFolder,
@@ -43,11 +43,60 @@ import {
   moveFolderMessages,
   validMessageUids,
 } from './message-actions.js';
-import { mailCache } from './mail-runtime.js';
+import { errorMessage, mailCache } from './mail-runtime.js';
 import { getFolderMessage, listFolderMessages } from './message-reader.js';
 import { deleteMailDraft, saveMailDraft } from './mail-drafts.js';
 import { sendMessage } from './message-sender.js';
+import {
+  beginMicrosoftAuth,
+  cancelMicrosoftAuth,
+  finishMicrosoftAuth,
+} from './microsoft-oauth.js';
 import { discoverProvider, listProviders } from './provider-discovery.js';
+
+async function saveConnectedAccount(
+  draft: AccountDraft,
+  secret: string,
+): Promise<AccountOperationResult> {
+  const insecureLinuxBackend =
+    process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text';
+  const asyncEncryptionAvailable = await safeStorage.isAsyncEncryptionAvailable();
+  if (!safeStorage.isEncryptionAvailable() || !asyncEncryptionAvailable || insecureLinuxBackend) {
+    return {
+      ok: false,
+      message:
+        'Secure credential storage is unavailable. Unlock or configure your system keyring and try again.',
+    };
+  }
+
+  const accounts = await readAccounts();
+  if (accounts.some((account) => account.email.toLowerCase() === draft.email.toLowerCase())) {
+    return { ok: false, message: 'An account with this email address already exists.' };
+  }
+  const authentication = draft.credentials.type;
+  const account: StoredAccount = {
+    id: randomUUID(),
+    name: draft.name.trim(),
+    email: draft.email.trim(),
+    username: draft.username.trim(),
+    imap: { ...draft.imap, host: draft.imap.host.trim() },
+    smtp: { ...draft.smtp, host: draft.smtp.host.trim() },
+    authentication,
+    createdAt: new Date().toISOString(),
+    encryptedSecret: (await safeStorage.encryptStringAsync(secret)).toString('base64'),
+    ...(authentication === 'microsoft-oauth'
+      ? { oauthClientId: draft.credentials.clientId.trim() }
+      : {}),
+  };
+
+  await writeAccounts([...accounts, account]);
+  void runBackgroundSync();
+  return {
+    ok: true,
+    message: 'Account connected and saved securely.',
+    account: toAccountSummary(account),
+  };
+}
 
 function validSendDraft(value: unknown): value is MailSendDraft {
   if (!value || typeof value !== 'object') return false;
@@ -527,41 +576,59 @@ export function registerAccountHandlers(): void {
 
   ipcMain.handle(ACCOUNT_CHANNELS.save, async (event, draft: AccountDraft) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (!draft?.credentials || draft.credentials.type !== 'password') {
+      return { ok: false, message: 'Use Microsoft sign-in to connect this account.' };
+    }
     const connectionResult = await verifyConnections(draft);
     if (!connectionResult.ok) return connectionResult;
-    const insecureLinuxBackend =
-      process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text';
-    const asyncEncryptionAvailable = await safeStorage.isAsyncEncryptionAvailable();
-    if (!safeStorage.isEncryptionAvailable() || !asyncEncryptionAvailable || insecureLinuxBackend) {
-      return {
-        ok: false,
-        message:
-          'Secure credential storage is unavailable. Unlock or configure your system keyring and try again.',
-      } satisfies AccountOperationResult;
+    return saveConnectedAccount(draft, draft.credentials.password);
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.beginMicrosoftAuth, async (event, clientId: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (typeof clientId !== 'string') {
+      return { ok: false, message: 'Enter a Microsoft Application (client) ID.' };
     }
-
-    const accounts = await readAccounts();
-    if (accounts.some((account) => account.email.toLowerCase() === draft.email.toLowerCase())) {
-      return { ok: false, message: 'An account with this email address already exists.' };
+    const result = await beginMicrosoftAuth(clientId);
+    if (result.ok && result.verificationUri) {
+      try {
+        const url = new URL(result.verificationUri);
+        if (url.protocol === 'https:') await shell.openExternal(url.toString());
+      } catch {
+        // The device code remains usable through the URL and code shown in the renderer.
+      }
     }
+    return result;
+  });
 
-    const account: StoredAccount = {
-      id: randomUUID(),
-      name: draft.name.trim(),
-      email: draft.email.trim(),
-      username: draft.username.trim(),
-      imap: { ...draft.imap, host: draft.imap.host.trim() },
-      smtp: { ...draft.smtp, host: draft.smtp.host.trim() },
-      createdAt: new Date().toISOString(),
-      encryptedPassword: (await safeStorage.encryptStringAsync(draft.password)).toString('base64'),
-    };
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.finishMicrosoftAuth,
+    async (event, sessionId: unknown, draft: AccountDraft) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (
+        typeof sessionId !== 'string' ||
+        !draft ||
+        typeof draft !== 'object' ||
+        draft.credentials?.type !== 'microsoft-oauth'
+      ) {
+        return { ok: false, message: 'Invalid Microsoft sign-in request.' };
+      }
+      try {
+        const tokens = await finishMicrosoftAuth(sessionId);
+        const connectionResult = await verifyMicrosoftConnections(draft, tokens.accessToken);
+        if (!connectionResult.ok) return connectionResult;
+        return saveConnectedAccount(draft, tokens.refreshToken);
+      } catch (error) {
+        return {
+          ok: false,
+          message: errorMessage(error, ''),
+        } satisfies AccountOperationResult;
+      }
+    },
+  );
 
-    await writeAccounts([...accounts, account]);
-    void runBackgroundSync();
-    return {
-      ok: true,
-      message: 'Account connected and saved securely.',
-      account: toAccountSummary(account),
-    } satisfies AccountOperationResult;
+  ipcMain.handle(ACCOUNT_CHANNELS.cancelMicrosoftAuth, (event, sessionId: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    return typeof sessionId === 'string' && cancelMicrosoftAuth(sessionId);
   });
 }
