@@ -12,7 +12,14 @@ This index records where application responsibilities live. Read it before makin
 ## Desktop process boundaries
 
 - `apps/desktop/src/main/index.ts` — Electron main-process startup, window creation, and lifecycle.
-- `apps/desktop/src/main/accounts.ts` — account persistence, IMAP/SMTP operations, synchronization, folders, messages, bulk jobs, and IPC handler registration.
+- `apps/desktop/src/main/accounts.ts` — trusted IPC handler registration plus single and bulk message-action orchestration.
+- `apps/desktop/src/main/account-storage.ts` — persisted account records and conversion to renderer-safe account summaries.
+- `apps/desktop/src/main/account-connection.ts` — IMAP/SMTP account connectivity verification.
+- `apps/desktop/src/main/account-folders.ts` — cached/server folder listing, validation, creation, rename, move, deletion, and ordering.
+- `apps/desktop/src/main/background-sync.ts` — scheduled and on-demand multi-account synchronization state and execution.
+- `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential decryption, safe error formatting, and IMAP client lifecycle helpers.
+- `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization, message parsing, and cached/server message reading.
+- `apps/desktop/src/main/message-sender.ts` — SMTP delivery, IMAP Sent-copy persistence, and sent-message cache updates.
 - `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache and search.
 - `apps/desktop/src/main/message-html.ts` — sanitization and quoted-content detection for message HTML.
 - `apps/desktop/src/main/provider-discovery.ts` — provider catalog lookup and domain/MX discovery.
@@ -58,7 +65,7 @@ All paths in this section are relative to `apps/desktop/src/renderer/`.
 ## Tests
 
 - Tests live beside their implementation as `*.test.ts` or `*.test.tsx`.
-- `apps/desktop/src/main/` tests cover cache, HTML sanitization, provider discovery, and folder subscriptions.
+- `apps/desktop/src/main/` tests cover cache, HTML sanitization, provider discovery, folder subscriptions, folder input rules, and message parsing helpers.
 - `apps/desktop/src/shared/` tests cover domain helpers and contracts.
 - `apps/desktop/src/renderer/` tests cover renderer utilities and theming.
 - Run the complete suite with `pnpm check` from the repository root.

@@ -1,11 +1,8 @@
 import path from 'node:path';
 import { app, BrowserWindow } from 'electron';
-import {
-  closeMailCache,
-  registerAccountHandlers,
-  startBackgroundSync,
-  stopBackgroundSync,
-} from './accounts.js';
+import { registerAccountHandlers } from './accounts.js';
+import { startBackgroundSync, stopBackgroundSync } from './background-sync.js';
+import { closeMailCache } from './mail-runtime.js';
 
 let mainWindow: BrowserWindow | null = null;
 
