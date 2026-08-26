@@ -2,6 +2,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type Ref,
 } from 'react';
 import {
   Archive,
@@ -318,6 +319,7 @@ export function ConversationActions({
   onSetFlagged,
   onMove,
   onDelete,
+  deleteButtonRef,
 }: {
   accounts: AccountSummary[];
   sourceAccountId: string;
@@ -332,11 +334,13 @@ export function ConversationActions({
   onSetFlagged: (flagged: boolean) => void;
   onMove: (destination: MessageMoveDestination) => void;
   onDelete: () => void;
+  deleteButtonRef?: Ref<HTMLButtonElement>;
 }) {
   const archive = findArchiveFolder(folders);
   const unreadLabel = unread ? 'Mark as read' : 'Mark as unread';
   const deleteButton = (
     <Button
+      ref={deleteButtonRef}
       variant="ghost"
       className="size-8 px-0 text-danger hover:text-danger"
       aria-label="Delete conversation"

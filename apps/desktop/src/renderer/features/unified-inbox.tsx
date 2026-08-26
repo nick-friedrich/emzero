@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -79,6 +80,7 @@ export function UnifiedInbox({
   const [selectionAnchorKey, setSelectionAnchorKey] = useState<string | null>(null);
   const [selectionCursorKey, setSelectionCursorKey] = useState<string | null>(null);
   const unifiedRowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const unifiedDeleteButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const [bulkBusy, setBulkBusy] = useState(false);
   const { scheduleDelete, undoBar } = useUndoableDelete();
 
@@ -259,18 +261,44 @@ export function UnifiedInbox({
         setSelectionCursorKey(keys.at(-1) ?? null);
         return;
       }
+      const cursorIndex = selectionCursorKey ? keys.indexOf(selectionCursorKey) : -1;
+      const cursorItem = cursorIndex >= 0 ? availableItems[cursorIndex] : undefined;
+      if (event.key === 'Delete' && cursorItem) {
+        event.preventDefault();
+        unifiedDeleteButtonRefs.current.get(itemKey(cursorItem))?.click();
+        return;
+      }
+      if (
+        !event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        ['ArrowUp', 'ArrowDown'].includes(event.key) &&
+        keys.length > 0
+      ) {
+        event.preventDefault();
+        const nextIndex = cursorIndex < 0
+          ? event.key === 'ArrowDown' ? 0 : keys.length - 1
+          : Math.max(
+              0,
+              Math.min(keys.length - 1, cursorIndex + (event.key === 'ArrowDown' ? 1 : -1)),
+            );
+        setSelectionCursorKey(keys[nextIndex]);
+        unifiedRowRefs.current.get(keys[nextIndex])?.focus();
+        return;
+      }
       if (!event.shiftKey || !['ArrowUp', 'ArrowDown'].includes(event.key) || keys.length === 0) return;
       event.preventDefault();
-      let cursorIndex = selectionCursorKey
+      let rangeCursorIndex = selectionCursorKey
         ? keys.indexOf(selectionCursorKey)
         : keys.findIndex((key) => selectedItemKeys.has(key));
-      if (cursorIndex < 0) cursorIndex = event.key === 'ArrowDown' ? 0 : keys.length - 1;
-      const anchorIndex = selectionAnchorKey ? keys.indexOf(selectionAnchorKey) : cursorIndex;
+      if (rangeCursorIndex < 0) rangeCursorIndex = event.key === 'ArrowDown' ? 0 : keys.length - 1;
+      const anchorIndex = selectionAnchorKey ? keys.indexOf(selectionAnchorKey) : rangeCursorIndex;
       const nextIndex = Math.max(
         0,
-        Math.min(keys.length - 1, cursorIndex + (event.key === 'ArrowDown' ? 1 : -1)),
+        Math.min(keys.length - 1, rangeCursorIndex + (event.key === 'ArrowDown' ? 1 : -1)),
       );
-      const safeAnchorIndex = anchorIndex < 0 ? cursorIndex : anchorIndex;
+      const safeAnchorIndex = anchorIndex < 0 ? rangeCursorIndex : anchorIndex;
       setSelectedItemKeys(keysInRange(keys, safeAnchorIndex, nextIndex));
       setSelectionAnchorKey(keys[safeAnchorIndex]);
       setSelectionCursorKey(keys[nextIndex]);
@@ -502,6 +530,33 @@ export function UnifiedInbox({
       });
     }
   };
+
+  const runShortcutAction = useEffectEvent(runAction);
+
+  useEffect(() => {
+    if (selectedItem) return;
+    const handleReadShortcut = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        isEditableTarget(event.target) ||
+        event.key.toLowerCase() !== 'q' ||
+        !event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey
+      ) {
+        return;
+      }
+      const item = availableItems.find((candidate) => itemKey(candidate) === selectionCursorKey);
+      if (!item) return;
+      event.preventDefault();
+      const unread = item.conversation.messages.some(
+        (message) => message.folderPath === item.selection.folder.path && message.unread,
+      );
+      void runShortcutAction(item, unread ? 'read' : 'unread');
+    };
+    window.addEventListener('keydown', handleReadShortcut);
+    return () => window.removeEventListener('keydown', handleReadShortcut);
+  }, [availableItems, selectedItem, selectionCursorKey]);
 
   const runBulkAction = async (
     action: BulkMessageJobRequest['action'],
@@ -885,6 +940,11 @@ export function UnifiedInbox({
                     }
                     onMove={(destination) => void runAction(item, 'move', destination)}
                     onDelete={() => void runAction(item, 'delete')}
+                    deleteButtonRef={(node) => {
+                      const key = itemKey(item);
+                      if (node) unifiedDeleteButtonRefs.current.set(key, node);
+                      else unifiedDeleteButtonRefs.current.delete(key);
+                    }}
                   />
                 </div>
               </div>

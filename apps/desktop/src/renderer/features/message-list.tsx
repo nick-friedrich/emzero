@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -70,6 +71,7 @@ export function MessageList({
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
   const [selectionCursorId, setSelectionCursorId] = useState<string | null>(null);
   const conversationRowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const conversationDeleteButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [folders, setFolders] = useState<MailFolderSummary[]>([selection.folder]);
   const { scheduleDelete, undoBar } = useUndoableDelete();
@@ -200,19 +202,45 @@ export function MessageList({
         setSelectionCursorId(conversations.at(-1)?.id ?? null);
         return;
       }
+      const keys = conversations.map((conversation) => conversation.id);
+      const cursorIndex = selectionCursorId ? keys.indexOf(selectionCursorId) : -1;
+      const cursorConversation = cursorIndex >= 0 ? conversations[cursorIndex] : undefined;
+      if (event.key === 'Delete' && cursorConversation) {
+        event.preventDefault();
+        conversationDeleteButtonRefs.current.get(cursorConversation.id)?.click();
+        return;
+      }
+      if (
+        !event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        ['ArrowUp', 'ArrowDown'].includes(event.key) &&
+        keys.length > 0
+      ) {
+        event.preventDefault();
+        const nextIndex = cursorIndex < 0
+          ? event.key === 'ArrowDown' ? 0 : keys.length - 1
+          : Math.max(
+              0,
+              Math.min(keys.length - 1, cursorIndex + (event.key === 'ArrowDown' ? 1 : -1)),
+            );
+        setSelectionCursorId(keys[nextIndex]);
+        conversationRowRefs.current.get(keys[nextIndex])?.focus();
+        return;
+      }
       if (!event.shiftKey || !['ArrowUp', 'ArrowDown'].includes(event.key) || conversations.length === 0) return;
       event.preventDefault();
-      const keys = conversations.map((conversation) => conversation.id);
-      let cursorIndex = selectionCursorId
+      let rangeCursorIndex = selectionCursorId
         ? keys.indexOf(selectionCursorId)
         : keys.findIndex((key) => selectedConversationIds.has(key));
-      if (cursorIndex < 0) cursorIndex = event.key === 'ArrowDown' ? 0 : keys.length - 1;
-      const anchorIndex = selectionAnchorId ? keys.indexOf(selectionAnchorId) : cursorIndex;
+      if (rangeCursorIndex < 0) rangeCursorIndex = event.key === 'ArrowDown' ? 0 : keys.length - 1;
+      const anchorIndex = selectionAnchorId ? keys.indexOf(selectionAnchorId) : rangeCursorIndex;
       const nextIndex = Math.max(
         0,
-        Math.min(keys.length - 1, cursorIndex + (event.key === 'ArrowDown' ? 1 : -1)),
+        Math.min(keys.length - 1, rangeCursorIndex + (event.key === 'ArrowDown' ? 1 : -1)),
       );
-      const safeAnchorIndex = anchorIndex < 0 ? cursorIndex : anchorIndex;
+      const safeAnchorIndex = anchorIndex < 0 ? rangeCursorIndex : anchorIndex;
       setSelectedConversationIds(keysInRange(keys, safeAnchorIndex, nextIndex));
       setSelectionAnchorId(keys[safeAnchorIndex]);
       setSelectionCursorId(keys[nextIndex]);
@@ -419,6 +447,35 @@ export function MessageList({
       });
     }
   };
+
+  const runShortcutAction = useEffectEvent(runAction);
+
+  useEffect(() => {
+    if (selectedConversation) return;
+    const handleReadShortcut = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        isEditableTarget(event.target) ||
+        event.key.toLowerCase() !== 'q' ||
+        !event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey
+      ) {
+        return;
+      }
+      const conversation = conversations.find(
+        (candidate) => candidate.id === selectionCursorId,
+      );
+      if (!conversation) return;
+      event.preventDefault();
+      const unread = conversation.messages.some(
+        (message) => message.folderPath === selection.folder.path && message.unread,
+      );
+      void runShortcutAction(conversation, unread ? 'read' : 'unread');
+    };
+    window.addEventListener('keydown', handleReadShortcut);
+    return () => window.removeEventListener('keydown', handleReadShortcut);
+  }, [conversations, selectedConversation, selection.folder.path, selectionCursorId]);
 
   const runBulkAction = async (
     action: BulkMessageJobRequest['action'],
@@ -771,6 +828,10 @@ export function MessageList({
                       void runAction(conversation, 'move', destination)
                     }
                     onDelete={() => void runAction(conversation, 'delete')}
+                    deleteButtonRef={(node) => {
+                      if (node) conversationDeleteButtonRefs.current.set(conversation.id, node);
+                      else conversationDeleteButtonRefs.current.delete(conversation.id);
+                    }}
                   />
                 </div>
               </div>

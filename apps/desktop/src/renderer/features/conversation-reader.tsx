@@ -60,6 +60,7 @@ import {
   addressDetails,
   fileSize,
   htmlDocument,
+  isEditableTarget,
   messageCountInFolder,
   messageDate,
   type FolderSelection,
@@ -605,12 +606,36 @@ export function ConversationReader({
   onDelete: () => void;
   onReplySent: (message: MailMessageSummary) => void;
 }) {
+  const deleteButtonRef = useRef<HTMLButtonElement>(null);
   const unread = conversation.messages.some(
     (message) => message.folderPath === selection.folder.path && message.unread,
   );
   const flagged = conversation.messages.some(
     (message) => message.folderPath === selection.folder.path && message.flagged,
   );
+
+  useEffect(() => {
+    const handleKeyboardShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || isEditableTarget(event.target)) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onBack();
+        return;
+      }
+      if (event.key === 'Delete') {
+        event.preventDefault();
+        deleteButtonRef.current?.click();
+        return;
+      }
+      if (event.key.toLowerCase() === 'q' && event.ctrlKey && !event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        if (!busy) onSetUnread(!unread);
+      }
+    };
+    window.addEventListener('keydown', handleKeyboardShortcut);
+    return () => window.removeEventListener('keydown', handleKeyboardShortcut);
+  }, [busy, onBack, onSetUnread, unread]);
+
   return (
     <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
       <header className="flex items-center gap-3 border-b border-border bg-card py-3 pl-16 pr-4 lg:px-4">
@@ -636,6 +661,7 @@ export function ConversationReader({
             onSetFlagged={onSetFlagged}
             onMove={onMove}
             onDelete={onDelete}
+            deleteButtonRef={deleteButtonRef}
           />
         </div>
       </header>
