@@ -730,6 +730,18 @@ export function UnifiedInbox({
                       setSelectionCursorKey(key);
                       return;
                     }
+                    if (event.ctrlKey || event.metaKey) {
+                      const key = itemKey(item);
+                      setSelectedItemKeys((current) => {
+                        const next = new Set(current);
+                        if (next.has(key)) next.delete(key);
+                        else next.add(key);
+                        return next;
+                      });
+                      setSelectionAnchorKey(key);
+                      setSelectionCursorKey(key);
+                      return;
+                    }
                     setActionError(null);
                     setSelectedItem(item);
                   }}

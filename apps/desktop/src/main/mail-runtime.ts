@@ -7,12 +7,27 @@ import { refreshMicrosoftAccessToken } from './microsoft-oauth.js';
 
 let cache: MailCache | null = null;
 
+interface PooledImapConnection {
+  imap: ImapFlow | null;
+  queue: Promise<void>;
+  idleTimer: NodeJS.Timeout | null;
+}
+
+const pooledImapConnections = new Map<string, PooledImapConnection>();
+const passwordCache = new Map<string, string>();
+
 export function mailCache(): MailCache {
   cache ??= new MailCache(path.join(app.getPath('userData'), 'mail-cache.sqlite'));
   return cache;
 }
 
 export function closeMailCache(): void {
+  for (const connection of pooledImapConnections.values()) {
+    if (connection.idleTimer) clearTimeout(connection.idleTimer);
+    connection.imap?.close();
+  }
+  pooledImapConnections.clear();
+  passwordCache.clear();
   cache?.close();
   cache = null;
 }
@@ -56,7 +71,13 @@ async function refreshAccountMicrosoftToken(account: StoredAccount): Promise<str
 }
 
 export async function resolveMailSecret(account: StoredAccount): Promise<string> {
-  if (account.authentication === 'password') return decryptAccountSecret(account);
+  if (account.authentication === 'password') {
+    const cachedPassword = passwordCache.get(account.id);
+    if (cachedPassword) return cachedPassword;
+    const password = await decryptAccountSecret(account);
+    passwordCache.set(account.id, password);
+    return password;
+  }
   const cached = microsoftTokenCache.get(account.id);
   if (cached && cached.expiresAt - Date.now() > 60_000) return cached.accessToken;
   const active = microsoftTokenRequests.get(account.id);
@@ -66,6 +87,53 @@ export async function resolveMailSecret(account: StoredAccount): Promise<string>
   });
   microsoftTokenRequests.set(account.id, request);
   return request;
+}
+
+export async function withAccountImap<T>(
+  account: StoredAccount,
+  operation: (imap: ImapFlow, secret: string) => Promise<T>,
+  socketTimeout = 20_000,
+): Promise<T> {
+  const connection = pooledImapConnections.get(account.id) ?? {
+    imap: null,
+    queue: Promise.resolve(),
+    idleTimer: null,
+  };
+  pooledImapConnections.set(account.id, connection);
+
+  let releaseQueue!: () => void;
+  const previous = connection.queue;
+  connection.queue = new Promise<void>((resolve) => {
+    releaseQueue = resolve;
+  });
+  await previous;
+  if (connection.idleTimer) {
+    clearTimeout(connection.idleTimer);
+    connection.idleTimer = null;
+  }
+
+  try {
+    const secret = await resolveMailSecret(account);
+    if (!connection.imap?.usable) {
+      connection.imap?.close();
+      connection.imap = createImapClient(account, secret, socketTimeout);
+      await connection.imap.connect();
+    }
+    return await operation(connection.imap, secret);
+  } catch (error) {
+    if (connection.imap && !connection.imap.usable) {
+      connection.imap.close();
+      connection.imap = null;
+    }
+    throw error;
+  } finally {
+    releaseQueue();
+    connection.idleTimer = setTimeout(() => {
+      connection.imap?.close();
+      connection.imap = null;
+      connection.idleTimer = null;
+    }, 2 * 60_000);
+  }
 }
 
 export function smtpAuthentication(account: StoredAccount, secret: string) {

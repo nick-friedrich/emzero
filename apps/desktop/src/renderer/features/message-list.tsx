@@ -649,6 +649,17 @@ export function MessageList({
                       setSelectionCursorId(conversation.id);
                       return;
                     }
+                    if (event.ctrlKey || event.metaKey) {
+                      setSelectedConversationIds((current) => {
+                        const next = new Set(current);
+                        if (next.has(conversation.id)) next.delete(conversation.id);
+                        else next.add(conversation.id);
+                        return next;
+                      });
+                      setSelectionAnchorId(conversation.id);
+                      setSelectionCursorId(conversation.id);
+                      return;
+                    }
                     setActionError(null);
                     setSelectedConversation(conversation);
                   }}

@@ -11,6 +11,7 @@ import {
   errorMessage,
   mailCache,
   resolveMailSecret,
+  withAccountImap,
 } from './mail-runtime.js';
 
 export function validMessageUids(value: unknown): value is number[] {
@@ -55,24 +56,23 @@ export async function changeMessageUnread(
   unread: boolean,
 ): Promise<MessageOperationResult> {
   let password = '';
-  let imap: ImapFlow | null = null;
-  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
-    password = await resolveMailSecret(account);
-    imap = createImapClient(account, password);
-    await imap.connect();
-    lock = await imap.getMailboxLock(folderPath);
-    const changed = unread
-      ? await imap.messageFlagsRemove(uids, ['\\Seen'], { uid: true })
-      : await imap.messageFlagsAdd(uids, ['\\Seen'], { uid: true });
-    if (!changed) return { ok: false, message: 'The messages are no longer available.' };
-    mailCache().setMessagesUnread(account.id, folderPath, uids, unread);
-    return { ok: true };
+    return await withAccountImap(account, async (imap, secret) => {
+      password = secret;
+      const lock = await imap.getMailboxLock(folderPath);
+      try {
+        const changed = unread
+          ? await imap.messageFlagsRemove(uids, ['\\Seen'], { uid: true })
+          : await imap.messageFlagsAdd(uids, ['\\Seen'], { uid: true });
+        if (!changed) return { ok: false, message: 'The messages are no longer available.' };
+        mailCache().setMessagesUnread(account.id, folderPath, uids, unread);
+        return { ok: true };
+      } finally {
+        lock.release();
+      }
+    });
   } catch (error) {
     return { ok: false, message: `Could not update messages: ${errorMessage(error, password)}` };
-  } finally {
-    lock?.release();
-    await closeImap(imap);
   }
 }
 
@@ -83,24 +83,23 @@ export async function changeMessageFlagged(
   flagged: boolean,
 ): Promise<MessageOperationResult> {
   let password = '';
-  let imap: ImapFlow | null = null;
-  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
-    password = await resolveMailSecret(account);
-    imap = createImapClient(account, password);
-    await imap.connect();
-    lock = await imap.getMailboxLock(folderPath);
-    const changed = flagged
-      ? await imap.messageFlagsAdd(uids, ['\\Flagged'], { uid: true })
-      : await imap.messageFlagsRemove(uids, ['\\Flagged'], { uid: true });
-    if (!changed) return { ok: false, message: 'The messages are no longer available.' };
-    mailCache().setMessagesFlagged(account.id, folderPath, uids, flagged);
-    return { ok: true };
+    return await withAccountImap(account, async (imap, secret) => {
+      password = secret;
+      const lock = await imap.getMailboxLock(folderPath);
+      try {
+        const changed = flagged
+          ? await imap.messageFlagsAdd(uids, ['\\Flagged'], { uid: true })
+          : await imap.messageFlagsRemove(uids, ['\\Flagged'], { uid: true });
+        if (!changed) return { ok: false, message: 'The messages are no longer available.' };
+        mailCache().setMessagesFlagged(account.id, folderPath, uids, flagged);
+        return { ok: true };
+      } finally {
+        lock.release();
+      }
+    });
   } catch (error) {
     return { ok: false, message: `Could not update messages: ${errorMessage(error, password)}` };
-  } finally {
-    lock?.release();
-    await closeImap(imap);
   }
 }
 
@@ -110,28 +109,27 @@ export async function deleteFolderMessages(
   uids: number[],
 ): Promise<MessageOperationResult> {
   let password = '';
-  let imap: ImapFlow | null = null;
-  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
-    password = await resolveMailSecret(account);
-    imap = createImapClient(account, password);
-    await imap.connect();
-    lock = await imap.getMailboxLock(folderPath);
-    const trash = mailCache()
-      .listFolders(account.id)
-      .find((folder) => folder.selectable && folder.specialUse === '\\Trash');
-    const deleted =
-      trash && trash.path !== folderPath
-        ? await imap.messageMove(uids, trash.path, { uid: true })
-        : await imap.messageDelete(uids, { uid: true });
-    if (!deleted) return { ok: false, message: 'The messages are no longer available.' };
-    mailCache().deleteMessages(account.id, folderPath, uids);
-    return { ok: true };
+    return await withAccountImap(account, async (imap, secret) => {
+      password = secret;
+      const lock = await imap.getMailboxLock(folderPath);
+      try {
+        const trash = mailCache()
+          .listFolders(account.id)
+          .find((folder) => folder.selectable && folder.specialUse === '\\Trash');
+        const deleted =
+          trash && trash.path !== folderPath
+            ? await imap.messageMove(uids, trash.path, { uid: true })
+            : await imap.messageDelete(uids, { uid: true });
+        if (!deleted) return { ok: false, message: 'The messages are no longer available.' };
+        mailCache().deleteMessages(account.id, folderPath, uids);
+        return { ok: true };
+      } finally {
+        lock.release();
+      }
+    });
   } catch (error) {
     return { ok: false, message: `Could not delete messages: ${errorMessage(error, password)}` };
-  } finally {
-    lock?.release();
-    await closeImap(imap);
   }
 }
 
@@ -154,22 +152,21 @@ export async function moveFolderMessages(
   if (!destination) return { ok: false, message: 'Choose a different destination folder.' };
 
   let password = '';
-  let imap: ImapFlow | null = null;
-  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
-    password = await resolveMailSecret(account);
-    imap = createImapClient(account, password);
-    await imap.connect();
-    lock = await imap.getMailboxLock(folderPath);
-    const moved = await imap.messageMove(uids, destination.path, { uid: true });
-    if (!moved) return { ok: false, message: 'The messages are no longer available.' };
-    mailCache().moveMessages(account.id, folderPath, destination.path, uids);
-    return { ok: true };
+    return await withAccountImap(account, async (imap, secret) => {
+      password = secret;
+      const lock = await imap.getMailboxLock(folderPath);
+      try {
+        const moved = await imap.messageMove(uids, destination.path, { uid: true });
+        if (!moved) return { ok: false, message: 'The messages are no longer available.' };
+        mailCache().moveMessages(account.id, folderPath, destination.path, uids);
+        return { ok: true };
+      } finally {
+        lock.release();
+      }
+    });
   } catch (error) {
     return { ok: false, message: `Could not move messages: ${errorMessage(error, password)}` };
-  } finally {
-    lock?.release();
-    await closeImap(imap);
   }
 }
 

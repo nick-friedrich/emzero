@@ -17,9 +17,9 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/account-connection.ts` — IMAP/SMTP account connectivity verification.
 - `apps/desktop/src/main/microsoft-oauth.ts` — personal Microsoft device-code authorization, token exchange, and refresh-token renewal.
 - `apps/desktop/src/main/account-folders.ts` — cached/server folder listing, validation, creation, rename, move, deletion, and ordering.
-- `apps/desktop/src/main/background-sync.ts` — scheduled and on-demand multi-account synchronization state and execution.
-- `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential decryption, safe error formatting, and IMAP client lifecycle helpers.
-- `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization, message parsing, and cached/server message reading.
+- `apps/desktop/src/main/background-sync.ts` — foreground-safe scheduled and on-demand Inbox/Sent synchronization state and execution.
+- `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential caching, safe error formatting, and reusable per-account IMAP connections.
+- `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization with periodic full reconciliation, message parsing, and cached/server message reading.
 - `apps/desktop/src/main/message-sender.ts` — SMTP delivery, IMAP Sent-copy persistence, and sent-message cache updates.
 - `apps/desktop/src/main/mail-drafts.ts` — MIME draft compilation plus append-first IMAP draft autosave and deletion.
 - `apps/desktop/src/main/attachment-files.ts` — native file selection, opaque outgoing-file authorization, attachment limits, and received-attachment saving.

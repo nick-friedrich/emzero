@@ -91,7 +91,6 @@ async function saveConnectedAccount(
   };
 
   await writeAccounts([...accounts, account]);
-  void runBackgroundSync();
   return {
     ok: true,
     message: 'Account connected and saved securely.',

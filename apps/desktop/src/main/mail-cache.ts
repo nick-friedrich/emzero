@@ -882,6 +882,8 @@ export class MailCache {
       uidNext: number;
       highestModseq: string | null;
       syncedAt?: string;
+      reconcile?: boolean;
+      messageCount?: number;
     },
   ): void {
     const currentState = this.getFolderSyncState(accountId, folderPath);
@@ -920,7 +922,7 @@ export class MailCache {
     this.#database.exec('BEGIN');
     try {
       if (reset) resetMessages.run(accountId, folderPath);
-      else {
+      else if (metadata.reconcile !== false) {
         for (const uid of this.listMessageUids(accountId, folderPath)) {
           if (!remoteUidSet.has(uid)) remove.run(accountId, folderPath, uid);
         }
@@ -943,9 +945,13 @@ export class MailCache {
           message.size,
         );
       }
+      const reconciledAt = metadata.syncedAt ?? new Date().toISOString();
+      const messageCount = metadata.reconcile === false
+        ? (metadata.messageCount ?? Math.max(currentState.total, remoteUids.length))
+        : remoteUids.length;
       updateFolder.run(
-        remoteUids.length,
-        metadata.syncedAt ?? new Date().toISOString(),
+        messageCount,
+        metadata.reconcile === false ? currentState.syncedAt : reconciledAt,
         metadata.uidValidity,
         metadata.uidNext,
         metadata.highestModseq,

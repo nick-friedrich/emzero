@@ -25,10 +25,7 @@ async function syncAccount(account: StoredAccount): Promise<void> {
   const prioritized = [
     ...selectable.filter((folder) => folder.specialUse === '\\Inbox'),
     ...selectable.filter((folder) => folder.specialUse === '\\Sent'),
-    ...selectable.filter(
-      (folder) => folder.specialUse !== '\\Inbox' && folder.specialUse !== '\\Sent',
-    ),
-  ].slice(0, 6);
+  ];
 
   for (const folder of prioritized) {
     const result = await listFolderMessages(account, folder.path, true);
@@ -67,7 +64,6 @@ export function runBackgroundSync(): Promise<MailSyncStatus> {
 
 export function startBackgroundSync(): void {
   if (backgroundSyncTimer) return;
-  setTimeout(() => void runBackgroundSync(), 5_000);
   backgroundSyncTimer = setInterval(() => void runBackgroundSync(), 5 * 60_000);
 }
 

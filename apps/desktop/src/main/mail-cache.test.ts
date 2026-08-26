@@ -272,6 +272,33 @@ describe('MailCache', () => {
     });
   });
 
+  it('updates an incrementally refreshed folder without dropping unscanned messages', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox]);
+    cache.applyIncrementalSync('account-1', 'INBOX', [message(1), message(2)], [1, 2], {
+      uidValidity: '99',
+      uidNext: 3,
+      highestModseq: '120',
+      syncedAt: 'reconciled',
+    });
+
+    cache.applyIncrementalSync('account-1', 'INBOX', [message(3)], [], {
+      uidValidity: '99',
+      uidNext: 4,
+      highestModseq: '121',
+      reconcile: false,
+      messageCount: 3,
+    });
+
+    expect(cache.getFolderSyncState('account-1', 'INBOX')).toMatchObject({
+      messages: [message(3), message(2), message(1)],
+      total: 3,
+      syncedAt: 'reconciled',
+      uidNext: 4,
+      highestModseq: '121',
+    });
+  });
+
   it('invalidates messages and bodies when UIDVALIDITY changes', () => {
     cache = new MailCache(':memory:');
     cache.replaceFolders('account-1', [inbox]);
