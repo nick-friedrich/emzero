@@ -34,6 +34,7 @@ import {
   type FolderSelection,
 } from './mail-common';
 import { ConversationReader } from './conversation-reader';
+import { useUndoableDelete } from './undoable-delete';
 
 type SearchLoadState =
   | { status: 'idle' }
@@ -68,6 +69,7 @@ export function MailSearch({
     accountId: string;
     folders: MailFolderSummary[];
   } | null>(null);
+  const { scheduleDelete, undoBar } = useUndoableDelete();
   const selectedAccountId = selected?.item.accountId ?? null;
   const selectedFolders = selectedFolderState?.accountId === selectedAccountId
     ? selectedFolderState.folders
@@ -141,6 +143,46 @@ export function MailSearch({
         if (actionBusy) return;
         setActionBusy(true);
         setActionError(null);
+        const previousState = state;
+        const previousSelection = selected;
+        const removeSelection = () => {
+          setState((current) =>
+            current.status === 'loaded'
+              ? {
+                  ...current,
+                  items: current.items.filter(
+                    (item) =>
+                      item.accountId !== selected.item.accountId ||
+                      item.folder.path !== selected.item.folder.path ||
+                      item.message.uid !== selected.item.message.uid,
+                  ),
+                }
+              : current,
+          );
+          setSelected(null);
+        };
+        const restoreSelection = () => {
+          setState(previousState);
+          setSelected(previousSelection);
+        };
+
+        if (action === 'delete') {
+          removeSelection();
+          setActionBusy(false);
+          scheduleDelete(
+            () => performConversationAction(
+              account.id,
+              selection.folder.path,
+              selected.conversation,
+              action,
+              destination,
+            ),
+            restoreSelection,
+            setActionError,
+          );
+          return;
+        }
+        if (action === 'move') removeSelection();
         try {
           const error = await performConversationAction(
             account.id,
@@ -151,24 +193,10 @@ export function MailSearch({
           );
           if (error) {
             setActionError(error);
+            if (action === 'move') restoreSelection();
             return;
           }
-          if (action === 'delete' || action === 'move') {
-            setState((current) =>
-              current.status === 'loaded'
-                ? {
-                    ...current,
-                    items: current.items.filter(
-                      (item) =>
-                        item.accountId !== selected.item.accountId ||
-                        item.folder.path !== selected.item.folder.path ||
-                        item.message.uid !== selected.item.message.uid,
-                    ),
-                  }
-                : current,
-            );
-            setSelected(null);
-          } else {
+          if (action !== 'move') {
             const isFlagAction = action === 'star' || action === 'unstar';
             const nextValue = action === 'unread' || action === 'star';
             setSelected((current) =>
@@ -191,12 +219,14 @@ export function MailSearch({
           }
         } catch {
           setActionError('The action could not be completed.');
+          if (action === 'move') restoreSelection();
         } finally {
           setActionBusy(false);
         }
       };
 
       return (
+        <>
         <ConversationReader
           accounts={accounts}
           selection={selection}
@@ -217,6 +247,8 @@ export function MailSearch({
             );
           }}
         />
+        {undoBar}
+        </>
       );
     }
   }
@@ -361,6 +393,7 @@ export function MailSearch({
           </div>
         )}
       </div>
+      {undoBar}
     </section>
   );
 }

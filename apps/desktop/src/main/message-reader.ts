@@ -9,11 +9,7 @@ import type {
 } from '../shared/accounts.js';
 import type { StoredAccount } from './account-storage.js';
 import { hasQuotedHtml, sanitizedMessageHtml } from './message-html.js';
-import {
-  errorMessage,
-  mailCache,
-  withAccountImap,
-} from './mail-runtime.js';
+import { errorMessage, mailCache, withAccountImap } from './mail-runtime.js';
 
 export function mailAddresses(
   value: Array<{ name?: string; address?: string }> | undefined,
@@ -41,7 +37,10 @@ async function messageSummary(
   message: FetchMessageObject,
 ): Promise<MailMessageSummary> {
   const parsedHeaders = message.headers
-    ? await simpleParser(message.headers, { skipHtmlToText: true, skipTextToHtml: true })
+    ? await simpleParser(message.headers, {
+        skipHtmlToText: true,
+        skipTextToHtml: true,
+      })
     : null;
   return {
     folderPath,
@@ -88,10 +87,7 @@ async function fetchSummaries(
 
 const fullReconciliationInterval = 30 * 60_000;
 
-export function shouldFullyReconcileFolder(
-  syncedAt: string | null,
-  now = Date.now(),
-): boolean {
+export function shouldFullyReconcileFolder(syncedAt: string | null, now = Date.now()): boolean {
   if (!syncedAt) return true;
   const timestamp = Date.parse(syncedAt);
   return !Number.isFinite(timestamp) || now - timestamp >= fullReconciliationInterval;
@@ -110,83 +106,91 @@ export async function listFolderMessages(
   }
 
   try {
-    return await withAccountImap(account, async (imap, secret) => {
-      password = secret;
-      const lock = await imap.getMailboxLock(folderPath, { readOnly: true });
-      try {
-        if (!imap.mailbox) throw new Error('Mailbox did not open.');
-        const mailbox = imap.mailbox;
-        const uidValidity = mailbox.uidValidity.toString();
-        const validityChanged =
-          cached.uidValidity !== null && cached.uidValidity !== uidValidity;
-        const reconcile =
-          validityChanged ||
-          cached.uidNext === null ||
-          shouldFullyReconcileFolder(cached.syncedAt);
-        const remoteUids = reconcile
-          ? ((await imap.search({ all: true }, { uid: true })) || [])
-          : [];
-        const cachedUids = new Set(
-          validityChanged ? [] : mailCache().listMessageUids(account.id, folderPath),
-        );
-        const summaries = new Map<number, MailMessageSummary>();
+    return await withAccountImap(
+      account,
+      async (imap, secret) => {
+        password = secret;
+        const lock = await imap.getMailboxLock(folderPath, { readOnly: true });
+        try {
+          if (!imap.mailbox) throw new Error('Mailbox did not open.');
+          const mailbox = imap.mailbox;
+          const uidValidity = mailbox.uidValidity.toString();
+          const validityChanged = cached.uidValidity !== null && cached.uidValidity !== uidValidity;
+          const reconcile =
+            validityChanged ||
+            cached.uidNext === null ||
+            shouldFullyReconcileFolder(cached.syncedAt);
+          const remoteUids = reconcile
+            ? (await imap.search({ all: true }, { uid: true })) || []
+            : [];
+          const cachedUids = new Set(
+            validityChanged ? [] : mailCache().listMessageUids(account.id, folderPath),
+          );
+          const summaries = new Map<number, MailMessageSummary>();
 
-        if (
-          !validityChanged &&
-          cached.highestModseq &&
-          mailbox.highestModseq &&
-          mailbox.highestModseq > BigInt(cached.highestModseq)
-        ) {
-          for (const message of await fetchSummaries(
-            imap,
-            folderPath,
-            '1:*',
-            BigInt(cached.highestModseq),
-          )) {
+          if (
+            !validityChanged &&
+            cached.highestModseq &&
+            mailbox.highestModseq &&
+            mailbox.highestModseq > BigInt(cached.highestModseq)
+          ) {
+            for (const message of await fetchSummaries(
+              imap,
+              folderPath,
+              '1:*',
+              BigInt(cached.highestModseq),
+            )) {
+              summaries.set(message.uid, message);
+            }
+          }
+          const nextUid = cached.uidNext ?? mailbox.uidNext;
+          const newUidStart = Math.max(nextUid, mailbox.uidNext - 250);
+          const newUids = Array.from(
+            { length: Math.max(0, mailbox.uidNext - newUidStart) },
+            (_, index) => newUidStart + index,
+          );
+          const requestedUids = reconcile
+            ? [
+                ...new Set([
+                  ...remoteUids.filter((uid) => !cachedUids.has(uid)).slice(-250),
+                  ...remoteUids.slice(-100),
+                ]),
+              ]
+            : [
+                ...new Set([
+                  ...newUids,
+                  ...(cached.highestModseq ? [] : [...cachedUids].slice(-100)),
+                ]),
+              ];
+          for (const message of await fetchSummaries(imap, folderPath, requestedUids)) {
             summaries.set(message.uid, message);
           }
-        }
-        const nextUid = cached.uidNext ?? mailbox.uidNext;
-        const newUidStart = Math.max(nextUid, mailbox.uidNext - 250);
-        const newUids = Array.from(
-          { length: Math.max(0, mailbox.uidNext - newUidStart) },
-          (_, index) => newUidStart + index,
-        );
-        const requestedUids = reconcile
-          ? [
-              ...new Set([
-                ...remoteUids.filter((uid) => !cachedUids.has(uid)).slice(-250),
-                ...remoteUids.slice(-100),
-              ]),
-            ]
-          : [
-              ...new Set([
-                ...newUids,
-                ...(cached.highestModseq ? [] : [...cachedUids].slice(-100)),
-              ]),
-            ];
-        for (const message of await fetchSummaries(imap, folderPath, requestedUids)) {
-          summaries.set(message.uid, message);
-        }
 
-        mailCache().applyIncrementalSync(
-          account.id,
-          folderPath,
-          [...summaries.values()],
-          remoteUids,
-          {
-            uidValidity,
-            uidNext: mailbox.uidNext,
-            highestModseq: mailbox.highestModseq?.toString() ?? null,
-            reconcile,
-            messageCount: mailbox.exists,
-          },
-        );
-        return { ok: true, ...mailCache().listMessages(account.id, folderPath), source: 'server' };
-      } finally {
-        lock.release();
-      }
-    });
+          mailCache().applyIncrementalSync(
+            account.id,
+            folderPath,
+            [...summaries.values()],
+            remoteUids,
+            {
+              uidValidity,
+              uidNext: mailbox.uidNext,
+              highestModseq: mailbox.highestModseq?.toString() ?? null,
+              reconcile,
+              messageCount: mailbox.exists,
+            },
+          );
+          return {
+            ok: true,
+            ...mailCache().listMessages(account.id, folderPath),
+            source: 'server',
+          };
+        } finally {
+          lock.release();
+        }
+      },
+      20_000,
+      'background',
+    );
   } catch (error) {
     if (cached.syncedAt) {
       return {
@@ -241,7 +245,10 @@ export async function getFolderMessage(
         try {
           const fetched = await imap.fetchOne(uid, { source: true }, { uid: true });
           if (!fetched || !fetched.source) {
-            return { ok: false, message: 'This message is no longer available.' };
+            return {
+              ok: false,
+              message: 'This message is no longer available.',
+            };
           }
 
           const parsed = await simpleParser(fetched.source);
@@ -271,6 +278,7 @@ export async function getFolderMessage(
         }
       },
       30_000,
+      'background',
     );
   } catch (error) {
     return {

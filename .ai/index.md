@@ -18,7 +18,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/microsoft-oauth.ts` — personal Microsoft device-code authorization, token exchange, and refresh-token renewal.
 - `apps/desktop/src/main/account-folders.ts` — cached/server folder listing, validation, creation, rename, move, deletion, and ordering.
 - `apps/desktop/src/main/background-sync.ts` — foreground-safe scheduled and on-demand Inbox/Sent synchronization state and execution.
-- `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential caching, safe error formatting, and reusable per-account IMAP connections.
+- `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential caching, safe error formatting, and isolated interactive/background per-account IMAP connections.
 - `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization with periodic full reconciliation, message parsing, and cached/server message reading.
 - `apps/desktop/src/main/message-sender.ts` — SMTP delivery, IMAP Sent-copy persistence, and sent-message cache updates.
 - `apps/desktop/src/main/mail-drafts.ts` — MIME draft compilation plus append-first IMAP draft autosave and deletion.
@@ -64,6 +64,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/attachment-picker.tsx` — reusable outgoing-attachment selection and removal UI for compose and reply.
 - `features/draft-autosave.ts` — debounced, sequential IMAP autosave state shared by compose and inline reply.
 - `features/bulk-operation.tsx` — persistent progress/status bar for background bulk message jobs.
+- `features/undoable-delete.tsx` — shared delayed-delete controller and Undo bar for optimistic conversation deletion.
 - `features/app-shared.ts` — small cross-feature status and send-shortcut preferences/hooks.
 - `features/form-field.tsx` — shared labeled form-field wrapper.
 

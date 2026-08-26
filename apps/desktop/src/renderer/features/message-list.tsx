@@ -48,6 +48,7 @@ import {
   type StartBulkOperation,
 } from './mail-common';
 import { ConversationReader } from './conversation-reader';
+import { useUndoableDelete } from './undoable-delete';
 
 export function MessageList({
   accounts,
@@ -70,6 +71,7 @@ export function MessageList({
   const conversationRowRefs = useRef(new Map<string, HTMLButtonElement>());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [folders, setFolders] = useState<MailFolderSummary[]>([selection.folder]);
+  const { scheduleDelete, undoBar } = useUndoableDelete();
 
   useEffect(() => {
     let active = true;
@@ -321,6 +323,60 @@ export function MessageList({
       updateFlagged(new Map([...keys].map((key) => [key, flagged])));
     }
 
+    const previousState = state;
+    const previousSelection = selectedConversation;
+    const removeConversation = () => {
+      setState((current) =>
+        current.status === 'loaded'
+          ? {
+              ...current,
+              messages: current.messages.filter(
+                (message) => !keys.has(`${message.folderPath}:${message.uid}`),
+              ),
+              relatedMessages: current.relatedMessages.filter(
+                (message) => !keys.has(`${message.folderPath}:${message.uid}`),
+              ),
+              total: Math.max(
+                0,
+                current.total -
+                  current.messages.filter((message) =>
+                    keys.has(`${message.folderPath}:${message.uid}`),
+                  ).length,
+              ),
+            }
+          : current,
+      );
+      setSelectedConversation(null);
+    };
+    const restoreConversation = () => {
+      setState(previousState);
+      setSelectedConversation(previousSelection);
+    };
+
+    if (action === 'delete') {
+      removeConversation();
+      pendingActions.current.delete(conversation.id);
+      setBusyConversations((current) => {
+        const next = new Set(current);
+        next.delete(conversation.id);
+        return next;
+      });
+      scheduleDelete(
+        () => performConversationAction(
+          selection.account.id,
+          selection.folder.path,
+          conversation,
+          action,
+          destination,
+        ),
+        restoreConversation,
+        setActionError,
+      );
+      return true;
+    }
+
+    if (action === 'move') removeConversation();
+
     try {
       const error = await performConversationAction(
         selection.account.id,
@@ -331,36 +387,15 @@ export function MessageList({
       );
       if (error) {
         setActionError(error);
+        if (action === 'move') restoreConversation();
         if (action === 'read' || action === 'unread') updateUnread(previousUnread);
         if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
         return false;
       }
-      if (action === 'delete' || action === 'move') {
-        setState((current) =>
-          current.status === 'loaded'
-            ? {
-                ...current,
-                messages: current.messages.filter(
-                  (message) => !keys.has(`${message.folderPath}:${message.uid}`),
-                ),
-                relatedMessages: current.relatedMessages.filter(
-                  (message) => !keys.has(`${message.folderPath}:${message.uid}`),
-                ),
-                total: Math.max(
-                  0,
-                  current.total -
-                    current.messages.filter((message) =>
-                      keys.has(`${message.folderPath}:${message.uid}`),
-                    ).length,
-                ),
-              }
-            : current,
-        );
-        setSelectedConversation(null);
-      }
       return true;
     } catch {
       setActionError('The action could not be completed.');
+      if (action === 'move') restoreConversation();
       if (action === 'read' || action === 'unread') updateUnread(previousUnread);
       if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
       return false;
@@ -486,7 +521,7 @@ export function MessageList({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {state.status === 'loaded' && (
+      {state.status === 'loaded' && (
             <span className="hidden whitespace-nowrap text-xs text-muted-foreground lg:inline">
               {conversations.length} {conversations.length === 1 ? 'conversation' : 'conversations'}
               {' · '}
@@ -718,6 +753,7 @@ export function MessageList({
           })}
         </div>
       )}
+      {undoBar}
     </section>
   );
 }

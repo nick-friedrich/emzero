@@ -48,6 +48,7 @@ import {
   type UnifiedInboxLoadState,
 } from './mail-common';
 import { ConversationReader } from './conversation-reader';
+import { useUndoableDelete } from './undoable-delete';
 
 function conversationTime(conversation: MailConversation): number {
   const latest = conversation.messages[0];
@@ -74,6 +75,7 @@ export function UnifiedInbox({
   const [selectionCursorKey, setSelectionCursorKey] = useState<string | null>(null);
   const unifiedRowRefs = useRef(new Map<string, HTMLButtonElement>());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const { scheduleDelete, undoBar } = useUndoableDelete();
 
   useEffect(() => {
     let active = true;
@@ -371,6 +373,62 @@ export function UnifiedInbox({
       updateFlagged(new Map([...previousFlagged.keys()].map((messageKey) => [messageKey, flagged])));
     }
 
+    const previousState = state;
+    const previousSelection = selectedItem;
+    const removeItem = () => {
+      setState((current) =>
+        current.status === 'loaded'
+          ? {
+              ...current,
+              items: current.items.filter((candidate) => itemKey(candidate) !== key),
+              loadedMessages: Math.max(
+                0,
+                current.loadedMessages -
+                  item.conversation.messages.filter(
+                    (message) => message.folderPath === item.selection.folder.path,
+                  ).length,
+              ),
+              totalMessages: Math.max(
+                0,
+                current.totalMessages -
+                  item.conversation.messages.filter(
+                    (message) => message.folderPath === item.selection.folder.path,
+                  ).length,
+              ),
+            }
+          : current,
+      );
+      setSelectedItem(null);
+    };
+    const restoreItem = () => {
+      setState(previousState);
+      setSelectedItem(previousSelection);
+    };
+
+    if (action === 'delete') {
+      removeItem();
+      pendingActions.current.delete(key);
+      setBusyConversations((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+      scheduleDelete(
+        () => performConversationAction(
+          item.selection.account.id,
+          item.selection.folder.path,
+          item.conversation,
+          action,
+          destination,
+        ),
+        restoreItem,
+        setActionError,
+      );
+      return true;
+    }
+
+    if (action === 'move') removeItem();
+
     try {
       const error = await performConversationAction(
         item.selection.account.id,
@@ -381,38 +439,15 @@ export function UnifiedInbox({
       );
       if (error) {
         setActionError(error);
+        if (action === 'move') restoreItem();
         if (action === 'read' || action === 'unread') updateUnread(previousUnread);
         if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
         return false;
       }
-      if (action === 'delete' || action === 'move') {
-        setState((current) =>
-          current.status === 'loaded'
-            ? {
-                ...current,
-                items: current.items.filter((candidate) => itemKey(candidate) !== key),
-                loadedMessages: Math.max(
-                  0,
-                  current.loadedMessages -
-                    item.conversation.messages.filter(
-                      (message) => message.folderPath === item.selection.folder.path,
-                    ).length,
-                ),
-                totalMessages: Math.max(
-                  0,
-                  current.totalMessages -
-                    item.conversation.messages.filter(
-                      (message) => message.folderPath === item.selection.folder.path,
-                    ).length,
-                ),
-              }
-            : current,
-        );
-        setSelectedItem(null);
-      }
       return true;
     } catch {
       setActionError('The action could not be completed.');
+      if (action === 'move') restoreItem();
       if (action === 'read' || action === 'unread') updateUnread(previousUnread);
       if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
       return false;
@@ -532,7 +567,7 @@ export function UnifiedInbox({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {state.status === 'loaded' && (
+      {state.status === 'loaded' && (
             <span className="hidden whitespace-nowrap text-xs text-muted-foreground lg:inline">
               {state.items.length} {state.items.length === 1 ? 'conversation' : 'conversations'}
               {' · '}
@@ -801,6 +836,7 @@ export function UnifiedInbox({
           })}
         </div>
       )}
+      {undoBar}
     </section>
   );
 }
