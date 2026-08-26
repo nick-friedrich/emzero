@@ -1,6 +1,6 @@
 # Emzero
 
-A private, multi-account desktop mail client for Linux and macOS.
+A private, multi-account desktop mail client for Linux and macOS, with a Laravel-powered product website.
 
 ## Development
 
@@ -22,6 +22,23 @@ The initial application lives in `apps/desktop`. Electron main and preload own d
 - `pnpm --filter @emzero/desktop make` — create platform installers
 
 See [plan.md](./plan.md) for the current product scope.
+
+## Website
+
+The Laravel 13 website lives in `apps/web` and uses Inertia, React, and SQLite locally. It includes the public landing page, waitlist, blog, and a private admin area.
+
+```sh
+cd apps/web
+composer run setup
+php artisan app:create-admin you@example.com --name="Your Name"
+composer run dev
+```
+
+Open <http://localhost:8000>. The development command runs PHP, the queue listener, logs, and Vite together.
+
+Production does not need a Node.js server. Run `npm ci && npm run build` during deployment, deploy the resulting application and `public/build` assets, point the web server document root at `apps/web/public`, and send PHP requests to the shared PHP-FPM container. Then run `php artisan migrate --force` and the usual Laravel cache commands. Configure a persistent production database; SQLite is only the local default.
+
+Public registration is disabled. Create or promote the owner account on the production host with `php artisan app:create-admin you@example.com`; the command prompts securely for the password.
 
 ## Personal provider setup
 

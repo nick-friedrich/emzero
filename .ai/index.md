@@ -8,6 +8,23 @@ This index records where application responsibilities live. Read it before makin
 - `plan.md` — current product scope and delivery plan.
 - `package.json` — workspace commands; `pnpm check` runs lint, type checking, and tests.
 - `apps/desktop/package.json` — Electron application dependencies and package-level scripts.
+- `apps/web/` — Laravel 13 / Inertia React website for the public landing page, waitlist, blog, and private admin.
+
+## Website
+
+- `apps/web/routes/web.php` — public landing, waitlist, blog, and authenticated admin routes.
+- `apps/web/app/Models/` — users, waitlist subscribers, and blog posts.
+- `apps/web/app/Http/Controllers/` — public landing/blog/waitlist request handling.
+- `apps/web/app/Http/Controllers/Admin/` — admin dashboard, subscriber management/export, and blog CRUD.
+- `apps/web/app/Actions/` — waitlist subscription and blog post creation/update operations.
+- `apps/web/resources/js/pages/home.tsx` — public landing page.
+- `apps/web/resources/js/pages/blog/` — public blog index and post pages.
+- `apps/web/resources/js/pages/admin/` — private dashboard, waitlist, and blog management UI.
+- `apps/web/resources/js/components/public/` — public navigation, waitlist form, and blog card primitives.
+- `apps/web/resources/js/components/admin/` — reusable admin post editor.
+- `apps/web/public/brand/` — original brand assets served directly by the website.
+- `apps/web/database/migrations/` — website database schema; production should use a persistent database shared with PHP-FPM.
+- `apps/web/tests/Feature/` — public, authentication, and admin feature coverage.
 
 ## Desktop process boundaries
 
