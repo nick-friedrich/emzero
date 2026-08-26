@@ -52,7 +52,7 @@ import type { MailConversation } from '../../shared/conversations';
 import { MoveToDialog } from './message-move';
 
 export type MailboxSelection =
-  | { kind: 'unified' }
+  | { kind: 'unified'; mailbox?: 'inbox' | 'starred' | 'trash' }
   | { kind: 'search'; query: string }
   | { kind: 'folder'; account: AccountSummary; folder: MailFolderSummary };
 

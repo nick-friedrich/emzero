@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Search,
   Settings2,
+  Star,
   Trash2,
   Type,
 } from 'lucide-react';
@@ -503,12 +504,28 @@ export function Sidebar({
 
       <nav aria-label="Mailboxes" className="shrink-0 space-y-1">
         <Button
-          variant={selection.kind === 'unified' ? 'secondary' : 'ghost'}
+          variant={selection.kind === 'unified' && (selection.mailbox ?? 'inbox') === 'inbox' ? 'secondary' : 'ghost'}
           className="w-full justify-start"
-          onClick={() => onSelect({ kind: 'unified' })}
+          onClick={() => onSelect({ kind: 'unified', mailbox: 'inbox' })}
         >
           <Inbox className="size-4" />
-          Unified inbox
+          Inbox
+        </Button>
+        <Button
+          variant={selection.kind === 'unified' && selection.mailbox === 'starred' ? 'secondary' : 'ghost'}
+          className="w-full justify-start"
+          onClick={() => onSelect({ kind: 'unified', mailbox: 'starred' })}
+        >
+          <Star className="size-4" />
+          Starred
+        </Button>
+        <Button
+          variant={selection.kind === 'unified' && selection.mailbox === 'trash' ? 'secondary' : 'ghost'}
+          className="w-full justify-start"
+          onClick={() => onSelect({ kind: 'unified', mailbox: 'trash' })}
+        >
+          <Trash2 className="size-4" />
+          Trash
         </Button>
         {accounts.length > 0 && (
           <div className="pt-5">

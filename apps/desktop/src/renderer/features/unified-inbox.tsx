@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   RefreshCw,
   Star,
+  Trash2,
 } from 'lucide-react';
 import {
   Button,
@@ -59,11 +60,14 @@ function conversationTime(conversation: MailConversation): number {
 
 export function UnifiedInbox({
   accounts,
+  mailbox,
   onStartBulkOperation,
 }: {
   accounts: AccountSummary[];
+  mailbox: 'inbox' | 'starred' | 'trash';
   onStartBulkOperation: StartBulkOperation;
 }) {
+  const title = mailbox === 'inbox' ? 'Inbox' : mailbox === 'starred' ? 'Starred' : 'Trash';
   const [state, setState] = useState<UnifiedInboxLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedItem, setSelectedItem] = useState<UnifiedConversationItem | null>(null);
@@ -92,32 +96,51 @@ export function UnifiedInbox({
             };
           }
 
-          const folder = findInboxFolder(folderResult.folders);
-          if (!folder) {
-            return { failure: { account, message: 'No selectable inbox folder was found.' } };
+          const designatedFolder = mailbox === 'inbox'
+            ? findInboxFolder(folderResult.folders)
+            : folderResult.folders.find((candidate) =>
+                candidate.selectable && candidate.specialUse === (mailbox === 'trash' ? '\\Trash' : '\\Flagged'),
+              );
+          const sourceFolders = designatedFolder
+            ? [designatedFolder]
+            : mailbox === 'starred'
+              ? folderResult.folders.filter((candidate) => candidate.selectable && candidate.specialUse !== '\\Trash')
+              : [];
+          if (sourceFolders.length === 0) {
+            return { failure: { account, message: `No selectable ${title.toLowerCase()} folder was found.` } };
           }
 
           const sentFolder = folderResult.folders.find(
             (candidate) => candidate.selectable && candidate.specialUse === '\\Sent',
           );
-          const [inboxResult, sentResult] = await Promise.all([
-            window.emzero.messages.list(account.id, folder.path, refreshKey > 0),
-            sentFolder && sentFolder.path !== folder.path
+          const [sourceResults, sentResult] = await Promise.all([
+            Promise.all(sourceFolders.map((folder) =>
+              window.emzero.messages.list(account.id, folder.path, refreshKey > 0)
+                .then((result) => ({ folder, result })),
+            )),
+            mailbox === 'inbox' && sentFolder && sentFolder.path !== designatedFolder?.path
               ? window.emzero.messages.list(account.id, sentFolder.path, refreshKey > 0)
               : Promise.resolve(null),
           ]);
-          if (!inboxResult.ok) {
+          const failedResult = sourceResults.find(({ result }) => !result.ok);
+          if (failedResult) {
             return {
               failure: {
                 account,
-                message: inboxResult.message ?? 'Could not load inbox messages.',
+                message: failedResult.result.message ?? `Could not load ${title.toLowerCase()} messages.`,
               },
             };
           }
 
-          const messages = inboxResult.messages.map((message) => ({
-            ...message,
-            folderPath: folder.path,
+          const loadedSources = sourceResults.map(({ folder, result }) => ({
+            folder,
+            messages: result.messages
+              .filter((message) => mailbox !== 'starred' || message.flagged)
+              .map((message) => ({ ...message, folderPath: folder.path })),
+            total: mailbox === 'starred'
+              ? result.messages.filter((message) => message.flagged).length
+              : result.total,
+            notice: result.message,
           }));
           const relatedMessages =
             sentFolder && sentResult?.ok
@@ -126,17 +149,19 @@ export function UnifiedInbox({
                   folderPath: sentFolder.path,
                 }))
               : [];
-          const selection: FolderSelection = { kind: 'folder', account, folder };
           return {
             account,
-            items: groupMessagesWithRelated(messages, relatedMessages).map((conversation) => ({
-              selection,
-              folders: folderResult.folders,
-              conversation,
-            })),
-            loadedMessages: messages.length,
-            totalMessages: inboxResult.total,
-            notices: [folderResult.message, inboxResult.message, sentResult?.message].filter(
+            items: loadedSources.flatMap(({ folder, messages }) => {
+              const selection: FolderSelection = { kind: 'folder', account, folder };
+              return groupMessagesWithRelated(messages, mailbox === 'inbox' ? relatedMessages : []).map((conversation) => ({
+                selection,
+                folders: folderResult.folders,
+                conversation,
+              }));
+            }),
+            loadedMessages: loadedSources.reduce((total, source) => total + source.messages.length, 0),
+            totalMessages: loadedSources.reduce((total, source) => total + source.total, 0),
+            notices: [folderResult.message, ...loadedSources.map(({ notice }) => notice), sentResult?.message].filter(
               (message): message is string => Boolean(message),
             ),
           };
@@ -178,7 +203,7 @@ export function UnifiedInbox({
     return () => {
       active = false;
     };
-  }, [accounts, refreshKey]);
+  }, [accounts, mailbox, refreshKey, title]);
 
   const refresh = () => {
     setSelectedItem(null);
@@ -275,6 +300,9 @@ export function UnifiedInbox({
             : [];
         }
         const isFlagAction = progress.action === 'star' || progress.action === 'unstar';
+        if (mailbox === 'starred' && progress.action === 'unstar') {
+          return [];
+        }
         const nextValue = progress.action === 'unread' || progress.action === 'star';
         return [
           {
@@ -296,17 +324,19 @@ export function UnifiedInbox({
         ...current,
         items,
         loadedMessages:
-          ['delete', 'archive', 'move'].includes(progress.action)
+          ['delete', 'archive', 'move'].includes(progress.action) ||
+          (mailbox === 'starred' && progress.action === 'unstar')
             ? Math.max(0, current.loadedMessages - affectedMessages)
             : current.loadedMessages,
         totalMessages:
-          ['delete', 'archive', 'move'].includes(progress.action)
+          ['delete', 'archive', 'move'].includes(progress.action) ||
+          (mailbox === 'starred' && progress.action === 'unstar')
             ? Math.max(0, current.totalMessages - affectedMessages)
             : current.totalMessages,
       };
         });
       }),
-    [],
+    [mailbox],
   );
 
   const runAction = async (
@@ -444,6 +474,7 @@ export function UnifiedInbox({
         if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
         return false;
       }
+      if (mailbox === 'starred' && action === 'unstar') removeItem();
       return true;
     } catch {
       setActionError('The action could not be completed.');
@@ -498,7 +529,7 @@ export function UnifiedInbox({
             uids: [...new Set(group.uids)],
           })),
         },
-        'Unified inbox',
+        title,
       );
       if (result.ok) {
         setSelectedItemKeys(new Set());
@@ -561,7 +592,7 @@ export function UnifiedInbox({
     <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
       <header className="flex min-w-0 items-center justify-between gap-3 border-b border-border bg-card py-4 pl-16 pr-4 lg:px-6">
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold tracking-tight">Unified inbox</h1>
+          <h1 className="truncate text-lg font-semibold tracking-tight">{title}</h1>
           <p className="truncate text-xs text-muted-foreground">
             {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
           </p>
@@ -579,8 +610,8 @@ export function UnifiedInbox({
           <Button
             variant="ghost"
             className="px-3"
-            aria-label="Refresh unified inbox"
-            title="Refresh unified inbox"
+            aria-label={`Refresh ${title.toLowerCase()}`}
+            title={`Refresh ${title.toLowerCase()}`}
             disabled={state.status === 'loading'}
             onClick={refresh}
           >
@@ -593,7 +624,7 @@ export function UnifiedInbox({
         <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <LoaderCircle className="size-4 animate-spin" />
-            Fetching inboxes
+            Fetching {title.toLowerCase()}
           </div>
         </div>
       )}
@@ -652,7 +683,7 @@ export function UnifiedInbox({
           selectedEmails={selectedEmailCount}
           totalRows={state.items.length}
           busy={bulkBusy}
-          permanentDelete={false}
+          permanentDelete={mailbox === 'trash'}
           onToggleAll={() => {
             const keys = state.items.map((item) => itemKey(item));
             if (selectedItemKeys.size === state.items.length) {
@@ -678,11 +709,11 @@ export function UnifiedInbox({
       {state.status === 'loaded' && state.items.length === 0 && (
         <div className="grid flex-1 place-items-center p-8 text-center">
           <div>
-            <Inbox className="mx-auto size-8 text-muted-foreground" />
+            {mailbox === 'trash' ? <Trash2 className="mx-auto size-8 text-muted-foreground" /> : mailbox === 'starred' ? <Star className="mx-auto size-8 text-muted-foreground" /> : <Inbox className="mx-auto size-8 text-muted-foreground" />}
             <h2 className="mt-3 font-semibold">
               {state.failures.length === accounts.length
-                ? 'Inboxes could not be loaded'
-                : 'Your unified inbox is empty'}
+                ? `${title} could not be loaded`
+                : `Your ${title.toLowerCase()} is empty`}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {state.failures.length === accounts.length

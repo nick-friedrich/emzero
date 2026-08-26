@@ -323,8 +323,9 @@ export function App() {
         />
       ) : (
         <UnifiedInbox
-          key={syncRevision}
+          key={`${selection.mailbox ?? 'inbox'}:${syncRevision}`}
           accounts={accounts}
+          mailbox={selection.mailbox ?? 'inbox'}
           onStartBulkOperation={startBulkOperation}
         />
       )}
