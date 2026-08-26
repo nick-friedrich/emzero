@@ -49,6 +49,7 @@ import {
   type UnifiedInboxLoadState,
 } from './mail-common';
 import { ConversationReader } from './conversation-reader';
+import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableDelete } from './undoable-delete';
 
 function conversationTime(conversation: MailConversation): number {
@@ -220,6 +221,16 @@ export function UnifiedInbox({
     () => (state.status === 'loaded' ? state.items : []),
     [state],
   );
+  const prefetchTargets = useMemo(
+    () =>
+      availableItems.map((item) => ({
+        accountId: item.selection.account.id,
+        folderPath: item.conversation.messages[0].folderPath,
+        uid: item.conversation.messages[0].uid,
+      })),
+    [availableItems],
+  );
+  const { prefetchSoon, cancelPrefetch } = useMessagePrefetch(prefetchTargets);
   const selectedItems = availableItems.filter((item) => selectedItemKeys.has(itemKey(item)));
   const selectedEmailCount = selectedItems.reduce(
     (total, item) =>
@@ -735,6 +746,11 @@ export function UnifiedInbox({
           {state.items.map((item) => {
             const { conversation, selection } = item;
             const latest = conversation.messages[0];
+            const prefetchTarget = {
+              accountId: selection.account.id,
+              folderPath: latest.folderPath,
+              uid: latest.uid,
+            };
             const opponent = conversationOpponent(conversation.messages, selection.account);
             const date = latest.sentAt ?? latest.receivedAt;
             const unread = conversation.messages.some(
@@ -784,8 +800,17 @@ export function UnifiedInbox({
                     else unifiedRowRefs.current.delete(key);
                   }}
                   className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-left focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6"
-                  onFocus={() => setSelectionCursorKey(itemKey(item))}
+                  onMouseEnter={() => prefetchSoon(prefetchTarget)}
+                  onMouseLeave={(event) => {
+                    if (document.activeElement !== event.currentTarget) cancelPrefetch(prefetchTarget);
+                  }}
+                  onFocus={() => {
+                    setSelectionCursorKey(itemKey(item));
+                    prefetchSoon(prefetchTarget);
+                  }}
+                  onBlur={() => cancelPrefetch(prefetchTarget)}
                   onClick={(event) => {
+                    cancelPrefetch(prefetchTarget);
                     if (event.shiftKey) {
                       const keys = state.items.map((candidate) => itemKey(candidate));
                       const key = itemKey(item);

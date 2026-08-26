@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useState,
   type FormEvent,
 } from 'react';
@@ -34,6 +35,7 @@ import {
   type FolderSelection,
 } from './mail-common';
 import { ConversationReader } from './conversation-reader';
+import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableDelete } from './undoable-delete';
 
 type SearchLoadState =
@@ -74,6 +76,20 @@ export function MailSearch({
   const selectedFolders = selectedFolderState?.accountId === selectedAccountId
     ? selectedFolderState.folders
     : [];
+  const searchPrefetchTargets = useMemo(
+    () =>
+      state.status === 'loaded'
+        ? state.items.map((item) => ({
+            accountId: item.accountId,
+            folderPath: item.folder.path,
+            uid: item.message.uid,
+          }))
+        : [],
+    [state],
+  );
+  const { prefetchSoon, cancelPrefetch } = useMessagePrefetch(searchPrefetchTargets, {
+    warmNewest: false,
+  });
 
   useEffect(() => {
     if (!selectedAccountId) return;
@@ -356,13 +372,25 @@ export function MailSearch({
             {state.items.map((item) => {
               const account = accounts.find((candidate) => candidate.id === item.accountId);
               const date = item.message.receivedAt ?? item.message.sentAt;
+              const prefetchTarget = {
+                accountId: item.accountId,
+                folderPath: item.folder.path,
+                uid: item.message.uid,
+              };
               return (
                 <button
                   key={`${item.accountId}:${item.folder.path}:${item.message.uid}`}
                   type="button"
                   role="listitem"
                   className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 border-b border-border px-4 py-3 text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:px-6"
+                  onMouseEnter={() => prefetchSoon(prefetchTarget)}
+                  onMouseLeave={(event) => {
+                    if (document.activeElement !== event.currentTarget) cancelPrefetch(prefetchTarget);
+                  }}
+                  onFocus={() => prefetchSoon(prefetchTarget)}
+                  onBlur={() => cancelPrefetch(prefetchTarget)}
                   onClick={() => {
+                    cancelPrefetch(prefetchTarget);
                     const conversation = groupMessagesWithRelated([item.message], [])[0];
                     if (conversation) setSelected({ item, conversation });
                   }}

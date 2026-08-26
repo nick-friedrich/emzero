@@ -48,6 +48,7 @@ import {
   type StartBulkOperation,
 } from './mail-common';
 import { ConversationReader } from './conversation-reader';
+import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableDelete } from './undoable-delete';
 
 export function MessageList({
@@ -163,6 +164,16 @@ export function MessageList({
         : [],
     [state],
   );
+  const prefetchTargets = useMemo(
+    () =>
+      conversations.map((conversation) => ({
+        accountId: selection.account.id,
+        folderPath: conversation.messages[0].folderPath,
+        uid: conversation.messages[0].uid,
+      })),
+    [conversations, selection.account.id],
+  );
+  const { prefetchSoon, cancelPrefetch } = useMessagePrefetch(prefetchTargets);
   const selectedConversations = conversations.filter((conversation) =>
     selectedConversationIds.has(conversation.id),
   );
@@ -627,6 +638,11 @@ export function MessageList({
         <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Messages">
           {conversations.map((conversation) => {
             const latest = conversation.messages[0];
+            const prefetchTarget = {
+              accountId: selection.account.id,
+              folderPath: latest.folderPath,
+              uid: latest.uid,
+            };
             const opponent = conversationOpponent(conversation.messages, selection.account);
             const date = latest.sentAt ?? latest.receivedAt;
             const unread = conversation.messages.some(
@@ -673,8 +689,17 @@ export function MessageList({
                     else conversationRowRefs.current.delete(conversation.id);
                   }}
                   className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-left focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6"
-                  onFocus={() => setSelectionCursorId(conversation.id)}
+                  onMouseEnter={() => prefetchSoon(prefetchTarget)}
+                  onMouseLeave={(event) => {
+                    if (document.activeElement !== event.currentTarget) cancelPrefetch(prefetchTarget);
+                  }}
+                  onFocus={() => {
+                    setSelectionCursorId(conversation.id);
+                    prefetchSoon(prefetchTarget);
+                  }}
+                  onBlur={() => cancelPrefetch(prefetchTarget)}
                   onClick={(event) => {
+                    cancelPrefetch(prefetchTarget);
                     if (event.shiftKey) {
                       const keys = conversations.map((candidate) => candidate.id);
                       const targetIndex = keys.indexOf(conversation.id);

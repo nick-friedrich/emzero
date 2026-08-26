@@ -391,6 +391,26 @@ export function registerAccountHandlers(): void {
   );
 
   ipcMain.handle(
+    ACCOUNT_CHANNELS.prefetchMessage,
+    async (event, accountId: unknown, folderPath: unknown, uid: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (
+        typeof accountId !== 'string' ||
+        typeof folderPath !== 'string' ||
+        !folderPath ||
+        typeof uid !== 'number' ||
+        !Number.isInteger(uid) ||
+        uid < 1
+      ) {
+        return { ok: false, message: 'Invalid message.' } satisfies MessageDetailResult;
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return { ok: false, message: 'Account not found.' } satisfies MessageDetailResult;
+      return getFolderMessage(account, folderPath, uid, 'prefetch');
+    },
+  );
+
+  ipcMain.handle(
     ACCOUNT_CHANNELS.setMessageUnread,
     async (event, accountId: unknown, folderPath: unknown, uids: unknown, unread: unknown) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');

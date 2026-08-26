@@ -13,7 +13,7 @@ interface PooledImapConnection {
   idleTimer: NodeJS.Timeout | null;
 }
 
-export type ImapConnectionLane = 'interactive' | 'background';
+export type ImapConnectionLane = 'interactive' | 'background' | 'prefetch';
 
 const pooledImapConnections = new Map<string, PooledImapConnection>();
 const passwordCache = new Map<string, string>();
@@ -97,9 +97,9 @@ export async function withAccountImap<T>(
   socketTimeout = 20_000,
   lane: ImapConnectionLane = 'interactive',
 ): Promise<T> {
-  // Reads and periodic synchronization can hold a mailbox lock while Gmail
-  // searches or fetches a large mailbox. Keep mutations on a separate
-  // connection so a click never waits behind that background work.
+  // Periodic synchronization can hold a mailbox lock while Gmail searches a
+  // large mailbox. Keep clicks and bounded speculative reads on separate
+  // connections so neither waits behind that background work.
   const connectionKey = `${account.id}:${lane}`;
   const connection = pooledImapConnections.get(connectionKey) ?? {
     imap: null,

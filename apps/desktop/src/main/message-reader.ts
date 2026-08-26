@@ -1,7 +1,13 @@
-import { type FetchMessageObject, type FetchQueryObject, ImapFlow } from 'imapflow';
+import {
+  type FetchMessageObject,
+  type FetchQueryObject,
+  ImapFlow,
+  type MessageStructureObject,
+} from 'imapflow';
 import { simpleParser, type AddressObject } from 'mailparser';
 import type {
   MailAddressSummary,
+  MailAttachmentSummary,
   MailMessageDetail,
   MailMessageSummary,
   MessageDetailResult,
@@ -9,7 +15,12 @@ import type {
 } from '../shared/accounts.js';
 import type { StoredAccount } from './account-storage.js';
 import { hasQuotedHtml, sanitizedMessageHtml } from './message-html.js';
-import { errorMessage, mailCache, withAccountImap } from './mail-runtime.js';
+import {
+  errorMessage,
+  type ImapConnectionLane,
+  mailCache,
+  withAccountImap,
+} from './mail-runtime.js';
 
 export function mailAddresses(
   value: Array<{ name?: string; address?: string }> | undefined,
@@ -30,6 +41,104 @@ export function referenceIds(value: string | string[] | undefined): string[] {
   return (Array.isArray(value) ? value : value ? [value] : []).flatMap(
     (entry) => entry.match(/<[^>]+>/g) ?? entry.split(/\s+/).filter(Boolean),
   );
+}
+
+interface MessageTextPart {
+  part: string;
+  type: 'text/plain' | 'text/html';
+  charset?: string;
+}
+
+export function messageTextParts(structure: MessageStructureObject): MessageTextPart[] {
+  const parts: MessageTextPart[] = [];
+  const visit = (node: MessageStructureObject, isRoot = false): void => {
+    const type = node.type.toLowerCase();
+    if (type === 'message/rfc822') return;
+    for (const child of node.childNodes ?? []) visit(child);
+    const part = node.part ?? (isRoot && !node.childNodes?.length ? '1' : undefined);
+    const hasFilename = Boolean(
+      node.dispositionParameters?.filename || node.parameters?.name,
+    );
+    if (
+      part &&
+      (type === 'text/plain' || type === 'text/html') &&
+      node.disposition?.toLowerCase() !== 'attachment' &&
+      !hasFilename
+    ) {
+      parts.push({ part, type, charset: node.parameters?.charset });
+    }
+  };
+  visit(structure, true);
+  return parts;
+}
+
+export function messageAttachmentSummaries(
+  structure: MessageStructureObject,
+): MailAttachmentSummary[] {
+  const attachments: MailAttachmentSummary[] = [];
+  const visit = (
+    node: MessageStructureObject,
+    insideRelated: boolean,
+    isRoot = false,
+  ): void => {
+    const type = node.type.toLowerCase();
+    const related = insideRelated || type === 'multipart/related';
+    if (type === 'message/rfc822' && node.part) {
+      attachments.push({
+        filename:
+          node.dispositionParameters?.filename ||
+          node.parameters?.name ||
+          'Forwarded message.eml',
+        contentType: type,
+        size: node.size ?? 0,
+        related,
+      });
+      return;
+    }
+    for (const child of node.childNodes ?? []) visit(child, related);
+    const part = node.part ?? (isRoot && !node.childNodes?.length ? '1' : undefined);
+    if (!part || node.childNodes?.length) return;
+    const filename =
+      node.dispositionParameters?.filename || node.parameters?.name || 'Unnamed attachment';
+    const isBodyText =
+      (type === 'text/plain' || type === 'text/html') &&
+      node.disposition?.toLowerCase() !== 'attachment' &&
+      filename === 'Unnamed attachment';
+    if (isBodyText) return;
+    attachments.push({
+      filename,
+      contentType: type,
+      size: node.size ?? 0,
+      related: related || node.disposition?.toLowerCase() === 'inline' || Boolean(node.id),
+    });
+  };
+  visit(structure, false, true);
+  return attachments;
+}
+
+function decodedText(content: Buffer | null, charset = 'utf-8'): string {
+  if (!content) return '';
+  try {
+    return new TextDecoder(charset).decode(content).trim();
+  } catch {
+    return new TextDecoder().decode(content).trim();
+  }
+}
+
+async function downloadedText(
+  imap: ImapFlow,
+  uid: number,
+  part: MessageTextPart,
+): Promise<string> {
+  const downloaded = await imap.download(uid, part.part, {
+    uid: true,
+    maxBytes: 5 * 1024 * 1024,
+  });
+  const chunks: Buffer[] = [];
+  for await (const chunk of downloaded.content) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return decodedText(Buffer.concat(chunks), downloaded.meta.charset ?? part.charset);
 }
 
 async function messageSummary(
@@ -226,13 +335,38 @@ export function parsedAddresses(
   });
 }
 
-export async function getFolderMessage(
+const activeMessageRequests = new Map<string, Promise<MessageDetailResult>>();
+
+export function getFolderMessage(
   account: StoredAccount,
   folderPath: string,
   uid: number,
+  lane: ImapConnectionLane = 'interactive',
 ): Promise<MessageDetailResult> {
   const cachedBody = mailCache().getMessageBody(account.id, folderPath, uid);
-  if (cachedBody) return { ok: true, messageDetail: cachedBody, source: 'cache' };
+  if (cachedBody) {
+    return Promise.resolve({ ok: true, messageDetail: cachedBody, source: 'cache' });
+  }
+
+  const requestKey = `${account.id}\u0000${folderPath}\u0000${uid}`;
+  const activeRequest = activeMessageRequests.get(requestKey);
+  if (activeRequest) return activeRequest;
+
+  const request = fetchFolderMessage(account, folderPath, uid, lane).finally(() => {
+    if (activeMessageRequests.get(requestKey) === request) {
+      activeMessageRequests.delete(requestKey);
+    }
+  });
+  activeMessageRequests.set(requestKey, request);
+  return request;
+}
+
+async function fetchFolderMessage(
+  account: StoredAccount,
+  folderPath: string,
+  uid: number,
+  lane: ImapConnectionLane,
+): Promise<MessageDetailResult> {
 
   let password = '';
 
@@ -243,15 +377,53 @@ export async function getFolderMessage(
         password = secret;
         const lock = await imap.getMailboxLock(folderPath, { readOnly: true });
         try {
-          const fetched = await imap.fetchOne(uid, { source: true }, { uid: true });
-          if (!fetched || !fetched.source) {
+          const fetched = await imap.fetchOne(
+            uid,
+            { headers: true, bodyStructure: true },
+            { uid: true },
+          );
+          if (!fetched || !fetched.headers || !fetched.bodyStructure) {
             return {
               ok: false,
               message: 'This message is no longer available.',
             };
           }
 
-          const parsed = await simpleParser(fetched.source);
+          const parsed = await simpleParser(fetched.headers, {
+            skipHtmlToText: true,
+            skipTextToHtml: true,
+          });
+          const textParts = messageTextParts(fetched.bodyStructure);
+          const downloadedParts = new Map<string, string>();
+          if (!fetched.bodyStructure.childNodes?.length && textParts[0]) {
+            downloadedParts.set(
+              textParts[0].part,
+              await downloadedText(imap, uid, textParts[0]),
+            );
+          } else if (textParts.length) {
+            const downloads = await imap.downloadMany(
+              uid,
+              [...new Set(textParts.map(({ part }) => part))],
+              { uid: true },
+            );
+            for (const part of textParts) {
+              downloadedParts.set(
+                part.part,
+                decodedText(
+                  downloads[part.part]?.content ?? null,
+                  downloads[part.part]?.meta.charset ?? part.charset,
+                ),
+              );
+            }
+          }
+          const plainText = textParts
+            .filter(({ type }) => type === 'text/plain')
+            .map(({ part }) => downloadedParts.get(part) ?? '')
+            .find(Boolean);
+          const html = textParts
+            .filter(({ type }) => type === 'text/html')
+            .map(({ part }) => downloadedParts.get(part) ?? '')
+            .find(Boolean);
           const messageDetail: MailMessageDetail = {
             uid,
             messageId: parsed.messageId ?? null,
@@ -261,15 +433,10 @@ export async function getFolderMessage(
             cc: parsedAddresses(parsed.cc),
             replyTo: parsedAddresses(parsed.replyTo),
             sentAt: mailDateString(parsed.date),
-            text: parsed.text?.trim() || 'This message has no readable text content.',
-            html: sanitizedMessageHtml(parsed.html),
-            htmlHasQuotedText: hasQuotedHtml(parsed.html),
-            attachments: parsed.attachments.map((attachment) => ({
-              filename: attachment.filename || 'Unnamed attachment',
-              contentType: attachment.contentType,
-              size: attachment.size,
-              related: attachment.related,
-            })),
+            text: plainText || 'This message has no readable text content.',
+            html: sanitizedMessageHtml(html || false),
+            htmlHasQuotedText: hasQuotedHtml(html || false),
+            attachments: messageAttachmentSummaries(fetched.bodyStructure),
           };
           mailCache().putMessageBody(account.id, folderPath, messageDetail);
           return { ok: true, messageDetail, source: 'server' };
@@ -278,7 +445,7 @@ export async function getFolderMessage(
         }
       },
       30_000,
-      'background',
+      lane,
     );
   } catch (error) {
     return {

@@ -474,6 +474,7 @@ export const ACCOUNT_CHANNELS = {
   listMessages: 'messages:list',
   searchMessages: 'messages:search',
   getMessage: 'messages:get',
+  prefetchMessage: 'messages:prefetch',
   setMessageUnread: 'messages:set-unread',
   setMessageFlagged: 'messages:set-flagged',
   deleteMessages: 'messages:delete',

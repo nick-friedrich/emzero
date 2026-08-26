@@ -61,6 +61,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: action controls, selection toolbar, and mail-view types/helpers.
 - `features/message-move.tsx` — account-and-folder destination picker for single and bulk message moves.
 - `features/conversation-reader.tsx` — conversation reader, message body/thread cards, received-attachment saving, quoted-content display, and inline reply composer.
+- `features/message-prefetch.ts` — bounded idle, hover, and keyboard-focus message-body prefetching shared by folder, unified, and search lists.
 - `features/attachment-picker.tsx` — reusable outgoing-attachment selection and removal UI for compose and reply.
 - `features/draft-autosave.ts` — debounced, sequential IMAP autosave state shared by compose and inline reply.
 - `features/bulk-operation.tsx` — persistent progress/status bar for background bulk message jobs.
