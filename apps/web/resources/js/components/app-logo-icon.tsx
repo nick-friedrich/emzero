@@ -6,10 +6,10 @@ export default function AppLogoIcon(
     return (
         <img
             {...props}
-            src="/brand/emzero-logo.png"
+            src="/brand/emzero-logo-header.webp"
             alt=""
-            width={1254}
-            height={1254}
+            width={192}
+            height={192}
         />
     );
 }

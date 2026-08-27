@@ -29,6 +29,7 @@ This index records where application responsibilities live. Read it before makin
 ## Desktop process boundaries
 
 - `apps/desktop/src/main/index.ts` — Electron main-process startup, window creation, and lifecycle.
+- `apps/desktop/assets/` — renderer and native package branding assets.
 - `apps/desktop/src/main/accounts.ts` — trusted IPC validation and handler registration; delegates privileged work to focused main-process services.
 - `apps/desktop/src/main/account-storage.ts` — persisted, user-ordered account records and conversion to renderer-safe account summaries.
 - `apps/desktop/src/main/account-connection.ts` — IMAP/SMTP account connectivity verification.

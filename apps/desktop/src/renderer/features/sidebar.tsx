@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useState,
+  type CSSProperties,
   type DragEvent,
 } from 'react';
 import {
@@ -11,7 +12,6 @@ import {
   GripVertical,
   Inbox,
   LoaderCircle,
-  Mail,
   Palette,
   PenLine,
   Plus,
@@ -69,6 +69,7 @@ import {
   orderedFolderTree,
   visibleFolderTree,
 } from '../../shared/accounts';
+import emzeroLogoUrl from '../../../assets/emzero-logo-header.webp';
 import { Field } from './form-field';
 import {
   FolderIcon,
@@ -469,6 +470,10 @@ export function Sidebar({
   };
   const editorFolderState = folderEditor ? folderStates[folderEditor.account.id] : undefined;
 
+  const logoStyle = {
+    '--emzero-logo-mask': `url("${emzeroLogoUrl}")`,
+  } as CSSProperties;
+
   return (
     <>
       <aside
@@ -478,9 +483,15 @@ export function Sidebar({
       )}
     >
       <div className="mb-8 flex shrink-0 items-center gap-3 px-2">
-        <div className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-          <Mail className="size-4" />
-        </div>
+        <span className="emzero-logo size-9 shrink-0" style={logoStyle}>
+          <img
+            src={emzeroLogoUrl}
+            alt=""
+            width={192}
+            height={192}
+            className="size-full object-contain"
+          />
+        </span>
         <div className="min-w-0 flex-1">
           <p className="font-semibold tracking-tight">Emzero</p>
           <p className="text-xs text-muted-foreground">Mail</p>

@@ -15,7 +15,7 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                     href={home()}
                     className="flex items-center gap-2.5 text-lg font-black tracking-[-0.04em]"
                 >
-                    <AppLogoIcon className="size-9 object-contain" />
+                    <AppLogoIcon className="size-9 object-contain drop-shadow-sm" />
                     emzero
                 </Link>
                 <div className="flex items-center gap-6 text-sm text-stone-500">

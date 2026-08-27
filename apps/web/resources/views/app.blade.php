@@ -30,8 +30,9 @@
             }
         </style>
 
-        <link rel="icon" href="/brand/emzero-logo.png" type="image/png">
-        <link rel="apple-touch-icon" href="/brand/emzero-logo.png">
+        <link rel="icon" href="/favicon.ico" sizes="any">
+        <link rel="icon" href="/brand/emzero-favicon.png" type="image/png" sizes="64x64">
+        <link rel="apple-touch-icon" href="/brand/emzero-apple-touch-icon.png" sizes="180x180">
 
         @fonts
 

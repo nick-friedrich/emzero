@@ -24,6 +24,7 @@ const createWindow = (): void => {
     minWidth: 400,
     minHeight: 600,
     backgroundColor: '#f5f5f4',
+    icon: path.join(app.getAppPath(), 'assets', 'emzero-logo.png'),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

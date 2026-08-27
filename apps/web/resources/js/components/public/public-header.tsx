@@ -14,7 +14,7 @@ export function PublicHeader() {
                 className="flex items-center gap-2.5"
                 aria-label="Emzero home"
             >
-                <AppLogoIcon className="size-10 object-contain" />
+                <AppLogoIcon className="size-10 object-contain drop-shadow-sm" />
                 <span className="text-lg font-bold tracking-[-0.04em]">
                     emzero
                 </span>
