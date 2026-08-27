@@ -33,6 +33,7 @@ import {
 } from '../../shared/conversations';
 import {
   BulkActionToolbar,
+  conversationAvatarUrl,
   ConversationActions,
   SelectionCheckbox,
   conversationOpponent,
@@ -44,6 +45,7 @@ import {
   messageCountInFolder,
   messageDate,
   performConversationAction,
+  SenderAvatar,
   type ConversationAction,
   type FolderSelection,
   type MessageLoadState,
@@ -607,7 +609,10 @@ export function MessageList({
 
   const list = (
     <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
-      <header className="flex min-w-0 items-center justify-between gap-3 border-b border-border bg-card py-4 pl-16 pr-4 lg:px-6">
+      <header className={cn(
+        'flex min-w-0 items-center justify-between gap-3 border-b border-border bg-card py-4 pl-16 pr-4 lg:px-6',
+        mailLayout === 'split' && 'lg:px-4',
+      )}>
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold tracking-tight">
             {displayFolderName(selection.folder)}
@@ -618,7 +623,7 @@ export function MessageList({
         </div>
         <div className="flex items-center gap-3">
           <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
-      {state.status === 'loaded' && (
+          {mailLayout === 'list' && state.status === 'loaded' && (
             <span className="hidden whitespace-nowrap text-xs text-muted-foreground lg:inline">
               {conversations.length} {conversations.length === 1 ? 'conversation' : 'conversations'}
               {' · '}
@@ -738,15 +743,38 @@ export function MessageList({
             return (
               <div
                 key={conversation.id}
-                className={`group flex min-w-0 items-center border-b border-border hover:bg-accent/60 ${selectedConversationIds.has(conversation.id) ? 'bg-accent/60' : ''}`}
+                className={cn(
+                  'group relative flex min-w-0 items-center border-b border-border hover:bg-accent/60',
+                  selectedConversationIds.has(conversation.id) && 'bg-accent/60',
+                  mailLayout === 'split' && selectedConversation?.id === conversation.id && 'bg-accent',
+                )}
                 role="listitem"
               >
-                <div className="pl-4 lg:pl-6" onClick={(event) => event.stopPropagation()}>
+                <div
+                  className={mailLayout === 'split'
+                    ? 'relative ml-3 grid size-8 shrink-0 place-items-center'
+                    : 'pl-4 lg:pl-6'}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {mailLayout === 'split' && (
+                    <SenderAvatar
+                      label={opponent}
+                      imageUrl={conversationAvatarUrl(conversation.messages, selection.account)}
+                      className={cn(
+                        selectedConversationIds.size > 0
+                          ? 'opacity-0'
+                          : 'opacity-100 group-hover:opacity-0 group-focus-within:opacity-0',
+                      )}
+                    />
+                  )}
                   <SelectionCheckbox
                     checked={selectedConversationIds.has(conversation.id)}
                     className={cn(
                       'transition-opacity group-hover:opacity-100 focus-within:opacity-100',
-                      selectedConversationIds.size > 0 ? 'opacity-100' : 'opacity-0',
+                      mailLayout === 'split' && 'absolute inset-0 m-auto',
+                      selectedConversationIds.size > 0
+                        ? 'opacity-100'
+                        : 'opacity-0 group-focus-within:opacity-100',
                     )}
                     label={`Select conversation: ${conversation.subject}`}
                     onChange={(shiftKey) => {
@@ -774,7 +802,12 @@ export function MessageList({
                     if (node) conversationRowRefs.current.set(conversation.id, node);
                     else conversationRowRefs.current.delete(conversation.id);
                   }}
-                  className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-left focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6"
+                  className={cn(
+                    'grid min-w-0 flex-1 items-center gap-y-1 text-left focus-visible:bg-accent focus-visible:outline-none',
+                    mailLayout === 'split'
+                      ? 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-3 py-3.5'
+                      : 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-4 py-3 lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6',
+                  )}
                   onMouseEnter={() => prefetchSoon(prefetchTarget)}
                   onMouseLeave={(event) => {
                     if (document.activeElement !== event.currentTarget) cancelPrefetch(prefetchTarget);
@@ -820,7 +853,13 @@ export function MessageList({
                     </span>
                   </div>
                   <p
-                    className={`col-span-2 col-start-1 row-start-2 min-w-0 truncate pl-3.5 text-sm lg:col-auto lg:row-auto lg:pl-0 ${unread ? 'font-semibold' : ''}`}
+                    className={cn(
+                      'min-w-0 truncate text-sm',
+                      unread && 'font-semibold',
+                      mailLayout === 'split'
+                        ? 'col-span-2 col-start-1 row-start-2 pl-3.5'
+                        : 'col-span-2 col-start-1 row-start-2 pl-3.5 lg:col-auto lg:row-auto lg:pl-0',
+                    )}
                   >
                     {conversation.subject}
                     {conversation.messages.length > 1 && (
@@ -829,14 +868,23 @@ export function MessageList({
                       </span>
                     )}
                   </p>
-                  <div className="col-start-2 row-start-1 flex items-center gap-3 text-xs text-muted-foreground lg:col-auto lg:row-auto">
+                  <div className={cn(
+                    'flex items-center gap-2 text-xs text-muted-foreground',
+                    mailLayout === 'split'
+                      ? 'col-start-2 row-start-1'
+                      : 'col-start-2 row-start-1 lg:col-auto lg:row-auto',
+                  )}>
                     {flagged && (
                       <Star className="size-3.5 fill-primary text-primary" aria-label="Flagged" />
                     )}
                     <time dateTime={date ?? undefined}>{messageDate(date)}</time>
                   </div>
                 </button>
-                <div className="pr-3 lg:pr-5">
+                <div className={cn(
+                  mailLayout === 'split'
+                    ? 'absolute bottom-1.5 right-2 z-10 rounded-md border border-border bg-card p-0.5 opacity-0 shadow-md transition-opacity group-hover:opacity-100 focus-within:opacity-100'
+                    : 'pr-3 lg:pr-5',
+                )}>
                   <ConversationActions
                     accounts={accounts}
                     sourceAccountId={selection.account.id}
@@ -875,7 +923,7 @@ export function MessageList({
   if (mailLayout === 'list') return list;
 
   return (
-    <div className="grid min-h-0 min-w-0 grid-cols-[minmax(19rem,0.85fr)_minmax(24rem,1.35fr)] overflow-hidden">
+    <div className="grid min-h-0 min-w-0 grid-cols-[minmax(20rem,24rem)_minmax(0,1fr)] overflow-hidden">
       <div className="min-h-0 min-w-0 border-r border-border">{list}</div>
       <div className="min-h-0 min-w-0 bg-background">
         {reader ?? (

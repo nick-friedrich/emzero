@@ -1,5 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { hasRemoteImages, htmlDocument } from './mail-common';
+import {
+  avatarColorClass,
+  avatarInitials,
+  hasRemoteImages,
+  htmlDocument,
+  safeAvatarUrl,
+} from './mail-common';
+
+describe('conversation avatars', () => {
+  it('creates compact initials from names and email addresses', () => {
+    expect(avatarInitials('Maya Chen')).toBe('MC');
+    expect(avatarInitials('maya.chen@example.com')).toBe('MC');
+    expect(avatarInitials('Support')).toBe('SU');
+    expect(avatarInitials('')).toBe('?');
+  });
+
+  it('assigns a stable palette color for a sender', () => {
+    expect(avatarColorClass('Maya Chen')).toBe(avatarColorClass('Maya Chen'));
+    expect(avatarColorClass('Maya Chen')).toMatch(/^bg-/);
+  });
+
+  it('allows cached raster data but rejects remote and SVG avatar sources', () => {
+    expect(safeAvatarUrl('data:image/png;base64,iVBORw0KGgo=')).toBe(
+      'data:image/png;base64,iVBORw0KGgo=',
+    );
+    expect(safeAvatarUrl('https://tracking.example/avatar.png')).toBeNull();
+    expect(safeAvatarUrl('data:image/svg+xml;base64,PHN2Zz4=')).toBeNull();
+  });
+});
 
 describe('HTML email documents', () => {
   it('detects remote images but not embedded data images', () => {

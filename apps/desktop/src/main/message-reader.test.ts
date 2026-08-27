@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
+  faceHeaderAvatar,
   mailDateString,
   referenceIds,
   shouldFullyReconcileFolder,
 } from './message-reader.js';
 
+const onePixelPng =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
 describe('message reader helpers', () => {
+  it('accepts embedded PNG Face headers and rejects unsafe avatar values', () => {
+    expect(faceHeaderAvatar(onePixelPng)).toBe(`data:image/png;base64,${onePixelPng}`);
+    expect(faceHeaderAvatar('https://tracking.example/avatar.png')).toBeNull();
+    expect(faceHeaderAvatar(Buffer.from('not an image').toString('base64'))).toBeNull();
+  });
+
   it('normalizes valid dates and rejects invalid dates', () => {
     expect(mailDateString('2026-08-25T08:30:00Z')).toBe('2026-08-25T08:30:00.000Z');
     expect(mailDateString('not-a-date')).toBeNull();

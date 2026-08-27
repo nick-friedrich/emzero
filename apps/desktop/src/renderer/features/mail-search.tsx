@@ -282,9 +282,21 @@ export function MailSearch({
 
   const list = (
     <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
-      <header className="border-b border-border bg-card py-3 pl-16 pr-4 lg:px-6">
-        <form className="mx-auto flex max-w-4xl flex-wrap items-center gap-2" onSubmit={runSearch}>
-          <label className="relative min-w-52 flex-1">
+      <header className={cn(
+        'border-b border-border bg-card py-3 pl-16 pr-4 lg:px-6',
+        mailLayout === 'split' && 'lg:px-4',
+      )}>
+        <form
+          className={cn(
+            'mx-auto flex flex-wrap items-center gap-2',
+            mailLayout === 'split' ? 'max-w-none' : 'max-w-4xl',
+          )}
+          onSubmit={runSearch}
+        >
+          <label className={cn(
+            'relative min-w-52 flex-1',
+            mailLayout === 'split' && 'basis-full',
+          )}>
             <span className="sr-only">Search cached mail</span>
             <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <input
@@ -300,7 +312,10 @@ export function MailSearch({
           <label>
             <span className="sr-only">Account</span>
             <select
-              className="field min-w-36 px-3 text-sm"
+              className={cn(
+                'field px-3 text-sm',
+                mailLayout === 'split' ? 'w-24 min-w-0' : 'min-w-36',
+              )}
               value={accountId}
               onChange={(event) => {
                 if (searchRequest.query) setState({ status: 'loading' });
@@ -317,7 +332,10 @@ export function MailSearch({
           <label>
             <span className="sr-only">Sort results</span>
             <select
-              className="field min-w-36 px-3 text-sm"
+              className={cn(
+                'field px-3 text-sm',
+                mailLayout === 'split' ? 'w-24 min-w-0' : 'min-w-36',
+              )}
               value={sort}
               onChange={(event) => {
                 if (searchRequest.query) setState({ status: 'loading' });
@@ -330,13 +348,17 @@ export function MailSearch({
               <option value="oldest">Oldest first</option>
             </select>
           </label>
-          <Button type="submit" disabled={!query.trim() || state.status === 'loading'}>
+          <Button
+            type="submit"
+            className={mailLayout === 'split' ? 'px-3' : undefined}
+            disabled={!query.trim() || state.status === 'loading'}
+          >
             {state.status === 'loading' ? (
               <LoaderCircle className="size-4 animate-spin" />
             ) : (
               <Search className="size-4" />
             )}
-            Search
+            <span className={mailLayout === 'split' ? 'sr-only' : undefined}>Search</span>
           </Button>
           <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
         </form>
@@ -394,7 +416,15 @@ export function MailSearch({
                   key={`${item.accountId}:${item.folder.path}:${item.message.uid}`}
                   type="button"
                   role="listitem"
-                  className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 border-b border-border px-4 py-3 text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:px-6"
+                  className={cn(
+                    'grid w-full min-w-0 gap-y-1 border-b border-border text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none',
+                    mailLayout === 'split'
+                      ? 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-4 py-3.5'
+                      : 'grid-cols-[minmax(0,1fr)_auto] gap-x-4 px-4 py-3 lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:px-6',
+                    selected?.item.accountId === item.accountId &&
+                      selected.item.folder.path === item.folder.path &&
+                      selected.item.message.uid === item.message.uid && 'bg-accent',
+                  )}
                   onMouseEnter={() => prefetchSoon(prefetchTarget)}
                   onMouseLeave={(event) => {
                     if (document.activeElement !== event.currentTarget) cancelPrefetch(prefetchTarget);
@@ -413,7 +443,12 @@ export function MailSearch({
                       {addressLabel(item.message.from)}
                     </span>
                   </div>
-                  <div className="min-w-0 lg:row-span-2">
+                  <div className={cn(
+                    'min-w-0',
+                    mailLayout === 'split'
+                      ? 'col-span-2 col-start-1 row-start-2 pl-3.5'
+                      : 'lg:row-span-2',
+                  )}>
                     <p className={cn('truncate text-sm', item.message.unread && 'font-semibold')}>
                       {item.message.subject || '(No subject)'}
                     </p>
@@ -421,10 +456,21 @@ export function MailSearch({
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.snippet}</p>
                     )}
                   </div>
-                  <time className="text-xs text-muted-foreground" dateTime={date ?? undefined}>
+                  <time
+                    className={cn(
+                      'text-xs text-muted-foreground',
+                      mailLayout === 'split' && 'col-start-2 row-start-1',
+                    )}
+                    dateTime={date ?? undefined}
+                  >
                     {messageDate(date)}
                   </time>
-                  <p className="col-span-2 truncate pl-3.5 text-xs text-muted-foreground lg:col-span-1 lg:col-start-1 lg:pl-0">
+                  <p className={cn(
+                    'truncate text-xs text-muted-foreground',
+                    mailLayout === 'split'
+                      ? 'col-span-2 col-start-1 row-start-3 pl-3.5'
+                      : 'col-span-2 pl-3.5 lg:col-span-1 lg:col-start-1 lg:pl-0',
+                  )}>
                     {account?.name ?? 'Unknown account'} / {displayFolderName(item.folder)}
                   </p>
                 </button>
@@ -440,7 +486,7 @@ export function MailSearch({
   if (mailLayout === 'list') return list;
 
   return (
-    <div className="grid min-h-0 min-w-0 grid-cols-[minmax(19rem,0.85fr)_minmax(24rem,1.35fr)] overflow-hidden">
+    <div className="grid min-h-0 min-w-0 grid-cols-[minmax(20rem,24rem)_minmax(0,1fr)] overflow-hidden">
       <div className="min-h-0 min-w-0 border-r border-border">{list}</div>
       <div className="min-h-0 min-w-0 bg-background">
         {reader ?? (

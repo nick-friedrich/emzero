@@ -140,6 +140,88 @@ export function addressDetails(addresses: MailMessageSummary['from']): string {
     .join(', ');
 }
 
+const avatarColorClasses = [
+  'bg-blue-600',
+  'bg-emerald-600',
+  'bg-violet-600',
+  'bg-amber-600',
+  'bg-rose-600',
+  'bg-cyan-600',
+] as const;
+
+export function avatarInitials(label: string): string {
+  const normalized = label.trim().replace(/^to:\s*/i, '');
+  const localPart = normalized.includes('@') ? normalized.split('@')[0] : normalized;
+  const parts = localPart.split(/[\s._-]+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts.at(-1)![0]}`.toUpperCase();
+}
+
+export function avatarColorClass(label: string): string {
+  let hash = 0;
+  for (const character of label) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return avatarColorClasses[hash % avatarColorClasses.length];
+}
+
+export function safeAvatarUrl(value: string | null | undefined): string | null {
+  return value && /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/i.test(value)
+    ? value
+    : null;
+}
+
+export function conversationAvatarUrl(
+  messages: MailMessageSummary[],
+  account: AccountSummary,
+): string | null {
+  const ownAddresses = new Set(
+    [account.email, account.username]
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const addresses = messages.flatMap((message) => [...message.from, ...message.to]);
+  const opponentAvatar = addresses.find(({ address, avatarUrl }) =>
+    Boolean(
+      safeAvatarUrl(avatarUrl) &&
+      (!address || !ownAddresses.has(address.trim().toLowerCase())),
+    ),
+  );
+  return safeAvatarUrl(opponentAvatar?.avatarUrl);
+}
+
+export function SenderAvatar({
+  label,
+  imageUrl,
+  className,
+}: {
+  label: string;
+  imageUrl?: string | null;
+  className?: string;
+}) {
+  const safeImageUrl = safeAvatarUrl(imageUrl);
+  if (safeImageUrl) {
+    return (
+      <img
+        src={safeImageUrl}
+        alt=""
+        className={cn('size-7 rounded-full object-cover transition-opacity', className)}
+      />
+    );
+  }
+  return (
+    <span
+      className={cn(
+        'grid size-7 place-items-center rounded-full text-[0.65rem] font-semibold tracking-wide text-white transition-opacity',
+        avatarColorClass(label),
+        className,
+      )}
+      aria-hidden="true"
+    >
+      {avatarInitials(label)}
+    </span>
+  );
+}
+
 export function conversationOpponent(
   messages: MailMessageSummary[],
   account: AccountSummary,

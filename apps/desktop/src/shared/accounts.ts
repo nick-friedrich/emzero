@@ -226,6 +226,8 @@ export function visibleFolderTree(
 export interface MailAddressSummary {
   name: string | null;
   address: string | null;
+  /** Locally cached image data. Remote message-provided URLs are never exposed here. */
+  avatarUrl?: string | null;
 }
 
 export interface MailMessageSummary {

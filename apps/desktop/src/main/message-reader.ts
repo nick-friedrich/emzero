@@ -18,11 +18,41 @@ import {
 
 export function mailAddresses(
   value: Array<{ name?: string; address?: string }> | undefined,
+  senderAvatarUrl: string | null = null,
 ): MailAddressSummary[] {
-  return (value ?? []).map(({ name, address }) => ({
+  return (value ?? []).map(({ name, address }, index) => ({
     name: name ?? null,
     address: address ?? null,
+    ...(index === 0 && senderAvatarUrl ? { avatarUrl: senderAvatarUrl } : {}),
   }));
+}
+
+export function faceHeaderAvatar(value: unknown): string | null {
+  const header = Array.isArray(value) ? value[0] : value;
+  if (typeof header !== 'string') return null;
+  const encoded = header.replace(/\s+/g, '');
+  if (!encoded || encoded.length > 140_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
+    return null;
+  }
+  const image = Buffer.from(encoded, 'base64');
+  const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const hasPngHeader =
+    image.length >= 24 &&
+    image.subarray(0, 8).equals(pngSignature) &&
+    image.subarray(12, 16).toString('ascii') === 'IHDR';
+  const width = hasPngHeader ? image.readUInt32BE(16) : 0;
+  const height = hasPngHeader ? image.readUInt32BE(20) : 0;
+  if (
+    image.length > 100_000 ||
+    !hasPngHeader ||
+    width === 0 ||
+    height === 0 ||
+    width > 256 ||
+    height > 256
+  ) {
+    return null;
+  }
+  return `data:image/png;base64,${encoded}`;
 }
 
 export function mailDateString(value: Date | string | undefined): string | null {
@@ -69,6 +99,7 @@ async function messageSummary(
         skipTextToHtml: true,
       })
     : null;
+  const senderAvatarUrl = faceHeaderAvatar(parsedHeaders?.headers.get('face'));
   return {
     folderPath,
     uid: message.uid,
@@ -76,7 +107,7 @@ async function messageSummary(
     inReplyTo: message.envelope?.inReplyTo ?? null,
     references: referenceIds(parsedHeaders?.references),
     subject: message.envelope?.subject?.trim() || '(No subject)',
-    from: mailAddresses(message.envelope?.from),
+    from: mailAddresses(message.envelope?.from, senderAvatarUrl),
     to: mailAddresses(message.envelope?.to),
     sentAt: mailDateString(message.envelope?.date),
     receivedAt: mailDateString(message.internalDate),
@@ -92,7 +123,7 @@ const summaryFetchQuery: FetchQueryObject = {
   flags: true,
   internalDate: true,
   size: true,
-  headers: ['references'],
+  headers: ['references', 'face'],
 };
 
 async function fetchSummaries(
