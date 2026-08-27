@@ -16,6 +16,7 @@ import {
   PenLine,
   Plus,
   PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   Search,
   Settings2,
@@ -176,7 +177,8 @@ export function Sidebar({
   onManage,
   onReorder,
   onCompose,
-  onUnpin,
+  pinned,
+  onPinnedChange,
   className,
 }: {
   accounts: AccountSummary[];
@@ -188,7 +190,8 @@ export function Sidebar({
   onManage: () => void;
   onReorder: (accountIds: string[]) => Promise<boolean>;
   onCompose: () => void;
-  onUnpin?: () => void;
+  pinned?: boolean;
+  onPinnedChange?: (pinned: boolean) => void;
   className?: string;
 }) {
   const { theme, setTheme, interfaceFont, setInterfaceFont } = useTheme();
@@ -482,15 +485,17 @@ export function Sidebar({
           <p className="font-semibold tracking-tight">Emzero</p>
           <p className="text-xs text-muted-foreground">Mail</p>
         </div>
-        {onUnpin && (
+        {onPinnedChange && pinned !== undefined && (
           <Button
             variant="ghost"
             className="size-8 shrink-0 px-0"
-            aria-label="Unpin navigation"
-            title="Unpin navigation"
-            onClick={onUnpin}
+            aria-label={pinned ? 'Unpin navigation' : 'Pin navigation'}
+            title={pinned ? 'Unpin navigation' : 'Keep navigation open'}
+            onClick={() => onPinnedChange(!pinned)}
           >
-            <PanelLeftClose className="size-4" />
+            {pinned
+              ? <PanelLeftClose className="size-4" />
+              : <PanelLeftOpen className="size-4" />}
           </Button>
         )}
       </div>

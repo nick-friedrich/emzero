@@ -58,6 +58,7 @@ export function App() {
   const [sidebarPinned, setSidebarPinned] = useState(
     () => window.localStorage.getItem(sidebarPinnedStorageKey) !== 'false',
   );
+  const [sidebarHoverOpen, setSidebarHoverOpen] = useState(false);
   const [mailLayout, setMailLayout] = useState<MailLayout>(
     () => window.localStorage.getItem(mailLayoutStorageKey) === 'split' ? 'split' : 'list',
   );
@@ -228,7 +229,7 @@ export function App() {
   return (
     <main
       className="grid h-screen grid-cols-1 overflow-hidden bg-background text-foreground lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]"
-      style={{ '--sidebar-width': sidebarPinned ? `${sidebarWidth}px` : '0px' } as CSSProperties}
+      style={{ '--sidebar-width': sidebarPinned ? `${sidebarWidth}px` : '3rem' } as CSSProperties}
     >
       {sidebarPinned && (
         <div className="relative hidden min-h-0 min-w-0 lg:flex">
@@ -238,7 +239,11 @@ export function App() {
             selection={selection}
             syncStatus={syncStatus}
             syncRevision={syncRevision}
-            onUnpin={() => setSidebarPinned(false)}
+            pinned
+            onPinnedChange={(pinned) => {
+              setSidebarPinned(pinned);
+              setSidebarHoverOpen(!pinned);
+            }}
             onSelect={(nextSelection) => {
               setSelection(nextSelection);
               setShowSetup(false);
@@ -285,17 +290,92 @@ export function App() {
           />
         </div>
       )}
-      {!sidebarPinned && <div className="hidden lg:block" aria-hidden="true" />}
       {!sidebarPinned && (
-        <Button
-          variant="secondary"
-          className="fixed left-3 top-3 z-40 hidden size-10 border border-border bg-card px-0 shadow-sm lg:flex"
-          aria-label="Pin navigation"
-          title="Pin navigation"
-          onClick={() => setSidebarPinned(true)}
-        >
-          <PanelLeftOpen className="size-5" />
-        </Button>
+        <>
+          <button
+            type="button"
+            className="group hidden min-h-0 w-full items-start justify-center border-r border-border bg-sidebar pt-4 text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground lg:flex"
+            aria-label="Reveal navigation"
+            aria-expanded={sidebarHoverOpen}
+            title="Hover to reveal navigation"
+            onMouseEnter={() => setSidebarHoverOpen(true)}
+            onFocus={() => setSidebarHoverOpen(true)}
+            onClick={() => setSidebarHoverOpen(true)}
+          >
+            <span className="grid size-8 place-items-center rounded-md transition-colors group-hover:bg-card group-focus-visible:bg-card">
+              <PanelLeftOpen className="size-4" />
+            </span>
+          </button>
+          <div
+            className={`fixed inset-y-0 left-0 z-50 hidden min-h-0 shadow-2xl transition-transform duration-200 ease-out lg:flex ${
+              sidebarHoverOpen ? 'translate-x-0' : '-translate-x-full'
+            }`}
+            style={{ width: sidebarWidth }}
+            inert={!sidebarHoverOpen}
+            onMouseLeave={() => setSidebarHoverOpen(false)}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) {
+                setSidebarHoverOpen(false);
+              }
+            }}
+          >
+            <Sidebar
+              className="min-w-0 flex-1"
+              accounts={accounts}
+              selection={selection}
+              syncStatus={syncStatus}
+              syncRevision={syncRevision}
+              pinned={false}
+              onPinnedChange={(pinned) => {
+                setSidebarPinned(pinned);
+                setSidebarHoverOpen(false);
+              }}
+              onSelect={(nextSelection) => {
+                setSelection(nextSelection);
+                setShowSetup(false);
+              }}
+              onAdd={() => setShowSetup(true)}
+              onManage={() => setSettingsOpen(true)}
+              onReorder={async (accountIds) => {
+                const previous = accounts;
+                const byId = new Map(accounts.map((account) => [account.id, account]));
+                setAccounts(accountIds.flatMap((id) => byId.get(id) ?? []));
+                try {
+                  const result = await window.emzero.accounts.reorder(accountIds);
+                  if (!result.ok || !result.accounts) {
+                    setAccounts(previous);
+                    return false;
+                  }
+                  setAccounts(result.accounts);
+                  return true;
+                } catch {
+                  setAccounts(previous);
+                  return false;
+                }
+              }}
+              onCompose={() => setComposeOpen(true)}
+            />
+            <div
+              role="separator"
+              tabIndex={0}
+              aria-label="Resize navigation"
+              aria-orientation="vertical"
+              aria-valuemin={minimumSidebarWidth}
+              aria-valuemax={maximumSidebarWidth}
+              aria-valuenow={sidebarWidth}
+              className="absolute inset-y-0 right-0 z-20 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-primary/35"
+              onPointerDown={startSidebarResize}
+              onKeyDown={(event) => {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                event.preventDefault();
+                setSidebarWidth((current) => Math.min(
+                  maximumSidebarWidth,
+                  Math.max(minimumSidebarWidth, current + (event.key === 'ArrowRight' ? 16 : -16)),
+                ));
+              }}
+            />
+          </div>
+        </>
       )}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetTrigger asChild>
