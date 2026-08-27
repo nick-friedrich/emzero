@@ -29,10 +29,12 @@ import {
 import {
   addressLabel,
   conversationWithMessage,
+  MailLayoutToggle,
   messageDate,
   performConversationAction,
   type ConversationAction,
   type FolderSelection,
+  type MailLayout,
 } from './mail-common';
 import { ConversationReader } from './conversation-reader';
 import { useMessagePrefetch } from './message-prefetch';
@@ -47,9 +49,13 @@ type SearchLoadState =
 export function MailSearch({
   accounts,
   initialQuery,
+  mailLayout,
+  onMailLayoutChange,
 }: {
   accounts: AccountSummary[];
   initialQuery: string;
+  mailLayout: MailLayout;
+  onMailLayoutChange: (layout: MailLayout) => void;
 }) {
   const [query, setQuery] = useState(initialQuery);
   const [searchRequest, setSearchRequest] = useState({
@@ -147,7 +153,8 @@ export function MailSearch({
     setSearchRequest((current) => ({ query: nextQuery, revision: current.revision + 1 }));
   };
 
-  if (selected) {
+  const reader = (() => {
+    if (selected) {
     const account = accounts.find((candidate) => candidate.id === selected.item.accountId);
     if (account) {
       const selection: FolderSelection = {
@@ -267,10 +274,14 @@ export function MailSearch({
         </>
       );
     }
-  }
+    }
+    return null;
+  })();
 
-  return (
-    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+  if (reader && mailLayout === 'list') return reader;
+
+  const list = (
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
       <header className="border-b border-border bg-card py-3 pl-16 pr-4 lg:px-6">
         <form className="mx-auto flex max-w-4xl flex-wrap items-center gap-2" onSubmit={runSearch}>
           <label className="relative min-w-52 flex-1">
@@ -327,6 +338,7 @@ export function MailSearch({
             )}
             Search
           </Button>
+          <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
         </form>
       </header>
 
@@ -423,5 +435,23 @@ export function MailSearch({
       </div>
       {undoBar}
     </section>
+  );
+
+  if (mailLayout === 'list') return list;
+
+  return (
+    <div className="grid min-h-0 min-w-0 grid-cols-[minmax(19rem,0.85fr)_minmax(24rem,1.35fr)] overflow-hidden">
+      <div className="min-h-0 min-w-0 border-r border-border">{list}</div>
+      <div className="min-h-0 min-w-0 bg-background">
+        {reader ?? (
+          <div className="grid h-full place-items-center p-8 text-center text-muted-foreground">
+            <div>
+              <Search className="mx-auto size-8" />
+              <p className="mt-3 text-sm">Select a message to read it here.</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

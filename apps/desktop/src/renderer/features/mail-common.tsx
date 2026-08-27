@@ -16,6 +16,8 @@ import {
   Send,
   Star,
   Trash2,
+  Columns2,
+  Columns3,
 } from 'lucide-react';
 import {
   Button,
@@ -55,6 +57,30 @@ export type MailboxSelection =
   | { kind: 'unified'; mailbox?: 'inbox' | 'starred' | 'trash' }
   | { kind: 'search'; query: string }
   | { kind: 'folder'; account: AccountSummary; folder: MailFolderSummary };
+
+export type MailLayout = 'list' | 'split';
+
+export function MailLayoutToggle({
+  layout,
+  onChange,
+}: {
+  layout: MailLayout;
+  onChange: (layout: MailLayout) => void;
+}) {
+  const split = layout === 'split';
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      className="px-3"
+      aria-label={split ? 'Use list layout' : 'Use three-column layout'}
+      title={split ? 'Use list layout' : 'Show messages in a right-hand pane'}
+      onClick={() => onChange(split ? 'list' : 'split')}
+    >
+      {split ? <Columns2 className="size-4" /> : <Columns3 className="size-4" />}
+    </Button>
+  );
+}
 
 export type FolderSelection = Extract<MailboxSelection, { kind: 'folder' }>;
 

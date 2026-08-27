@@ -40,12 +40,14 @@ import {
   conversationWithFlaggedValues,
   conversationWithUnreadValues,
   isEditableTarget,
+  MailLayoutToggle,
   messageCountInFolder,
   messageDate,
   performConversationAction,
   type ConversationAction,
   type FolderSelection,
   type MessageLoadState,
+  type MailLayout,
   type StartBulkOperation,
 } from './mail-common';
 import { ConversationReader } from './conversation-reader';
@@ -56,10 +58,14 @@ export function MessageList({
   accounts,
   selection,
   onStartBulkOperation,
+  mailLayout,
+  onMailLayoutChange,
 }: {
   accounts: AccountSummary[];
   selection: FolderSelection;
   onStartBulkOperation: StartBulkOperation;
+  mailLayout: MailLayout;
+  onMailLayoutChange: (layout: MailLayout) => void;
 }) {
   const [state, setState] = useState<MessageLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
@@ -542,8 +548,7 @@ export function MessageList({
     }
   };
 
-  if (selectedConversation) {
-    return (
+  const reader = selectedConversation ? (
       <ConversationReader
         accounts={accounts}
         key={selectedConversation.id}
@@ -594,11 +599,14 @@ export function MessageList({
           });
         }}
       />
-    );
+    ) : null;
+
+  if (reader && mailLayout === 'list') {
+    return reader;
   }
 
-  return (
-    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+  const list = (
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
       <header className="flex min-w-0 items-center justify-between gap-3 border-b border-border bg-card py-4 pl-16 pr-4 lg:px-6">
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold tracking-tight">
@@ -609,6 +617,7 @@ export function MessageList({
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
       {state.status === 'loaded' && (
             <span className="hidden whitespace-nowrap text-xs text-muted-foreground lg:inline">
               {conversations.length} {conversations.length === 1 ? 'conversation' : 'conversations'}
@@ -861,5 +870,23 @@ export function MessageList({
       )}
       {undoBar}
     </section>
+  );
+
+  if (mailLayout === 'list') return list;
+
+  return (
+    <div className="grid min-h-0 min-w-0 grid-cols-[minmax(19rem,0.85fr)_minmax(24rem,1.35fr)] overflow-hidden">
+      <div className="min-h-0 min-w-0 border-r border-border">{list}</div>
+      <div className="min-h-0 min-w-0 bg-background">
+        {reader ?? (
+          <div className="grid h-full place-items-center p-8 text-center text-muted-foreground">
+            <div>
+              <Mail className="mx-auto size-8" />
+              <p className="mt-3 text-sm">Select a conversation to read it here.</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

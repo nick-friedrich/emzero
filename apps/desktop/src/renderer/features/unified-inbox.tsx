@@ -40,12 +40,14 @@ import {
   conversationWithFlaggedValues,
   conversationWithUnreadValues,
   isEditableTarget,
+  MailLayoutToggle,
   messageCountInFolder,
   messageDate,
   performConversationAction,
   type ConversationAction,
   type FolderSelection,
   type StartBulkOperation,
+  type MailLayout,
   type UnifiedConversationItem,
   type UnifiedInboxLoadState,
 } from './mail-common';
@@ -64,10 +66,14 @@ export function UnifiedInbox({
   accounts,
   mailbox,
   onStartBulkOperation,
+  mailLayout,
+  onMailLayoutChange,
 }: {
   accounts: AccountSummary[];
   mailbox: 'inbox' | 'starred' | 'trash';
   onStartBulkOperation: StartBulkOperation;
+  mailLayout: MailLayout;
+  onMailLayoutChange: (layout: MailLayout) => void;
 }) {
   const title = mailbox === 'inbox' ? 'Inbox' : mailbox === 'starred' ? 'Starred' : 'Trash';
   const [state, setState] = useState<UnifiedInboxLoadState>({ status: 'loading' });
@@ -629,8 +635,7 @@ export function UnifiedInbox({
     }
   };
 
-  if (selectedItem) {
-    return (
+  const reader = selectedItem ? (
       <ConversationReader
         accounts={accounts}
         key={`${selectedItem.selection.account.id}:${selectedItem.conversation.id}`}
@@ -671,11 +676,14 @@ export function UnifiedInbox({
           );
         }}
       />
-    );
+    ) : null;
+
+  if (reader && mailLayout === 'list') {
+    return reader;
   }
 
-  return (
-    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+  const list = (
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
       <header className="flex min-w-0 items-center justify-between gap-3 border-b border-border bg-card py-4 pl-16 pr-4 lg:px-6">
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold tracking-tight">{title}</h1>
@@ -684,6 +692,7 @@ export function UnifiedInbox({
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
       {state.status === 'loaded' && (
             <span className="hidden whitespace-nowrap text-xs text-muted-foreground lg:inline">
               {state.items.length} {state.items.length === 1 ? 'conversation' : 'conversations'}
@@ -974,5 +983,23 @@ export function UnifiedInbox({
       )}
       {undoBar}
     </section>
+  );
+
+  if (mailLayout === 'list') return list;
+
+  return (
+    <div className="grid min-h-0 min-w-0 grid-cols-[minmax(19rem,0.85fr)_minmax(24rem,1.35fr)] overflow-hidden">
+      <div className="min-h-0 min-w-0 border-r border-border">{list}</div>
+      <div className="min-h-0 min-w-0 bg-background">
+        {reader ?? (
+          <div className="grid h-full place-items-center p-8 text-center text-muted-foreground">
+            <div>
+              <Inbox className="mx-auto size-8" />
+              <p className="mt-3 text-sm">Select a conversation to read it here.</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

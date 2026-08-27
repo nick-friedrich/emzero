@@ -60,7 +60,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 ## Renderer shell
 
 - `apps/desktop/src/renderer/main.tsx` — React renderer entry point and providers.
-- `apps/desktop/src/renderer/App.tsx` — application-level orchestration only: account loading, current mailbox selection, dialog visibility, sync revision, and active bulk-operation state.
+- `apps/desktop/src/renderer/App.tsx` — application-level orchestration only: account loading, current mailbox selection, persisted sidebar/mail-layout preferences, dialog visibility, sync revision, and active bulk-operation state.
 - `apps/desktop/src/renderer/styles.css` — global Tailwind styles and visual tokens.
 - `apps/desktop/src/renderer/theme.tsx` — theme/font persistence, context, and message color schemes.
 - `apps/desktop/src/renderer/lib/utils.ts` — small renderer-wide helpers such as class merging and range selection.

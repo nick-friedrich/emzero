@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { LoaderCircle, Menu } from 'lucide-react';
+import { useCallback, useEffect, useState, type CSSProperties, type PointerEvent } from 'react';
+import { LoaderCircle, Menu, PanelLeftOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -30,6 +30,23 @@ import { MessageList } from './features/message-list';
 import { Sidebar } from './features/sidebar';
 import { UnifiedInbox } from './features/unified-inbox';
 
+const sidebarWidthStorageKey = 'emzero.sidebar-width';
+const sidebarPinnedStorageKey = 'emzero.sidebar-pinned';
+const mailLayoutStorageKey = 'emzero.mail-layout';
+const minimumSidebarWidth = 200;
+const maximumSidebarWidth = 420;
+
+type MailLayout = 'list' | 'split';
+
+function storedSidebarWidth(): number {
+  const stored = window.localStorage.getItem(sidebarWidthStorageKey);
+  if (stored === null) return 240;
+  const value = Number(stored);
+  return Number.isFinite(value)
+    ? Math.min(maximumSidebarWidth, Math.max(minimumSidebarWidth, value))
+    : 240;
+}
+
 export function App() {
   const [accounts, setAccounts] = useState<AccountSummary[] | null>(null);
   const [providers, setProviders] = useState<MailProvider[]>([]);
@@ -37,6 +54,13 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(storedSidebarWidth);
+  const [sidebarPinned, setSidebarPinned] = useState(
+    () => window.localStorage.getItem(sidebarPinnedStorageKey) !== 'false',
+  );
+  const [mailLayout, setMailLayout] = useState<MailLayout>(
+    () => window.localStorage.getItem(mailLayoutStorageKey) === 'split' ? 'split' : 'list',
+  );
   const [selection, setSelection] = useState<MailboxSelection>({ kind: 'unified' });
   const [syncStatus, setSyncStatus] = useState<MailSyncStatus>({
     state: 'idle',
@@ -44,6 +68,39 @@ export function App() {
   });
   const [syncRevision, setSyncRevision] = useState(0);
   const [bulkOperation, setBulkOperation] = useState<BulkOperationView | null>(null);
+
+  useEffect(() => {
+    window.localStorage.setItem(sidebarWidthStorageKey, String(sidebarWidth));
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    window.localStorage.setItem(sidebarPinnedStorageKey, String(sidebarPinned));
+  }, [sidebarPinned]);
+
+  useEffect(() => {
+    window.localStorage.setItem(mailLayoutStorageKey, mailLayout);
+  }, [mailLayout]);
+
+  const startSidebarResize = (event: PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    const resize = (moveEvent: globalThis.PointerEvent) => {
+      setSidebarWidth(
+        Math.min(maximumSidebarWidth, Math.max(minimumSidebarWidth, startWidth + moveEvent.clientX - startX)),
+      );
+    };
+    const finish = () => {
+      window.removeEventListener('pointermove', resize);
+      window.removeEventListener('pointerup', finish);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', resize);
+    window.addEventListener('pointerup', finish, { once: true });
+  };
 
   useEffect(() => {
     void Promise.allSettled([window.emzero.accounts.list(), window.emzero.providers.list()]).then(
@@ -169,38 +226,77 @@ export function App() {
   }
 
   return (
-    <main className="grid h-screen grid-cols-1 overflow-hidden bg-background text-foreground lg:grid-cols-[15rem_minmax(0,1fr)]">
-      <Sidebar
-        className="hidden lg:flex"
-        accounts={accounts}
-        selection={selection}
-        syncStatus={syncStatus}
-        syncRevision={syncRevision}
-        onSelect={(nextSelection) => {
-          setSelection(nextSelection);
-          setShowSetup(false);
-        }}
-        onAdd={() => setShowSetup(true)}
-        onManage={() => setSettingsOpen(true)}
-        onReorder={async (accountIds) => {
-          const previous = accounts;
-          const byId = new Map(accounts.map((account) => [account.id, account]));
-          setAccounts(accountIds.flatMap((id) => byId.get(id) ?? []));
-          try {
-            const result = await window.emzero.accounts.reorder(accountIds);
-            if (!result.ok || !result.accounts) {
-              setAccounts(previous);
-              return false;
-            }
-            setAccounts(result.accounts);
-            return true;
-          } catch {
-            setAccounts(previous);
-            return false;
-          }
-        }}
-        onCompose={() => setComposeOpen(true)}
-      />
+    <main
+      className="grid h-screen grid-cols-1 overflow-hidden bg-background text-foreground lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]"
+      style={{ '--sidebar-width': sidebarPinned ? `${sidebarWidth}px` : '0px' } as CSSProperties}
+    >
+      {sidebarPinned && (
+        <div className="relative hidden min-h-0 min-w-0 lg:flex">
+          <Sidebar
+            className="min-w-0 flex-1 border-r-0"
+            accounts={accounts}
+            selection={selection}
+            syncStatus={syncStatus}
+            syncRevision={syncRevision}
+            onUnpin={() => setSidebarPinned(false)}
+            onSelect={(nextSelection) => {
+              setSelection(nextSelection);
+              setShowSetup(false);
+            }}
+            onAdd={() => setShowSetup(true)}
+            onManage={() => setSettingsOpen(true)}
+            onReorder={async (accountIds) => {
+              const previous = accounts;
+              const byId = new Map(accounts.map((account) => [account.id, account]));
+              setAccounts(accountIds.flatMap((id) => byId.get(id) ?? []));
+              try {
+                const result = await window.emzero.accounts.reorder(accountIds);
+                if (!result.ok || !result.accounts) {
+                  setAccounts(previous);
+                  return false;
+                }
+                setAccounts(result.accounts);
+                return true;
+              } catch {
+                setAccounts(previous);
+                return false;
+              }
+            }}
+            onCompose={() => setComposeOpen(true)}
+          />
+          <div
+            role="separator"
+            tabIndex={0}
+            aria-label="Resize navigation"
+            aria-orientation="vertical"
+            aria-valuemin={minimumSidebarWidth}
+            aria-valuemax={maximumSidebarWidth}
+            aria-valuenow={sidebarWidth}
+            className="absolute inset-y-0 right-0 z-20 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-primary/35"
+            onPointerDown={startSidebarResize}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+              event.preventDefault();
+              setSidebarWidth((current) => Math.min(
+                maximumSidebarWidth,
+                Math.max(minimumSidebarWidth, current + (event.key === 'ArrowRight' ? 16 : -16)),
+              ));
+            }}
+          />
+        </div>
+      )}
+      {!sidebarPinned && <div className="hidden lg:block" aria-hidden="true" />}
+      {!sidebarPinned && (
+        <Button
+          variant="secondary"
+          className="fixed left-3 top-3 z-40 hidden size-10 border border-border bg-card px-0 shadow-sm lg:flex"
+          aria-label="Pin navigation"
+          title="Pin navigation"
+          onClick={() => setSidebarPinned(true)}
+        >
+          <PanelLeftOpen className="size-5" />
+        </Button>
+      )}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetTrigger asChild>
           <Button
@@ -315,11 +411,15 @@ export function App() {
           accounts={accounts}
           selection={selection}
           onStartBulkOperation={startBulkOperation}
+          mailLayout={mailLayout}
+          onMailLayoutChange={setMailLayout}
         />
       ) : selection.kind === 'search' ? (
         <MailSearch
           accounts={accounts}
           initialQuery={selection.query}
+          mailLayout={mailLayout}
+          onMailLayoutChange={setMailLayout}
         />
       ) : (
         <UnifiedInbox
@@ -327,6 +427,8 @@ export function App() {
           accounts={accounts}
           mailbox={selection.mailbox ?? 'inbox'}
           onStartBulkOperation={startBulkOperation}
+          mailLayout={mailLayout}
+          onMailLayoutChange={setMailLayout}
         />
       )}
       {bulkOperation && (

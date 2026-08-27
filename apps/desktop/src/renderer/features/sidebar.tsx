@@ -15,6 +15,7 @@ import {
   Palette,
   PenLine,
   Plus,
+  PanelLeftClose,
   RefreshCw,
   Search,
   Settings2,
@@ -175,6 +176,7 @@ export function Sidebar({
   onManage,
   onReorder,
   onCompose,
+  onUnpin,
   className,
 }: {
   accounts: AccountSummary[];
@@ -186,6 +188,7 @@ export function Sidebar({
   onManage: () => void;
   onReorder: (accountIds: string[]) => Promise<boolean>;
   onCompose: () => void;
+  onUnpin?: () => void;
   className?: string;
 }) {
   const { theme, setTheme, interfaceFont, setInterfaceFont } = useTheme();
@@ -475,10 +478,21 @@ export function Sidebar({
         <div className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
           <Mail className="size-4" />
         </div>
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="font-semibold tracking-tight">Emzero</p>
           <p className="text-xs text-muted-foreground">Mail</p>
         </div>
+        {onUnpin && (
+          <Button
+            variant="ghost"
+            className="size-8 shrink-0 px-0"
+            aria-label="Unpin navigation"
+            title="Unpin navigation"
+            onClick={onUnpin}
+          >
+            <PanelLeftClose className="size-4" />
+          </Button>
+        )}
       </div>
 
       <Button
