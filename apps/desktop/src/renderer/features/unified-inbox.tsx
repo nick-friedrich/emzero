@@ -52,6 +52,7 @@ import {
   type MailLayout,
   type UnifiedConversationItem,
   type UnifiedInboxLoadState,
+  useCompactMailList,
 } from './mail-common';
 import { ConversationReader } from './conversation-reader';
 import { useMessagePrefetch } from './message-prefetch';
@@ -92,6 +93,9 @@ export function UnifiedInbox({
   const pendingUnifiedFocusKey = useRef<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const { scheduleDelete, undoBar } = useUndoableDelete();
+  const { ref: listSurfaceRef, compact: compactList } = useCompactMailList(
+    mailLayout === 'split',
+  );
 
   useEffect(() => {
     let active = true;
@@ -685,10 +689,13 @@ export function UnifiedInbox({
   }
 
   const list = (
-    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+    <section
+      ref={listSurfaceRef}
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background"
+    >
       <header className={cn(
         'flex min-w-0 items-center justify-between gap-3 border-b border-border bg-card py-4 pl-16 pr-4 lg:px-6',
-        mailLayout === 'split' && 'lg:px-4',
+        compactList && 'lg:px-4',
       )}>
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold tracking-tight">{title}</h1>
@@ -698,7 +705,7 @@ export function UnifiedInbox({
         </div>
         <div className="flex items-center gap-3">
           <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
-          {mailLayout === 'list' && state.status === 'loaded' && (
+          {!compactList && state.status === 'loaded' && (
             <span className="hidden whitespace-nowrap text-xs text-muted-foreground lg:inline">
               {state.items.length} {state.items.length === 1 ? 'conversation' : 'conversations'}
               {' · '}
@@ -857,27 +864,25 @@ export function UnifiedInbox({
                 role="listitem"
               >
                 <div
-                  className={mailLayout === 'split'
+                  className={compactList
                     ? 'relative ml-3 grid size-8 shrink-0 place-items-center'
-                    : 'pl-4 lg:pl-6'}
+                    : 'relative ml-4 grid size-8 shrink-0 place-items-center lg:ml-6'}
                   onClick={(event) => event.stopPropagation()}
                 >
-                  {mailLayout === 'split' && (
-                    <SenderAvatar
-                      label={opponent}
-                      imageUrl={conversationAvatarUrl(conversation.messages, selection.account)}
-                      className={cn(
-                        selectedItemKeys.size > 0
-                          ? 'opacity-0'
-                          : 'opacity-100 group-hover:opacity-0 group-focus-within:opacity-0',
-                      )}
-                    />
-                  )}
+                  <SenderAvatar
+                    label={opponent}
+                    imageUrl={conversationAvatarUrl(conversation.messages, selection.account)}
+                    className={cn(
+                      selectedItemKeys.size > 0
+                        ? 'opacity-0'
+                        : 'opacity-100 group-hover:opacity-0 group-focus-within:opacity-0',
+                    )}
+                  />
                   <SelectionCheckbox
                     checked={selectedItemKeys.has(itemKey(item))}
                     className={cn(
                       'transition-opacity group-hover:opacity-100 focus-within:opacity-100',
-                      mailLayout === 'split' && 'absolute inset-0 m-auto',
+                      'absolute inset-0 m-auto',
                       selectedItemKeys.size > 0
                         ? 'opacity-100'
                         : 'opacity-0 group-focus-within:opacity-100',
@@ -913,7 +918,7 @@ export function UnifiedInbox({
                   }}
                   className={cn(
                     'grid min-w-0 flex-1 items-center gap-y-1 text-left focus-visible:bg-accent focus-visible:outline-none',
-                    mailLayout === 'split'
+                    compactList
                       ? 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-3 py-3.5'
                       : 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-4 py-3 lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6',
                   )}
@@ -965,7 +970,7 @@ export function UnifiedInbox({
                 </div>
                 <div className={cn(
                   'flex min-w-0 items-center gap-2',
-                  mailLayout === 'split'
+                  compactList
                     ? 'col-span-2 col-start-1 row-start-2 pl-3.5'
                     : 'col-span-2 col-start-1 row-start-2 pl-3.5 lg:col-auto lg:row-auto lg:pl-0',
                 )}>
@@ -983,7 +988,7 @@ export function UnifiedInbox({
                 </div>
                 <div className={cn(
                   'flex items-center gap-2 text-xs text-muted-foreground',
-                  mailLayout === 'split'
+                  compactList
                     ? 'col-start-2 row-start-1'
                     : 'col-start-2 row-start-1 lg:col-auto lg:row-auto',
                 )}>
@@ -994,7 +999,7 @@ export function UnifiedInbox({
                 </div>
                 </button>
                 <div className={cn(
-                  mailLayout === 'split'
+                  compactList
                     ? 'absolute bottom-1.5 right-2 z-10 rounded-md border border-border bg-card p-0.5 opacity-0 shadow-md transition-opacity group-hover:opacity-100 focus-within:opacity-100'
                     : 'pr-3 lg:pr-5',
                 )}>

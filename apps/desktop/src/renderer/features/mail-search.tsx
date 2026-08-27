@@ -35,6 +35,7 @@ import {
   type ConversationAction,
   type FolderSelection,
   type MailLayout,
+  useCompactMailList,
 } from './mail-common';
 import { ConversationReader } from './conversation-reader';
 import { useMessagePrefetch } from './message-prefetch';
@@ -78,6 +79,9 @@ export function MailSearch({
     folders: MailFolderSummary[];
   } | null>(null);
   const { scheduleDelete, undoBar } = useUndoableDelete();
+  const { ref: listSurfaceRef, compact: compactList } = useCompactMailList(
+    mailLayout === 'split',
+  );
   const selectedAccountId = selected?.item.accountId ?? null;
   const selectedFolders = selectedFolderState?.accountId === selectedAccountId
     ? selectedFolderState.folders
@@ -281,21 +285,24 @@ export function MailSearch({
   if (reader && mailLayout === 'list') return reader;
 
   const list = (
-    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+    <section
+      ref={listSurfaceRef}
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background"
+    >
       <header className={cn(
         'border-b border-border bg-card py-3 pl-16 pr-4 lg:px-6',
-        mailLayout === 'split' && 'lg:px-4',
+        compactList && 'lg:px-4',
       )}>
         <form
           className={cn(
             'mx-auto flex flex-wrap items-center gap-2',
-            mailLayout === 'split' ? 'max-w-none' : 'max-w-4xl',
+            compactList ? 'max-w-none' : 'max-w-4xl',
           )}
           onSubmit={runSearch}
         >
           <label className={cn(
             'relative min-w-52 flex-1',
-            mailLayout === 'split' && 'basis-full',
+            compactList && 'basis-full',
           )}>
             <span className="sr-only">Search cached mail</span>
             <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
@@ -314,7 +321,7 @@ export function MailSearch({
             <select
               className={cn(
                 'field px-3 text-sm',
-                mailLayout === 'split' ? 'w-24 min-w-0' : 'min-w-36',
+                compactList ? 'w-24 min-w-0' : 'min-w-36',
               )}
               value={accountId}
               onChange={(event) => {
@@ -334,7 +341,7 @@ export function MailSearch({
             <select
               className={cn(
                 'field px-3 text-sm',
-                mailLayout === 'split' ? 'w-24 min-w-0' : 'min-w-36',
+                compactList ? 'w-24 min-w-0' : 'min-w-36',
               )}
               value={sort}
               onChange={(event) => {
@@ -350,7 +357,7 @@ export function MailSearch({
           </label>
           <Button
             type="submit"
-            className={mailLayout === 'split' ? 'px-3' : undefined}
+            className={compactList ? 'px-3' : undefined}
             disabled={!query.trim() || state.status === 'loading'}
           >
             {state.status === 'loading' ? (
@@ -358,7 +365,7 @@ export function MailSearch({
             ) : (
               <Search className="size-4" />
             )}
-            <span className={mailLayout === 'split' ? 'sr-only' : undefined}>Search</span>
+            <span className={compactList ? 'sr-only' : undefined}>Search</span>
           </Button>
           <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
         </form>
@@ -418,7 +425,7 @@ export function MailSearch({
                   role="listitem"
                   className={cn(
                     'grid w-full min-w-0 gap-y-1 border-b border-border text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none',
-                    mailLayout === 'split'
+                    compactList
                       ? 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-4 py-3.5'
                       : 'grid-cols-[minmax(0,1fr)_auto] gap-x-4 px-4 py-3 lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:px-6',
                     selected?.item.accountId === item.accountId &&
@@ -445,7 +452,7 @@ export function MailSearch({
                   </div>
                   <div className={cn(
                     'min-w-0',
-                    mailLayout === 'split'
+                    compactList
                       ? 'col-span-2 col-start-1 row-start-2 pl-3.5'
                       : 'lg:row-span-2',
                   )}>
@@ -459,7 +466,7 @@ export function MailSearch({
                   <time
                     className={cn(
                       'text-xs text-muted-foreground',
-                      mailLayout === 'split' && 'col-start-2 row-start-1',
+                      compactList && 'col-start-2 row-start-1',
                     )}
                     dateTime={date ?? undefined}
                   >
@@ -467,7 +474,7 @@ export function MailSearch({
                   </time>
                   <p className={cn(
                     'truncate text-xs text-muted-foreground',
-                    mailLayout === 'split'
+                    compactList
                       ? 'col-span-2 col-start-1 row-start-3 pl-3.5'
                       : 'col-span-2 pl-3.5 lg:col-span-1 lg:col-start-1 lg:pl-0',
                   )}>

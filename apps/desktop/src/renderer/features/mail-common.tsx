@@ -60,6 +60,23 @@ export type MailboxSelection =
 
 export type MailLayout = 'list' | 'split';
 
+export function useCompactMailList(forceCompact = false) {
+  const ref = useRef<HTMLElement>(null);
+  const [measuredCompact, setMeasuredCompact] = useState(false);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setMeasuredCompact(entry.contentRect.width < 760);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  return { ref, compact: forceCompact || measuredCompact };
+}
+
 export function MailLayoutToggle({
   layout,
   onChange,
