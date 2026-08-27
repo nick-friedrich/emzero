@@ -81,6 +81,7 @@ export function UnifiedInbox({
   const [selectionCursorKey, setSelectionCursorKey] = useState<string | null>(null);
   const unifiedRowRefs = useRef(new Map<string, HTMLButtonElement>());
   const unifiedDeleteButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const pendingUnifiedFocusKey = useRef<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const { scheduleDelete, undoBar } = useUndoableDelete();
 
@@ -223,6 +224,14 @@ export function UnifiedInbox({
     () => (state.status === 'loaded' ? state.items : []),
     [state],
   );
+  useEffect(() => {
+    const pendingKey = pendingUnifiedFocusKey.current;
+    if (!pendingKey) return;
+    const row = unifiedRowRefs.current.get(pendingKey);
+    if (!row) return;
+    pendingUnifiedFocusKey.current = null;
+    row.focus();
+  }, [availableItems]);
   const prefetchTargets = useMemo(
     () =>
       availableItems.map((item) => ({
@@ -445,6 +454,17 @@ export function UnifiedInbox({
     const previousState = state;
     const previousSelection = selectedItem;
     const removeItem = () => {
+      if (action === 'delete') {
+        const removedIndex = availableItems.findIndex(
+          (candidate) => itemKey(candidate) === key,
+        );
+        const nextItem = removedIndex >= 0
+          ? availableItems[removedIndex + 1] ?? availableItems[removedIndex - 1]
+          : undefined;
+        const nextKey = nextItem ? itemKey(nextItem) : null;
+        pendingUnifiedFocusKey.current = nextKey;
+        setSelectionCursorKey(nextKey);
+      }
       setState((current) =>
         current.status === 'loaded'
           ? {

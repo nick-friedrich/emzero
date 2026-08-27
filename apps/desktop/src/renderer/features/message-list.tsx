@@ -72,6 +72,7 @@ export function MessageList({
   const [selectionCursorId, setSelectionCursorId] = useState<string | null>(null);
   const conversationRowRefs = useRef(new Map<string, HTMLButtonElement>());
   const conversationDeleteButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const pendingConversationFocusId = useRef<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [folders, setFolders] = useState<MailFolderSummary[]>([selection.folder]);
   const { scheduleDelete, undoBar } = useUndoableDelete();
@@ -166,6 +167,14 @@ export function MessageList({
         : [],
     [state],
   );
+  useEffect(() => {
+    const pendingId = pendingConversationFocusId.current;
+    if (!pendingId) return;
+    const row = conversationRowRefs.current.get(pendingId);
+    if (!row) return;
+    pendingConversationFocusId.current = null;
+    row.focus();
+  }, [conversations]);
   const prefetchTargets = useMemo(
     () =>
       conversations.map((conversation) => ({
@@ -365,6 +374,17 @@ export function MessageList({
     const previousState = state;
     const previousSelection = selectedConversation;
     const removeConversation = () => {
+      if (action === 'delete') {
+        const removedIndex = conversations.findIndex(
+          (candidate) => candidate.id === conversation.id,
+        );
+        const nextConversation = removedIndex >= 0
+          ? conversations[removedIndex + 1] ?? conversations[removedIndex - 1]
+          : undefined;
+        const nextId = nextConversation?.id ?? null;
+        pendingConversationFocusId.current = nextId;
+        setSelectionCursorId(nextId);
+      }
       setState((current) =>
         current.status === 'loaded'
           ? {
