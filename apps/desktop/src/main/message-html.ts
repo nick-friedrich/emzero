@@ -3,9 +3,16 @@ import sanitizeHtml from 'sanitize-html';
 const safeColor = /^(?:#[\da-f]{3,8}|(?:rgb|hsl)a?\([\d.%\s,]+\)|[a-z]+)$/i;
 const safeLength = /^(?:auto|0|\d+(?:\.\d+)?(?:px|em|rem|%|pt))$/i;
 
+function restoreEscapedLegacyFormatting(value: string): string {
+  // Some webmail clients double-escape the legacy <font>/<br> fragment they
+  // prepend to replies. Restore only those inert formatting tags, then pass
+  // the result through the normal sanitizer below.
+  return value.replace(/&lt;(\/?(?:font\b[\s\S]*?|br\s*\/?))&gt;/gi, '<$1>');
+}
+
 export function sanitizedMessageHtml(value: string | false): string | null {
   if (!value) return null;
-  return sanitizeHtml(value, {
+  return sanitizeHtml(restoreEscapedLegacyFormatting(value), {
     allowedTags: [
       ...sanitizeHtml.defaults.allowedTags,
       'img',
@@ -26,7 +33,9 @@ export function sanitizedMessageHtml(value: string | false): string | null {
       td: ['colspan', 'rowspan', 'width', 'height'],
       th: ['colspan', 'rowspan', 'width', 'height'],
     },
-    allowedSchemesByTag: { img: ['data'] },
+    // Keep remote image URLs in the sanitized document so the renderer can
+    // offer an explicit "load images" action. Its CSP blocks them by default.
+    allowedSchemesByTag: { img: ['data', 'http', 'https'] },
     allowedSchemesAppliedToAttributes: ['src'],
     allowedStyles: {
       '*': {

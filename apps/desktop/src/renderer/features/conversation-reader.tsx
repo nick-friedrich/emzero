@@ -59,6 +59,7 @@ import {
   addressLabel,
   addressDetails,
   fileSize,
+  hasRemoteImages,
   htmlDocument,
   isEditableTarget,
   messageCountInFolder,
@@ -81,10 +82,14 @@ function MessageBody({
   const { theme } = useTheme();
   const [view, setView] = useState<'html' | 'text'>('html');
   const [showQuoted, setShowQuoted] = useState(false);
+  const [remoteImagesLoadedFor, setRemoteImagesLoadedFor] = useState<string | null>(null);
   const [savingAttachment, setSavingAttachment] = useState<number | null>(null);
   const [attachmentStatus, setAttachmentStatus] = useState<Status | null>(null);
   const textParts = splitQuotedText(message.text);
   const hasQuotedText = view === 'html' ? message.htmlHasQuotedText : Boolean(textParts.quoted);
+  const messageKey = `${accountId}\0${folderPath}\0${message.uid}`;
+  const loadRemoteImages = remoteImagesLoadedFor === messageKey;
+  const remoteImagesBlocked = Boolean(message.html && hasRemoteImages(message.html) && !loadRemoteImages);
 
   return (
     <>
@@ -114,13 +119,27 @@ function MessageBody({
       )}
 
       {message.html && view === 'html' ? (
-        <iframe
-          className="mt-4 h-[55vh] min-h-80 w-full rounded-md border border-border bg-card"
-          title="Email content"
-          sandbox=""
-          referrerPolicy="no-referrer"
-          srcDoc={htmlDocument(message.html, showQuoted, theme)}
-        />
+        <>
+          {remoteImagesBlocked && (
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              <span>Remote images are hidden to protect your privacy.</span>
+              <Button
+                variant="secondary"
+                className="h-7 shrink-0 px-2.5 text-xs"
+                onClick={() => setRemoteImagesLoadedFor(messageKey)}
+              >
+                Load images
+              </Button>
+            </div>
+          )}
+          <iframe
+            className="mt-3 h-[55vh] min-h-80 w-full rounded-md border border-border bg-white"
+            title="Email content"
+            sandbox=""
+            referrerPolicy="no-referrer"
+            srcDoc={htmlDocument(message.html, showQuoted, theme, loadRemoteImages)}
+          />
+        </>
       ) : (
         <div className="mt-5 whitespace-pre-wrap break-words text-sm leading-7 text-foreground">
           {textParts.visible || 'No new text in this reply.'}

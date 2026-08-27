@@ -36,7 +36,6 @@ import {
 } from '@/lib/utils';
 import {
   messageThemeColors,
-  themeColorSchemes,
   type Theme,
 } from '@/theme';
 import {
@@ -145,13 +144,22 @@ export function fileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function htmlDocument(body: string, showQuoted: boolean, theme: Theme): string {
+export function hasRemoteImages(body: string): boolean {
+  return /<img\b[^>]*\bsrc\s*=\s*["']?(?:https?:)?\/\//i.test(body);
+}
+
+export function htmlDocument(
+  body: string,
+  showQuoted: boolean,
+  theme: Theme,
+  loadRemoteImages = false,
+): string {
   const quotedStyle = showQuoted
     ? ''
     : 'blockquote,.gmail_quote,.yahoo_quoted,.moz-cite-prefix,#divRplyFwdMsg{display:none!important}';
   const colors = messageThemeColors[theme];
-  const colorScheme = themeColorSchemes[theme];
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="${colorScheme}"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline';"><style>html{color-scheme:${colorScheme};background:${colors.background};scrollbar-color:color-mix(in oklab,${colors.primary} 55%,transparent) transparent;scrollbar-width:thin}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}::-webkit-scrollbar-thumb{min-width:40px;min-height:40px;border:3px solid transparent;border-radius:999px;background:color-mix(in oklab,${colors.primary} 55%,transparent);background-clip:content-box}::-webkit-scrollbar-thumb:hover{background:color-mix(in oklab,${colors.primary} 78%,transparent);background-clip:content-box}body{box-sizing:border-box;margin:0;padding:1.5rem;color:${colors.foreground};background:${colors.background};font:14px/1.65 Inter,ui-sans-serif,system-ui,sans-serif;overflow-wrap:anywhere}a{color:inherit}img{max-width:100%;height:auto}table{max-width:100%}${quotedStyle}</style></head><body>${body}</body></html>`;
+  const imageSources = loadRemoteImages ? 'data: http: https:' : 'data:';
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${imageSources}; style-src 'unsafe-inline';"><style>html{color-scheme:light;background:#fff;scrollbar-color:color-mix(in oklab,${colors.primary} 55%,transparent) transparent;scrollbar-width:thin}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}::-webkit-scrollbar-thumb{min-width:40px;min-height:40px;border:3px solid transparent;border-radius:999px;background:color-mix(in oklab,${colors.primary} 55%,transparent);background-clip:content-box}::-webkit-scrollbar-thumb:hover{background:color-mix(in oklab,${colors.primary} 78%,transparent);background-clip:content-box}body{box-sizing:border-box;margin:0;padding:1.5rem;color:#202124;background:#fff;font:14px/1.55 Arial,Helvetica,sans-serif;overflow-wrap:anywhere}a{color:#2457a7}img{max-width:100%;height:auto}table{max-width:100%}${quotedStyle}</style></head><body>${body}</body></html>`;
 }
 
 export function messageDate(value: string | null): string {

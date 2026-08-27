@@ -294,6 +294,18 @@ export class MailCache {
         PRAGMA user_version = 4;
         COMMIT;
       `);
+      version = 4;
+    }
+
+    if (version < 5) {
+      this.#database.exec(`
+        BEGIN;
+        -- HTML used to be cached after remote image sources were removed.
+        -- Re-fetch bodies on demand so the renderer can apply its own CSP.
+        DELETE FROM message_bodies;
+        PRAGMA user_version = 5;
+        COMMIT;
+      `);
     }
   }
 
