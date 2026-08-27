@@ -21,6 +21,12 @@ import {
   type BulkOperationView,
 } from './features/bulk-operation';
 import { ComposeDialog } from './features/compose-dialog';
+import {
+  demoAccounts,
+  demoFolders,
+  demoMailboxSnapshot,
+  demoModeStorageKey,
+} from './features/demo-mode';
 import { MailSearch } from './features/mail-search';
 import {
   type MailboxSelection,
@@ -48,7 +54,10 @@ function storedSidebarWidth(): number {
 }
 
 export function App() {
-  const [accounts, setAccounts] = useState<AccountSummary[] | null>(null);
+  const [demoMode, setDemoMode] = useState(
+    () => window.localStorage.getItem(demoModeStorageKey) === 'true',
+  );
+  const [accounts, setAccounts] = useState<AccountSummary[] | null>(demoMode ? [] : null);
   const [providers, setProviders] = useState<MailProvider[]>([]);
   const [showSetup, setShowSetup] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -82,6 +91,10 @@ export function App() {
     window.localStorage.setItem(mailLayoutStorageKey, mailLayout);
   }, [mailLayout]);
 
+  useEffect(() => {
+    window.localStorage.setItem(demoModeStorageKey, String(demoMode));
+  }, [demoMode]);
+
   const startSidebarResize = (event: PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const startX = event.clientX;
@@ -104,6 +117,7 @@ export function App() {
   };
 
   useEffect(() => {
+    if (demoMode) return;
     void Promise.allSettled([window.emzero.accounts.list(), window.emzero.providers.list()]).then(
       ([accountsResult, providersResult]) => {
         const loadedAccounts = accountsResult.status === 'fulfilled' ? accountsResult.value : [];
@@ -112,11 +126,12 @@ export function App() {
         if (providersResult.status === 'fulfilled') setProviders(providersResult.value);
       },
     );
-  }, []);
+  }, [demoMode]);
 
   useEffect(
-    () =>
-      window.emzero.messages.onBulkJobProgress((progress) => {
+    () => {
+      if (demoMode) return;
+      return window.emzero.messages.onBulkJobProgress((progress) => {
         setBulkOperation((current) => {
           if (!current) return current;
           const processedKeys = new Set(current.processedKeys);
@@ -130,8 +145,9 @@ export function App() {
         if (['completed', 'stopped', 'error'].includes(progress.state)) {
           setSyncRevision((current) => current + 1);
         }
-      }),
-    [],
+      });
+    },
+    [demoMode],
   );
 
   useEffect(() => {
@@ -179,12 +195,13 @@ export function App() {
   }, [bulkOperation?.progress.state]);
 
   useEffect(() => {
+    if (demoMode) return;
     void window.emzero.sync.status().then(setSyncStatus).catch(() => undefined);
     return window.emzero.sync.onStatus((status) => {
       setSyncStatus(status);
       if (status.state !== 'syncing') setSyncRevision((current) => current + 1);
     });
-  }, []);
+  }, [demoMode]);
 
   useEffect(() => {
     const desktopLayout = window.matchMedia('(min-width: 64rem)');
@@ -226,6 +243,22 @@ export function App() {
     );
   }
 
+  const visibleAccounts = demoMode ? demoAccounts : accounts;
+  const demoSnapshot = demoMode ? demoMailboxSnapshot(selection) : undefined;
+  const demoSelectionKey = selection.kind === 'folder'
+    ? `${selection.account.id}:${selection.folder.path}`
+    : selection.kind === 'search'
+      ? `search:${selection.query}`
+      : `unified:${selection.mailbox ?? 'inbox'}`;
+  const changeDemoMode = (enabled: boolean) => {
+    setDemoMode(enabled);
+    setSelection({ kind: 'unified' });
+    setShowSetup(enabled ? false : accounts.length === 0);
+    setSettingsOpen(false);
+    setComposeOpen(false);
+    setBulkOperation(null);
+  };
+
   return (
     <main
       className="grid h-screen grid-cols-1 overflow-hidden bg-background text-foreground lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]"
@@ -234,11 +267,15 @@ export function App() {
       {sidebarPinned && (
         <div className="relative hidden min-h-0 min-w-0 lg:flex">
           <Sidebar
+            key={demoMode ? 'demo-pinned' : 'mail-pinned'}
             className="min-w-0 flex-1 border-r-0"
-            accounts={accounts}
+            accounts={visibleAccounts}
             selection={selection}
             syncStatus={syncStatus}
             syncRevision={syncRevision}
+            demoMode={demoMode}
+            demoFolderMap={demoMode ? demoFolders : undefined}
+            onDemoModeChange={changeDemoMode}
             pinned
             onPinnedChange={(pinned) => {
               setSidebarPinned(pinned);
@@ -251,6 +288,7 @@ export function App() {
             onAdd={() => setShowSetup(true)}
             onManage={() => setSettingsOpen(true)}
             onReorder={async (accountIds) => {
+              if (demoMode) return true;
               const previous = accounts;
               const byId = new Map(accounts.map((account) => [account.id, account]));
               setAccounts(accountIds.flatMap((id) => byId.get(id) ?? []));
@@ -267,7 +305,7 @@ export function App() {
                 return false;
               }
             }}
-            onCompose={() => setComposeOpen(true)}
+            onCompose={() => { if (!demoMode) setComposeOpen(true); }}
           />
           <div
             role="separator"
@@ -320,11 +358,15 @@ export function App() {
             }}
           >
             <Sidebar
+              key={demoMode ? 'demo-hover' : 'mail-hover'}
               className="min-w-0 flex-1"
-              accounts={accounts}
+              accounts={visibleAccounts}
               selection={selection}
               syncStatus={syncStatus}
               syncRevision={syncRevision}
+              demoMode={demoMode}
+              demoFolderMap={demoMode ? demoFolders : undefined}
+              onDemoModeChange={changeDemoMode}
               pinned={false}
               onPinnedChange={(pinned) => {
                 setSidebarPinned(pinned);
@@ -337,6 +379,7 @@ export function App() {
               onAdd={() => setShowSetup(true)}
               onManage={() => setSettingsOpen(true)}
               onReorder={async (accountIds) => {
+                if (demoMode) return true;
                 const previous = accounts;
                 const byId = new Map(accounts.map((account) => [account.id, account]));
                 setAccounts(accountIds.flatMap((id) => byId.get(id) ?? []));
@@ -353,7 +396,7 @@ export function App() {
                   return false;
                 }
               }}
-              onCompose={() => setComposeOpen(true)}
+              onCompose={() => { if (!demoMode) setComposeOpen(true); }}
             />
             <div
               role="separator"
@@ -394,11 +437,15 @@ export function App() {
             <SheetDescription>Choose an inbox, folder, or account action.</SheetDescription>
           </div>
           <Sidebar
+            key={demoMode ? 'demo-mobile' : 'mail-mobile'}
             className="h-full border-r-0"
-            accounts={accounts}
+            accounts={visibleAccounts}
             selection={selection}
             syncStatus={syncStatus}
             syncRevision={syncRevision}
+            demoMode={demoMode}
+            demoFolderMap={demoMode ? demoFolders : undefined}
+            onDemoModeChange={changeDemoMode}
             onSelect={(nextSelection) => {
               setSelection(nextSelection);
               setShowSetup(false);
@@ -413,6 +460,7 @@ export function App() {
               setSidebarOpen(false);
             }}
             onReorder={async (accountIds) => {
+              if (demoMode) return true;
               const previous = accounts;
               const byId = new Map(accounts.map((account) => [account.id, account]));
               setAccounts(accountIds.flatMap((id) => byId.get(id) ?? []));
@@ -430,22 +478,22 @@ export function App() {
               }
             }}
             onCompose={() => {
-              setComposeOpen(true);
+              if (!demoMode) setComposeOpen(true);
               setSidebarOpen(false);
             }}
           />
         </SheetContent>
       </Sheet>
-      <ComposeDialog
+      {!demoMode && <ComposeDialog
         open={composeOpen}
-        accounts={accounts}
+        accounts={visibleAccounts}
         defaultAccountId={
           selection.kind === 'folder' ? selection.account.id : (accounts[0]?.id ?? null)
         }
         onOpenChange={setComposeOpen}
         onSent={() => setSyncRevision((current) => current + 1)}
-      />
-      <AccountSettingsDialog
+      />}
+      {!demoMode && <AccountSettingsDialog
         open={settingsOpen}
         accounts={accounts}
         onOpenChange={setSettingsOpen}
@@ -474,8 +522,18 @@ export function App() {
             setShowSetup(true);
           }
         }}
-      />
-      {showSetup ? (
+      />}
+      {demoMode ? (
+        <UnifiedInbox
+          key={`demo:${demoSelectionKey}`}
+          accounts={visibleAccounts}
+          mailbox={selection.kind === 'unified' ? (selection.mailbox ?? 'inbox') : 'inbox'}
+          onStartBulkOperation={startBulkOperation}
+          mailLayout={mailLayout}
+          onMailLayoutChange={setMailLayout}
+          demo={demoSnapshot}
+        />
+      ) : showSetup ? (
         <AccountSetup
           providers={providers}
           canCancel={accounts.length > 0}

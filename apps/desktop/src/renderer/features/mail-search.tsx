@@ -413,6 +413,10 @@ export function MailSearch({
             {state.items.map((item) => {
               const account = accounts.find((candidate) => candidate.id === item.accountId);
               const date = item.message.receivedAt ?? item.message.sentAt;
+              const folderName = displayFolderName(item.folder);
+              const isSpamFolder =
+                item.folder.specialUse === '\\Junk' ||
+                ['spam', 'junk'].includes(folderName.trim().toLowerCase());
               const prefetchTarget = {
                 accountId: item.accountId,
                 folderPath: item.folder.path,
@@ -478,7 +482,12 @@ export function MailSearch({
                       ? 'col-span-2 col-start-1 row-start-3 pl-3.5'
                       : 'col-span-2 pl-3.5 lg:col-span-1 lg:col-start-1 lg:pl-0',
                   )}>
-                    {account?.name ?? 'Unknown account'} / {displayFolderName(item.folder)}
+                    {account?.name ?? 'Unknown account'} /{' '}
+                    <span className={cn(
+                      isSpamFolder && 'rounded-sm bg-yellow-400/40 px-1 py-0.5 text-foreground',
+                    )}>
+                      {folderName}
+                    </span>
                   </p>
                 </button>
               );

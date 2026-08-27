@@ -70,6 +70,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 ## Renderer features
 
 - `features/sidebar.tsx` — desktop/mobile navigation content, drag-to-reorder accounts, account folder trees, folder CRUD, drag-and-drop folder moves, sync status, and theme controls.
+- `features/demo-mode.tsx` — persistent, privacy-safe show-off dataset injected into the existing mailbox and conversation UI for screenshots.
 - `features/account-setup.tsx` — provider detection, password/app-password setup, and personal Microsoft device-code connection flow.
 - `features/account-settings.tsx` — account rename/removal dialog.
 - `features/compose-dialog.tsx` — new-message composer, recipient suggestions, attachments, validation, confirmation, and sending.

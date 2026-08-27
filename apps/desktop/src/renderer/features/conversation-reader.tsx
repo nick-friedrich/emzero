@@ -74,10 +74,12 @@ function MessageBody({
   accountId,
   folderPath,
   message,
+  demo = false,
 }: {
   accountId: string;
   folderPath: string;
   message: MailMessageDetail;
+  demo?: boolean;
 }) {
   const { theme } = useTheme();
   const [view, setView] = useState<'html' | 'text'>('html');
@@ -179,6 +181,7 @@ function MessageBody({
                   disabled={savingAttachment !== null}
                   title={`Save ${attachment.filename}`}
                   onClick={() => {
+                    if (demo) return;
                     setSavingAttachment(index);
                     setAttachmentStatus(null);
                     void window.emzero.messages
@@ -499,17 +502,22 @@ function ThreadMessageCard({
   summary,
   defaultExpanded,
   onReplySent,
+  demoDetail,
 }: {
   selection: FolderSelection;
   summary: MailMessageSummary;
   defaultExpanded: boolean;
   onReplySent: (message: MailMessageSummary) => void;
+  demoDetail?: MailMessageDetail;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const [state, setState] = useState<MessageDetailLoadState>({ status: 'loading' });
+  const [state, setState] = useState<MessageDetailLoadState>(
+    demoDetail ? { status: 'loaded', message: demoDetail } : { status: 'loading' },
+  );
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    if (demoDetail) return;
     if (!expanded || state.status !== 'loading') return;
     let active = true;
     void window.emzero.messages
@@ -528,7 +536,7 @@ function ThreadMessageCard({
     return () => {
       active = false;
     };
-  }, [expanded, refreshKey, selection.account.id, state.status, summary.folderPath, summary.uid]);
+  }, [demoDetail, expanded, refreshKey, selection.account.id, state.status, summary.folderPath, summary.uid]);
 
   const retry = () => {
     setState({ status: 'loading' });
@@ -583,13 +591,21 @@ function ThreadMessageCard({
                 accountId={selection.account.id}
                 folderPath={summary.folderPath}
                 message={state.message}
+                demo={Boolean(demoDetail)}
               />
-              <ReplyComposer
+              {demoDetail ? (
+                <div className="mt-6 border-t border-border pt-5">
+                  <Button variant="secondary" title="Sending is disabled for sample messages">
+                    <Reply className="size-4" />
+                    Reply
+                  </Button>
+                </div>
+              ) : <ReplyComposer
                 account={selection.account}
                 summary={summary}
                 message={state.message}
                 onSent={onReplySent}
-              />
+              />}
             </>
           )}
         </div>
@@ -611,6 +627,7 @@ export function ConversationReader({
   onMove,
   onDelete,
   onReplySent,
+  demoDetails,
 }: {
   accounts: AccountSummary[];
   selection: FolderSelection;
@@ -624,6 +641,7 @@ export function ConversationReader({
   onMove: (destination: MessageMoveDestination) => void;
   onDelete: () => void;
   onReplySent: (message: MailMessageSummary) => void;
+  demoDetails?: ReadonlyMap<string, MailMessageDetail>;
 }) {
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
   const unread = conversation.messages.some(
@@ -708,6 +726,9 @@ export function ConversationReader({
                 summary={message}
                 defaultExpanded={index === 0}
                 onReplySent={onReplySent}
+                demoDetail={demoDetails?.get(
+                  `${selection.account.id}:${message.folderPath}:${message.uid}`,
+                )}
               />
             ))}
           </div>

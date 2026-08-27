@@ -31,12 +31,12 @@ function prefetchMessage(target: MessagePrefetchTarget): Promise<void> {
 
 export function useMessagePrefetch(
   targets: MessagePrefetchTarget[],
-  { warmNewest = true }: { warmNewest?: boolean } = {},
+  { warmNewest = true, disabled = false }: { warmNewest?: boolean; disabled?: boolean } = {},
 ) {
   const hoverTimers = useRef(new Map<string, number>());
 
   useEffect(() => {
-    if (!warmNewest) return;
+    if (!warmNewest || disabled) return;
     let active = true;
     const warmTargets = async () => {
       for (const target of targets.slice(0, 12)) {
@@ -49,7 +49,7 @@ export function useMessagePrefetch(
       active = false;
       window.cancelIdleCallback(idleCallback);
     };
-  }, [targets, warmNewest]);
+  }, [disabled, targets, warmNewest]);
 
   useEffect(() => {
     const timers = hoverTimers.current;
@@ -60,6 +60,7 @@ export function useMessagePrefetch(
   }, []);
 
   const prefetchSoon = useCallback((target: MessagePrefetchTarget) => {
+    if (disabled) return;
     const key = targetKey(target);
     if (warmedMessages.has(key) || hoverTimers.current.has(key)) return;
     hoverTimers.current.set(
@@ -69,7 +70,7 @@ export function useMessagePrefetch(
         void prefetchMessage(target);
       }, 180),
     );
-  }, []);
+  }, [disabled]);
 
   const cancelPrefetch = useCallback((target: MessagePrefetchTarget) => {
     const key = targetKey(target);
@@ -79,9 +80,10 @@ export function useMessagePrefetch(
   }, []);
 
   const prefetchNow = useCallback((target: MessagePrefetchTarget) => {
+    if (disabled) return;
     cancelPrefetch(target);
     void prefetchMessage(target);
-  }, [cancelPrefetch]);
+  }, [cancelPrefetch, disabled]);
 
   return useMemo(
     () => ({ prefetchSoon, cancelPrefetch, prefetchNow }),

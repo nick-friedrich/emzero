@@ -57,6 +57,22 @@ import {
 import { ConversationReader } from './conversation-reader';
 import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableDelete } from './undoable-delete';
+import type { DemoMailboxSnapshot } from './demo-mode';
+
+function demoLoadState(demo: DemoMailboxSnapshot): UnifiedInboxLoadState {
+  const messageCount = demo.items.reduce(
+    (total, item) => total + item.conversation.messages.length,
+    0,
+  );
+  return {
+    status: 'loaded',
+    items: demo.items,
+    failures: [],
+    notices: [],
+    loadedMessages: messageCount,
+    totalMessages: messageCount,
+  };
+}
 
 function conversationTime(conversation: MailConversation): number {
   const latest = conversation.messages[0];
@@ -71,15 +87,19 @@ export function UnifiedInbox({
   onStartBulkOperation,
   mailLayout,
   onMailLayoutChange,
+  demo,
 }: {
   accounts: AccountSummary[];
   mailbox: 'inbox' | 'starred' | 'trash';
   onStartBulkOperation: StartBulkOperation;
   mailLayout: MailLayout;
   onMailLayoutChange: (layout: MailLayout) => void;
+  demo?: DemoMailboxSnapshot;
 }) {
-  const title = mailbox === 'inbox' ? 'Inbox' : mailbox === 'starred' ? 'Starred' : 'Trash';
-  const [state, setState] = useState<UnifiedInboxLoadState>({ status: 'loading' });
+  const title = demo?.title ?? (mailbox === 'inbox' ? 'Inbox' : mailbox === 'starred' ? 'Starred' : 'Trash');
+  const [state, setState] = useState<UnifiedInboxLoadState>(
+    () => demo ? demoLoadState(demo) : { status: 'loading' },
+  );
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedItem, setSelectedItem] = useState<UnifiedConversationItem | null>(null);
   const pendingActions = useRef(new Set<string>());
@@ -98,6 +118,7 @@ export function UnifiedInbox({
   );
 
   useEffect(() => {
+    if (demo) return;
     let active = true;
     void Promise.all(
       accounts.map(async (account) => {
@@ -219,14 +240,14 @@ export function UnifiedInbox({
     return () => {
       active = false;
     };
-  }, [accounts, mailbox, refreshKey, title]);
+  }, [accounts, demo, mailbox, refreshKey, title]);
 
   const refresh = () => {
     setSelectedItem(null);
     setSelectedItemKeys(new Set());
     setSelectionAnchorKey(null);
     setSelectionCursorKey(null);
-    setState({ status: 'loading' });
+    setState(demo ? demoLoadState(demo) : { status: 'loading' });
     setRefreshKey((current) => current + 1);
   };
 
@@ -253,7 +274,9 @@ export function UnifiedInbox({
       })),
     [availableItems],
   );
-  const { prefetchSoon, cancelPrefetch } = useMessagePrefetch(prefetchTargets);
+  const { prefetchSoon, cancelPrefetch } = useMessagePrefetch(prefetchTargets, {
+    disabled: Boolean(demo),
+  });
   const selectedItems = availableItems.filter((item) => selectedItemKeys.has(itemKey(item)));
   const selectedEmailCount = selectedItems.reduce(
     (total, item) =>
@@ -330,8 +353,9 @@ export function UnifiedInbox({
   }, [availableItems, selectedItem, selectedItemKeys, selectionAnchorKey, selectionCursorKey]);
 
   useEffect(
-    () =>
-      window.emzero.messages.onBulkJobProgress((progress) => {
+    () => {
+      if (demo) return;
+      return window.emzero.messages.onBulkJobProgress((progress) => {
         if (!progress.processedUids || !progress.accountId || !progress.folderPath) return;
         const processed = new Set(progress.processedUids);
         setState((current) => {
@@ -395,8 +419,9 @@ export function UnifiedInbox({
             : current.totalMessages,
       };
         });
-      }),
-    [mailbox],
+      });
+    },
+    [demo, mailbox],
   );
 
   const runAction = async (
@@ -453,6 +478,34 @@ export function UnifiedInbox({
       );
       setSelectedItem((current) => (current ? updateItem(current) : current));
     };
+
+    if (demo) {
+      if (action === 'read' || action === 'unread') {
+        const unread = action === 'unread';
+        updateUnread(new Map([...previousUnread.keys()].map((messageKey) => [messageKey, unread])));
+      } else if (action === 'star' || action === 'unstar') {
+        const flagged = action === 'star';
+        updateFlagged(new Map([...previousFlagged.keys()].map((messageKey) => [messageKey, flagged])));
+        if (mailbox === 'starred' && !flagged) {
+          setState((current) => current.status === 'loaded'
+            ? { ...current, items: current.items.filter((candidate) => itemKey(candidate) !== key) }
+            : current);
+          setSelectedItem(null);
+        }
+      } else {
+        setState((current) => current.status === 'loaded'
+          ? { ...current, items: current.items.filter((candidate) => itemKey(candidate) !== key) }
+          : current);
+        setSelectedItem(null);
+      }
+      pendingActions.current.delete(key);
+      setBusyConversations((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+      return true;
+    }
 
     if (action === 'read' || action === 'unread') {
       const unread = action === 'unread';
@@ -595,6 +648,12 @@ export function UnifiedInbox({
     destination?: MessageMoveDestination,
   ) => {
     if (bulkBusy) return;
+    if (demo) {
+      setSelectedItemKeys(new Set());
+      setSelectionAnchorKey(null);
+      setSelectionCursorKey(null);
+      return;
+    }
     const groups = new Map<string, BulkMessageJobRequest['groups'][number]>();
     for (const item of selectedItems) {
       const { account, folder } = item.selection;
@@ -681,6 +740,7 @@ export function UnifiedInbox({
               : current,
           );
         }}
+        demoDetails={demo?.details}
       />
     ) : null;
 
