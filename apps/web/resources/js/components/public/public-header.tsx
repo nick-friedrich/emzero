@@ -23,13 +23,13 @@ export function PublicHeader() {
             <nav className="flex items-center gap-2 sm:gap-6">
                 <Link
                     href={blogIndex()}
-                    className="hidden text-sm font-medium text-stone-600 transition hover:text-stone-950 sm:block"
+                    className="hidden text-sm font-medium text-muted-foreground transition hover:text-foreground sm:block"
                 >
                     Journal
                 </Link>
                 <Link
                     href={auth.user ? dashboard() : login()}
-                    className="inline-flex h-10 items-center gap-2 rounded-full border border-stone-950/15 bg-white/70 px-4 text-sm font-semibold shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-stone-950/30"
+                    className="inline-flex h-10 items-center gap-2 rounded-full border border-border bg-card/80 px-4 text-sm font-semibold shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary"
                 >
                     {auth.user ? 'Admin' : 'Sign in'}
                     <ArrowUpRight className="size-4" />

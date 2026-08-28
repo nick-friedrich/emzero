@@ -19,22 +19,24 @@ export function PostCard({
     return (
         <Link
             href={show(post.slug)}
-            className="group flex h-full flex-col justify-between gap-10 rounded-[2rem] border border-stone-950/10 bg-white p-6 transition hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(28,25,23,0.1)] sm:p-8"
+            className="group flex h-full flex-col justify-between gap-10 rounded-[2rem] border border-border bg-card p-6 transition hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_24px_60px_rgba(36,71,122,0.12)] sm:p-8"
         >
             <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-stone-400">
+                <span className="font-mono text-xs text-muted-foreground">
                     0{index + 1}
                 </span>
-                <ArrowUpRight className="size-5 text-stone-400 transition group-hover:rotate-45 group-hover:text-[#ff5c35]" />
+                <ArrowUpRight className="size-5 text-muted-foreground transition group-hover:rotate-45 group-hover:text-primary" />
             </div>
             <div className="flex flex-col gap-4">
-                <p className="text-xs font-bold tracking-[0.18em] text-[#d94824] uppercase">
+                <p className="text-xs font-bold tracking-[0.18em] text-primary uppercase">
                     {publishedAt}
                 </p>
-                <h3 className="text-2xl font-bold tracking-[-0.04em] text-stone-950">
+                <h3 className="text-2xl font-bold tracking-[-0.04em] text-foreground">
                     {post.title}
                 </h3>
-                <p className="leading-7 text-stone-600">{post.excerpt}</p>
+                <p className="leading-7 text-muted-foreground">
+                    {post.excerpt}
+                </p>
             </div>
         </Link>
     );

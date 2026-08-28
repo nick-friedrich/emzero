@@ -119,13 +119,7 @@ export function AccountSetup({
         smtp: provider.smtp,
         credentials:
           provider.authentication === 'microsoft-oauth'
-            ? {
-                type: 'microsoft-oauth',
-                clientId:
-                  current.credentials.type === 'microsoft-oauth'
-                    ? current.credentials.clientId
-                    : '',
-              }
+            ? { type: 'microsoft-oauth' }
             : {
                 type: 'password',
                 password:
@@ -169,13 +163,7 @@ export function AccountSetup({
                   smtp: provider.smtp,
                   credentials:
                     provider.authentication === 'microsoft-oauth'
-                      ? {
-                          type: 'microsoft-oauth',
-                          clientId:
-                            current.credentials.type === 'microsoft-oauth'
-                              ? current.credentials.clientId
-                              : '',
-                        }
+                      ? { type: 'microsoft-oauth' }
                       : {
                           type: 'password',
                           password:
@@ -237,7 +225,7 @@ export function AccountSetup({
     setStatus(null);
     setMicrosoftPrompt(null);
     try {
-      const start = await window.emzero.accounts.beginMicrosoftAuth(draft.credentials.clientId);
+      const start = await window.emzero.accounts.beginMicrosoftAuth();
       if (!start.ok || !start.sessionId || !start.userCode || !start.verificationUri) {
         setStatus({ kind: 'error', message: start.message });
         return;
@@ -385,27 +373,9 @@ export function AccountSetup({
               </div>
             ) : (
               <div className="sm:col-span-2">
-                <Field label="Microsoft Application (client) ID">
-                  <input
-                    className="field font-mono text-sm"
-                    placeholder="00000000-0000-0000-0000-000000000000"
-                    value={draft.credentials.clientId}
-                    onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        credentials: {
-                          type: 'microsoft-oauth',
-                          clientId: event.target.value,
-                        },
-                      })
-                    }
-                    autoComplete="off"
-                  />
-                </Field>
                 <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                  For this early personal setup, create a Microsoft Entra app registration that
-                  supports organizational and personal accounts, enable public client flows, and
-                  paste its client ID here. Emzero will open Microsoft’s device sign-in page.
+                  Emzero will open Microsoft’s secure device sign-in page. Sign in with the
+                  Microsoft account you want to connect and approve mail access.
                 </p>
               </div>
             )}

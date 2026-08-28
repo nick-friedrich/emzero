@@ -1,9 +1,46 @@
 import { Head, Link } from '@inertiajs/react';
-import { ArrowDown, Inbox, Layers3, ShieldCheck, Sparkles } from 'lucide-react';
+import {
+    ArrowDown,
+    Inbox,
+    Keyboard,
+    Layers3,
+    Palette,
+    ShieldCheck,
+    Sparkles,
+} from 'lucide-react';
 import { PostCard } from '@/components/public/post-card';
 import { WaitlistForm } from '@/components/public/waitlist-form';
 import { index as blogIndex } from '@/routes/blog';
 import type { BlogPostSummary } from '@/types';
+
+const features = [
+    {
+        icon: Inbox,
+        title: 'Every inbox, together',
+        copy: 'Keep personal and work accounts in one focused view without losing their identity.',
+    },
+    {
+        icon: Keyboard,
+        title: 'Built for keyboard flow',
+        copy: 'Search, read, reply, and organize without reaching for another tab—or your mouse.',
+    },
+    {
+        icon: ShieldCheck,
+        title: 'Private by design',
+        copy: 'Your mail stays yours. Emzero is designed around direct connections and local-first trust.',
+    },
+];
+
+const themePreviews = [
+    {
+        name: 'Midnight blue',
+        src: '/brand/screenshots/emzero-app-dark-blue.webp',
+    },
+    {
+        name: 'Soft violet',
+        src: '/brand/screenshots/emzero-app-dark-violet.webp',
+    },
+];
 
 export default function Home({ posts }: { posts: BlogPostSummary[] }) {
     return (
@@ -11,177 +48,110 @@ export default function Home({ posts }: { posts: BlogPostSummary[] }) {
             <Head title="A calmer way to do email">
                 <meta
                     name="description"
-                    content="Emzero brings every inbox into one calm, focused workspace. Join the waitlist."
+                    content="Emzero brings every inbox into one calm, focused desktop workspace. Join the waitlist."
                 />
+                <link rel="canonical" href="https://emzero.email/" />
+                <meta property="og:type" content="website" />
+                <meta
+                    property="og:title"
+                    content="Emzero — A calmer way to do email"
+                />
+                <meta
+                    property="og:description"
+                    content="Every inbox in one fast, private desktop workspace."
+                />
+                <meta property="og:url" content="https://emzero.email/" />
+                <meta
+                    property="og:image"
+                    content="https://emzero.email/brand/screenshots/emzero-app-light.webp"
+                />
+                <meta name="twitter:card" content="summary_large_image" />
             </Head>
 
             <main>
-                <section className="relative mx-auto grid min-h-[calc(100vh-88px)] w-full max-w-7xl items-center gap-14 px-5 py-16 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:px-12 lg:py-20">
-                    <div className="relative z-10 flex flex-col items-start gap-8">
-                        <div className="inline-flex items-center gap-2 rounded-full border border-[#ff5c35]/25 bg-[#ff5c35]/10 px-3 py-1.5 text-xs font-bold tracking-[0.12em] text-[#b93818] uppercase">
+                <section className="relative mx-auto flex w-full max-w-7xl flex-col items-center gap-12 px-5 pt-16 pb-20 text-center sm:px-8 lg:px-12 lg:pt-24">
+                    <div className="pointer-events-none absolute top-0 left-1/2 -z-10 h-[34rem] w-[60rem] -translate-x-1/2 rounded-full bg-primary/10 blur-3xl" />
+                    <div className="flex max-w-4xl flex-col items-center gap-7">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-secondary px-3 py-1.5 text-xs font-bold tracking-[0.12em] text-primary uppercase">
                             <Sparkles className="size-3.5" />
                             Private beta opening soon
                         </div>
-                        <div className="flex flex-col gap-6">
-                            <h1 className="max-w-3xl text-5xl leading-[0.95] font-black tracking-[-0.065em] text-balance sm:text-7xl lg:text-[5.7rem]">
-                                Email, minus the noise.
+                        <div className="flex flex-col items-center gap-6">
+                            <h1 className="text-5xl leading-[0.96] font-black tracking-[-0.065em] text-balance sm:text-7xl lg:text-[5.8rem]">
+                                All your inboxes.
+                                <span className="block text-primary">
+                                    One calm place.
+                                </span>
                             </h1>
-                            <p className="max-w-xl text-lg leading-8 text-stone-600 sm:text-xl">
-                                Emzero brings every inbox into one fast, private
-                                workspace—so you can focus on people, not tabs.
+                            <p className="max-w-2xl text-lg leading-8 text-muted-foreground sm:text-xl">
+                                Emzero is a fast, private desktop mail client
+                                that brings every account into one focused
+                                workspace.
                             </p>
                         </div>
-                        <WaitlistForm />
-                        <a
-                            href="#why"
-                            className="flex items-center gap-2 text-sm font-semibold text-stone-500"
-                        >
-                            See why we’re building it
-                            <ArrowDown className="size-4" />
-                        </a>
+                        <div className="w-full max-w-2xl text-left">
+                            <WaitlistForm />
+                        </div>
+                        <p className="text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+                            Coming to emzero.email
+                        </p>
                     </div>
 
-                    <div className="relative mx-auto w-full max-w-xl lg:max-w-none">
-                        <div className="absolute -top-16 -right-20 size-72 rounded-full bg-[#c8ff4d]/60 blur-3xl" />
-                        <div className="absolute -bottom-20 -left-16 size-72 rounded-full bg-[#ff7d5d]/30 blur-3xl" />
-                        <div className="relative rotate-[-1.5deg] overflow-hidden rounded-[2rem] border border-stone-950/10 bg-[#181714] p-3 shadow-[0_40px_100px_rgba(28,25,23,0.26)] sm:p-4">
-                            <div className="flex items-center gap-2 px-3 py-2 text-stone-500">
-                                <span className="size-2.5 rounded-full bg-[#ff5c35]" />
-                                <span className="size-2.5 rounded-full bg-[#f5c451]" />
-                                <span className="size-2.5 rounded-full bg-[#c8ff4d]" />
-                            </div>
-                            <div className="grid min-h-[430px] grid-cols-[88px_1fr] overflow-hidden rounded-2xl bg-[#f7f4ed] sm:grid-cols-[150px_1fr]">
-                                <aside className="flex flex-col gap-3 border-r border-stone-950/10 bg-white/70 p-4">
-                                    <div className="mb-3 flex items-center gap-2 text-sm font-black">
-                                        <span className="grid size-7 place-items-center rounded-full bg-[#ff5c35] text-[10px] text-white">
-                                            em
-                                        </span>
-                                        <span className="hidden sm:block">
-                                            emzero
-                                        </span>
-                                    </div>
-                                    {[
-                                        'All inboxes',
-                                        'Starred',
-                                        'Sent',
-                                        'Drafts',
-                                    ].map((label, index) => (
-                                        <div
-                                            key={label}
-                                            className={`rounded-lg px-2 py-2 text-xs ${index === 0 ? 'bg-stone-950 font-bold text-white' : 'text-stone-500'}`}
-                                        >
-                                            <span className="hidden sm:block">
-                                                {label}
-                                            </span>
-                                            <span className="block h-2 rounded bg-current opacity-20 sm:hidden" />
-                                        </div>
-                                    ))}
-                                </aside>
-                                <div className="p-4 sm:p-6">
-                                    <div className="mb-5 flex items-center justify-between">
-                                        <div>
-                                            <p className="text-xs text-stone-400">
-                                                Good morning
-                                            </p>
-                                            <p className="text-lg font-black tracking-tight">
-                                                Your inbox
-                                            </p>
-                                        </div>
-                                        <div className="rounded-full bg-[#c8ff4d] px-3 py-1 text-xs font-black">
-                                            12
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-col gap-2">
-                                        {[
-                                            [
-                                                'Maya Chen',
-                                                'The latest product notes',
-                                                '2m',
-                                            ],
-                                            [
-                                                'Studio North',
-                                                'Re: Monday’s review',
-                                                '18m',
-                                            ],
-                                            [
-                                                'Jon Bell',
-                                                'A quick introduction',
-                                                '1h',
-                                            ],
-                                            [
-                                                'Paper Trail',
-                                                'Your weekly reading list',
-                                                '3h',
-                                            ],
-                                        ].map(
-                                            ([name, subject, time], index) => (
-                                                <div
-                                                    key={subject}
-                                                    className={`rounded-xl border p-3 sm:p-4 ${index === 0 ? 'border-[#ff5c35]/30 bg-white shadow-sm' : 'border-transparent bg-white/55'}`}
-                                                >
-                                                    <div className="flex items-center justify-between gap-4">
-                                                        <span className="text-sm font-bold">
-                                                            {name}
-                                                        </span>
-                                                        <span className="text-[10px] text-stone-400">
-                                                            {time}
-                                                        </span>
-                                                    </div>
-                                                    <p className="mt-1 truncate text-xs text-stone-500">
-                                                        {subject}
-                                                    </p>
-                                                </div>
-                                            ),
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
+                    <figure className="relative w-full">
+                        <div className="absolute inset-x-[10%] bottom-0 -z-10 h-1/2 rounded-full bg-primary/20 blur-3xl" />
+                        <div className="overflow-hidden rounded-[1.6rem] border border-border bg-card p-1.5 shadow-[0_34px_100px_rgba(36,71,122,0.20)] sm:rounded-[2rem] sm:p-2.5">
+                            <img
+                                src="/brand/screenshots/emzero-app-light.webp"
+                                alt="Emzero desktop app showing a unified inbox, message list, and conversation reader in the light theme"
+                                width={1600}
+                                height={1063}
+                                fetchPriority="high"
+                                className="h-auto w-full rounded-[1.15rem] sm:rounded-[1.45rem]"
+                            />
                         </div>
-                    </div>
+                        <figcaption className="mt-5 text-sm text-muted-foreground">
+                            One workspace for every account, designed to stay
+                            out of your way.
+                        </figcaption>
+                    </figure>
+
+                    <a
+                        href="#why"
+                        className="flex items-center gap-2 text-sm font-semibold text-muted-foreground transition hover:text-primary"
+                    >
+                        See what makes it different
+                        <ArrowDown className="size-4" />
+                    </a>
                 </section>
 
-                <section
-                    id="why"
-                    className="border-y border-stone-950/10 bg-white/55"
-                >
+                <section id="why" className="border-y border-border bg-card/65">
                     <div className="mx-auto grid w-full max-w-7xl gap-12 px-5 py-24 sm:px-8 lg:grid-cols-[0.7fr_1.3fr] lg:px-12">
                         <div className="flex flex-col gap-5">
-                            <p className="text-xs font-bold tracking-[0.2em] text-[#d94824] uppercase">
+                            <p className="text-xs font-bold tracking-[0.2em] text-primary uppercase">
                                 The idea
                             </p>
                             <h2 className="text-4xl font-black tracking-[-0.05em] sm:text-5xl">
-                                One place. Less friction.
+                                Email without the browser clutter.
                             </h2>
+                            <p className="max-w-md leading-7 text-muted-foreground">
+                                A dedicated workspace for the conversations that
+                                matter, with less switching and fewer
+                                distractions.
+                            </p>
                         </div>
                         <div className="grid gap-5 sm:grid-cols-3">
-                            {[
-                                [
-                                    Inbox,
-                                    'One unified inbox',
-                                    'Keep personal and work accounts together without losing context.',
-                                ],
-                                [
-                                    Layers3,
-                                    'Built for flow',
-                                    'Search, write, and act without bouncing between browser tabs.',
-                                ],
-                                [
-                                    ShieldCheck,
-                                    'Private by design',
-                                    'Your accounts stay yours. Emzero is built around local-first trust.',
-                                ],
-                            ].map(([Icon, title, copy]) => (
+                            {features.map(({ icon: Icon, title, copy }) => (
                                 <article
-                                    key={String(title)}
-                                    className="flex flex-col gap-5 rounded-3xl border border-stone-950/10 bg-[#f7f4ed] p-6"
+                                    key={title}
+                                    className="flex flex-col gap-5 rounded-3xl border border-border bg-background p-6"
                                 >
-                                    <Icon className="size-7 text-[#ff5c35]" />
+                                    <div className="grid size-11 place-items-center rounded-2xl bg-secondary text-primary">
+                                        <Icon className="size-6" />
+                                    </div>
                                     <div className="flex flex-col gap-2">
-                                        <h3 className="font-bold">
-                                            {String(title)}
-                                        </h3>
-                                        <p className="text-sm leading-6 text-stone-600">
-                                            {String(copy)}
+                                        <h3 className="font-bold">{title}</h3>
+                                        <p className="text-sm leading-6 text-muted-foreground">
+                                            {copy}
                                         </p>
                                     </div>
                                 </article>
@@ -190,45 +160,91 @@ export default function Home({ posts }: { posts: BlogPostSummary[] }) {
                     </div>
                 </section>
 
-                {posts.length > 0 && (
-                    <section className="mx-auto flex w-full max-w-7xl flex-col gap-10 px-5 py-24 sm:px-8 lg:px-12">
-                        <div className="flex items-end justify-between gap-6">
-                            <div className="flex flex-col gap-3">
-                                <p className="text-xs font-bold tracking-[0.2em] text-[#d94824] uppercase">
-                                    From the journal
-                                </p>
-                                <h2 className="text-4xl font-black tracking-[-0.05em]">
-                                    Notes from the build.
-                                </h2>
-                            </div>
-                            <Link
-                                href={blogIndex()}
-                                className="hidden text-sm font-bold underline underline-offset-4 sm:block"
-                            >
-                                Read all posts
-                            </Link>
+                <section className="mx-auto grid w-full max-w-7xl gap-12 px-5 py-24 sm:px-8 lg:grid-cols-[0.6fr_1.4fr] lg:px-12">
+                    <div className="flex flex-col items-start gap-6">
+                        <div className="grid size-12 place-items-center rounded-2xl bg-secondary text-primary">
+                            <Palette className="size-6" />
                         </div>
-                        <div className="grid gap-5 md:grid-cols-3">
-                            {posts.map((post, index) => (
-                                <PostCard
-                                    key={post.id}
-                                    post={post}
-                                    index={index}
+                        <div className="flex flex-col gap-4">
+                            <p className="text-xs font-bold tracking-[0.2em] text-primary uppercase">
+                                Make it yours
+                            </p>
+                            <h2 className="text-4xl font-black tracking-[-0.05em] sm:text-5xl">
+                                Calm looks different to everyone.
+                            </h2>
+                            <p className="max-w-md leading-7 text-muted-foreground">
+                                Choose the theme and typeface that feel right,
+                                while every layout and shortcut stays familiar.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="grid gap-5 md:grid-cols-2">
+                        {themePreviews.map((theme) => (
+                            <figure
+                                key={theme.name}
+                                className="overflow-hidden rounded-3xl border border-border bg-card p-2 shadow-[0_18px_50px_rgba(36,71,122,0.12)]"
+                            >
+                                <img
+                                    src={theme.src}
+                                    alt={`Emzero desktop app using the ${theme.name} theme`}
+                                    width={1600}
+                                    height={1063}
+                                    loading="lazy"
+                                    className="aspect-[1.5] w-full rounded-2xl object-cover"
                                 />
-                            ))}
+                                <figcaption className="flex items-center gap-2 px-3 py-3 text-sm font-semibold">
+                                    <span className="size-2 rounded-full bg-primary" />
+                                    {theme.name}
+                                </figcaption>
+                            </figure>
+                        ))}
+                    </div>
+                </section>
+
+                {posts.length > 0 && (
+                    <section className="border-y border-border bg-card/65">
+                        <div className="mx-auto flex w-full max-w-7xl flex-col gap-10 px-5 py-24 sm:px-8 lg:px-12">
+                            <div className="flex items-end justify-between gap-6">
+                                <div className="flex flex-col gap-3">
+                                    <p className="text-xs font-bold tracking-[0.2em] text-primary uppercase">
+                                        From the journal
+                                    </p>
+                                    <h2 className="text-4xl font-black tracking-[-0.05em]">
+                                        Notes from the build.
+                                    </h2>
+                                </div>
+                                <Link
+                                    href={blogIndex()}
+                                    className="hidden text-sm font-bold text-primary underline underline-offset-4 sm:block"
+                                >
+                                    Read all posts
+                                </Link>
+                            </div>
+                            <div className="grid gap-5 md:grid-cols-3">
+                                {posts.map((post, index) => (
+                                    <PostCard
+                                        key={post.id}
+                                        post={post}
+                                        index={index}
+                                    />
+                                ))}
+                            </div>
                         </div>
                     </section>
                 )}
 
-                <section className="mx-auto w-full max-w-7xl px-5 pb-24 sm:px-8 lg:px-12">
-                    <div className="relative overflow-hidden rounded-[2.5rem] bg-[#c8ff4d] px-6 py-16 sm:px-12 lg:px-20">
-                        <div className="absolute -right-10 -bottom-20 text-[14rem] leading-none font-black text-stone-950/5">
+                <section className="mx-auto w-full max-w-7xl px-5 py-24 sm:px-8 lg:px-12">
+                    <div className="relative overflow-hidden rounded-[2.5rem] border border-primary/15 bg-accent px-6 py-16 sm:px-12 lg:px-20">
+                        <div className="absolute -right-10 -bottom-20 text-[14rem] leading-none font-black text-primary/5">
                             @
                         </div>
                         <div className="relative flex max-w-2xl flex-col gap-7">
-                            <p className="text-xs font-bold tracking-[0.2em] uppercase">
-                                Early access
-                            </p>
+                            <div className="flex items-center gap-2 text-primary">
+                                <Layers3 className="size-5" />
+                                <p className="text-xs font-bold tracking-[0.2em] uppercase">
+                                    Early access
+                                </p>
+                            </div>
                             <h2 className="text-4xl font-black tracking-[-0.05em] sm:text-5xl">
                                 Be first in line for a calmer inbox.
                             </h2>

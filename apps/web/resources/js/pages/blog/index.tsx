@@ -9,16 +9,22 @@ export default function BlogIndex({
 }) {
     return (
         <>
-            <Head title="Journal" />
+            <Head title="Journal">
+                <meta
+                    name="description"
+                    content="Product decisions, discoveries, and notes from building the Emzero desktop mail client."
+                />
+                <link rel="canonical" href="https://emzero.email/blog" />
+            </Head>
             <main className="mx-auto flex min-h-[70vh] w-full max-w-7xl flex-col gap-12 px-5 py-16 sm:px-8 lg:px-12 lg:py-24">
                 <header className="flex max-w-3xl flex-col gap-5">
-                    <p className="text-xs font-bold tracking-[0.2em] text-[#d94824] uppercase">
+                    <p className="text-xs font-bold tracking-[0.2em] text-primary uppercase">
                         The journal
                     </p>
                     <h1 className="text-5xl font-black tracking-[-0.06em] sm:text-7xl">
                         Building email back from zero.
                     </h1>
-                    <p className="max-w-2xl text-lg leading-8 text-stone-600">
+                    <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
                         Product decisions, tiny discoveries, and an honest
                         record of building a calmer mail client.
                     </p>
@@ -46,7 +52,7 @@ export default function BlogIndex({
                                             key={link.label}
                                             href={link.url}
                                             preserveScroll
-                                            className={`rounded-full px-4 py-2 text-sm font-semibold ${link.active ? 'bg-stone-950 text-white' : 'border border-stone-950/10 bg-white'}`}
+                                            className={`rounded-full px-4 py-2 text-sm font-semibold ${link.active ? 'bg-primary text-primary-foreground' : 'border border-border bg-card'}`}
                                         >
                                             {link.label.includes('Previous')
                                                 ? 'Previous'
@@ -60,7 +66,7 @@ export default function BlogIndex({
                         )}
                     </>
                 ) : (
-                    <div className="rounded-[2rem] border border-dashed border-stone-950/20 p-12 text-stone-500">
+                    <div className="rounded-[2rem] border border-dashed border-border p-12 text-muted-foreground">
                         The first note is still being written. Check back soon.
                     </div>
                 )}

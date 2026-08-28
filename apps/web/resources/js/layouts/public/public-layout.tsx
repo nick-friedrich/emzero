@@ -7,10 +7,10 @@ import { index as blogIndex } from '@/routes/blog';
 
 export default function PublicLayout({ children }: PropsWithChildren) {
     return (
-        <div className="min-h-screen overflow-hidden bg-[#f7f4ed] text-stone-950 selection:bg-[#ff5c35] selection:text-white">
+        <div className="emzero-light-theme min-h-screen overflow-hidden bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
             <PublicHeader />
             {children}
-            <footer className="mx-auto flex w-full max-w-7xl flex-col gap-6 border-t border-stone-950/10 px-5 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12">
+            <footer className="mx-auto flex w-full max-w-7xl flex-col gap-6 border-t border-border px-5 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12">
                 <Link
                     href={home()}
                     className="flex items-center gap-2.5 text-lg font-black tracking-[-0.04em]"
@@ -18,8 +18,14 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                     <AppLogoIcon className="size-9 object-contain drop-shadow-sm" />
                     emzero
                 </Link>
-                <div className="flex items-center gap-6 text-sm text-stone-500">
-                    <Link href={blogIndex()} className="hover:text-stone-950">
+                <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
+                    <a
+                        href="mailto:hello@emzero.email"
+                        className="hover:text-foreground"
+                    >
+                        hello@emzero.email
+                    </a>
+                    <Link href={blogIndex()} className="hover:text-foreground">
                         Journal
                     </Link>
                     <span>© {new Date().getFullYear()} Emzero</span>

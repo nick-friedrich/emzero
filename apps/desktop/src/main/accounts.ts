@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ipcMain, safeStorage, shell } from 'electron';
 import {
   ACCOUNT_CHANNELS,
+  MICROSOFT_CLIENT_ID,
   type AccountDraft,
   type AccountNameUpdate,
   type AccountOperationResult,
@@ -85,9 +86,7 @@ async function saveConnectedAccount(
     authentication,
     createdAt: new Date().toISOString(),
     encryptedSecret: (await safeStorage.encryptStringAsync(secret)).toString('base64'),
-    ...(authentication === 'microsoft-oauth'
-      ? { oauthClientId: draft.credentials.clientId.trim() }
-      : {}),
+    ...(authentication === 'microsoft-oauth' ? { oauthClientId: MICROSOFT_CLIENT_ID } : {}),
   };
 
   await writeAccounts([...accounts, account]);
@@ -629,12 +628,9 @@ export function registerAccountHandlers(): void {
     return saveConnectedAccount(draft, draft.credentials.password);
   });
 
-  ipcMain.handle(ACCOUNT_CHANNELS.beginMicrosoftAuth, async (event, clientId: unknown) => {
+  ipcMain.handle(ACCOUNT_CHANNELS.beginMicrosoftAuth, async (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-    if (typeof clientId !== 'string') {
-      return { ok: false, message: 'Enter a Microsoft Application (client) ID.' };
-    }
-    const result = await beginMicrosoftAuth(clientId);
+    const result = await beginMicrosoftAuth(MICROSOFT_CLIENT_ID);
     if (result.ok && result.verificationUri) {
       try {
         const url = new URL(result.verificationUri);

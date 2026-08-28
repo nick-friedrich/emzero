@@ -22,7 +22,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/web/resources/js/pages/admin/` — private dashboard, waitlist, and blog management UI.
 - `apps/web/resources/js/components/public/` — public navigation, waitlist form, and blog card primitives.
 - `apps/web/resources/js/components/admin/` — reusable admin post editor.
-- `apps/web/public/brand/` — original brand assets served directly by the website.
+- `apps/web/public/brand/` — original and optimized brand assets, favicons, and product screenshots served directly by the website.
 - `apps/web/database/migrations/` — website database schema; production should use a persistent database shared with PHP-FPM.
 - `apps/web/tests/Feature/` — public, authentication, and admin feature coverage.
 

@@ -37,20 +37,11 @@ describe('validateAccountDraft', () => {
     ).toMatch(/valid IMAP port/);
   });
 
-  it('validates Microsoft application IDs', () => {
+  it('accepts Microsoft authentication without user-supplied application settings', () => {
     expect(
       validateAccountDraft({
         ...validDraft,
-        credentials: { type: 'microsoft-oauth', clientId: 'not-an-id' },
-      }),
-    ).toMatch(/Application \(client\) ID/);
-    expect(
-      validateAccountDraft({
-        ...validDraft,
-        credentials: {
-          type: 'microsoft-oauth',
-          clientId: '00000000-0000-4000-8000-000000000000',
-        },
+        credentials: { type: 'microsoft-oauth' },
       }),
     ).toBeNull();
   });

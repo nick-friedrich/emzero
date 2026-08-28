@@ -54,13 +54,10 @@ This transitional flow requires no Emzero Google OAuth project. Native Google OA
 
 ### Outlook and Microsoft 365
 
-The current personal setup uses Microsoft device-code OAuth with a client ID that you own:
+Emzero uses its registered Microsoft public-client application and device-code OAuth:
 
-1. In [Microsoft Entra app registrations](https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade), create an app registration.
-2. Choose **Accounts in any organizational directory and personal Microsoft accounts** as the supported account type.
-3. Under **Authentication**, enable **Allow public client flows**.
-4. Under **API permissions**, add the delegated **Office 365 Exchange Online** permissions `IMAP.AccessAsUser.All` and `SMTP.Send`.
-5. Copy the **Application (client) ID**, select **Outlook / Microsoft 365** in Emzero, and paste the ID into the setup form.
-6. Select **Connect with Microsoft** and finish the device sign-in in the browser that opens.
+1. Add an account and select **Outlook / Microsoft 365**.
+2. Select **Connect with Microsoft**.
+3. Finish the device sign-in in the browser that opens and approve mail access.
 
-The client ID is stored with the account and is not a secret. The Microsoft refresh token is encrypted with Electron's operating-system credential storage; access tokens are kept in memory and refreshed as needed.
+The public Microsoft application ID is stored with the account. The Microsoft refresh token is encrypted with Electron's operating-system credential storage; access tokens are kept in memory and refreshed as needed.

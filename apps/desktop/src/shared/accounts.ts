@@ -10,10 +10,12 @@ export interface AccountDraft {
   username: string;
   credentials:
     | { type: 'password'; password: string }
-    | { type: 'microsoft-oauth'; clientId: string };
+    | { type: 'microsoft-oauth' };
   imap: MailServerSettings;
   smtp: MailServerSettings;
 }
+
+export const MICROSOFT_CLIENT_ID = '60529e00-ea91-4691-9575-6a1a6c665d9c';
 
 export interface AccountSummary {
   id: string;
@@ -512,15 +514,6 @@ export function validateAccountDraft(value: AccountDraft): string | null {
   if (value.credentials.type === 'password' && !value.credentials.password) {
     return 'Enter your password or app password.';
   }
-  if (
-    value.credentials.type === 'microsoft-oauth' &&
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      value.credentials.clientId.trim(),
-    )
-  ) {
-    return 'Enter the Application (client) ID from your Microsoft app registration.';
-  }
-
   for (const [label, server] of [
     ['IMAP', value.imap],
     ['SMTP', value.smtp],
