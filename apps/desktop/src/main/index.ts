@@ -1,10 +1,12 @@
 import path from 'node:path';
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Menu } from 'electron';
 import { registerAccountHandlers } from './accounts.js';
 import { startBackgroundSync, stopBackgroundSync } from './background-sync.js';
 import { closeMailCache } from './mail-runtime.js';
 
 let mainWindow: BrowserWindow | null = null;
+
+app.setName('Emzero');
 
 const linuxDesktop = process.env.XDG_CURRENT_DESKTOP?.toLowerCase().split(':') ?? [];
 if (
@@ -26,6 +28,7 @@ const createWindow = (): void => {
     backgroundColor: '#f5f5f4',
     icon: path.join(app.getAppPath(), 'assets', 'emzero-logo.png'),
     show: false,
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -53,6 +56,14 @@ const createWindow = (): void => {
 };
 
 void app.whenReady().then(() => {
+  if (process.platform === 'darwin') {
+    app.dock?.setIcon(path.join(app.getAppPath(), 'assets', 'emzero-logo.png'));
+    const applicationMenu = Menu.getApplicationMenu();
+    if (applicationMenu?.items[0]) {
+      applicationMenu.items[0].label = app.name;
+      Menu.setApplicationMenu(applicationMenu);
+    }
+  }
   registerAccountHandlers();
   createWindow();
   startBackgroundSync();

@@ -6,11 +6,13 @@ import { MakerZIP } from '@electron-forge/maker-zip';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 
 const appIcon = path.resolve(import.meta.dirname, 'assets/emzero-logo.png');
+const macAppIcon = path.resolve(import.meta.dirname, 'assets/emzero-logo.icns');
 
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     executableName: 'emzero',
+    icon: process.platform === 'darwin' ? macAppIcon : appIcon,
   },
   rebuildConfig: {},
   makers: [

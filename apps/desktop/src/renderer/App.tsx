@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type CSSProperties, type PointerEvent } from 'react';
 import { LoaderCircle, Menu, PanelLeftOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   Sheet,
   SheetContent,
@@ -244,6 +245,7 @@ export function App() {
   }
 
   const visibleAccounts = demoMode ? demoAccounts : accounts;
+  const macTitleBarInset = window.emzero?.platform === 'darwin' ? 'pt-12' : undefined;
   const demoSnapshot = demoMode ? demoMailboxSnapshot(selection) : undefined;
   const demoSelectionKey = selection.kind === 'folder'
     ? `${selection.account.id}:${selection.folder.path}`
@@ -268,7 +270,7 @@ export function App() {
         <div className="relative hidden min-h-0 min-w-0 lg:flex">
           <Sidebar
             key={demoMode ? 'demo-pinned' : 'mail-pinned'}
-            className="min-w-0 flex-1 border-r-0"
+            className={cn('min-w-0 flex-1 border-r-0', macTitleBarInset)}
             accounts={visibleAccounts}
             selection={selection}
             syncStatus={syncStatus}
@@ -332,7 +334,10 @@ export function App() {
         <>
           <button
             type="button"
-            className="group hidden min-h-0 w-full items-start justify-center border-r border-border bg-sidebar pt-4 text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground lg:flex"
+            className={cn(
+              'group hidden min-h-0 w-full items-start justify-center border-r border-border bg-sidebar text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground lg:flex',
+              macTitleBarInset ?? 'pt-4',
+            )}
             aria-label="Reveal navigation"
             aria-expanded={sidebarHoverOpen}
             title="Hover to reveal navigation"
@@ -359,7 +364,7 @@ export function App() {
           >
             <Sidebar
               key={demoMode ? 'demo-hover' : 'mail-hover'}
-              className="min-w-0 flex-1"
+              className={cn('min-w-0 flex-1', macTitleBarInset)}
               accounts={visibleAccounts}
               selection={selection}
               syncStatus={syncStatus}
@@ -438,7 +443,7 @@ export function App() {
           </div>
           <Sidebar
             key={demoMode ? 'demo-mobile' : 'mail-mobile'}
-            className="h-full border-r-0"
+            className={cn('h-full border-r-0', macTitleBarInset)}
             accounts={visibleAccounts}
             selection={selection}
             syncStatus={syncStatus}
