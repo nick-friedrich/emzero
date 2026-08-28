@@ -40,6 +40,7 @@ export interface EmzeroDesktopApi {
     test: (draft: AccountDraft) => Promise<AccountOperationResult>;
     save: (draft: AccountDraft) => Promise<AccountOperationResult>;
     beginMicrosoftAuth: () => Promise<MicrosoftAuthStartResult>;
+    openMicrosoftAuthPage: (verificationUri: string) => Promise<boolean>;
     finishMicrosoftAuth: (
       sessionId: string,
       draft: AccountDraft,
@@ -127,6 +128,8 @@ contextBridge.exposeInMainWorld('emzero', {
     test: (draft) => ipcRenderer.invoke(ACCOUNT_CHANNELS.test, draft),
     save: (draft) => ipcRenderer.invoke(ACCOUNT_CHANNELS.save, draft),
     beginMicrosoftAuth: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.beginMicrosoftAuth),
+    openMicrosoftAuthPage: (verificationUri) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.openMicrosoftAuthPage, verificationUri),
     finishMicrosoftAuth: (sessionId, draft) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.finishMicrosoftAuth, sessionId, draft),
     cancelMicrosoftAuth: (sessionId) =>

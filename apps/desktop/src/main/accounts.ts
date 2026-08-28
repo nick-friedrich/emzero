@@ -630,17 +630,29 @@ export function registerAccountHandlers(): void {
 
   ipcMain.handle(ACCOUNT_CHANNELS.beginMicrosoftAuth, async (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-    const result = await beginMicrosoftAuth(MICROSOFT_CLIENT_ID);
-    if (result.ok && result.verificationUri) {
-      try {
-        const url = new URL(result.verificationUri);
-        if (url.protocol === 'https:') await shell.openExternal(url.toString());
-      } catch {
-        // The device code remains usable through the URL and code shown in the renderer.
-      }
-    }
-    return result;
+    return beginMicrosoftAuth(MICROSOFT_CLIENT_ID);
   });
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.openMicrosoftAuthPage,
+    async (event, verificationUri: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (typeof verificationUri !== 'string') return false;
+      try {
+        const url = new URL(verificationUri);
+        const microsoftHost =
+          url.hostname === 'microsoft.com' ||
+          url.hostname.endsWith('.microsoft.com') ||
+          url.hostname === 'microsoftonline.com' ||
+          url.hostname.endsWith('.microsoftonline.com');
+        if (url.protocol !== 'https:' || !microsoftHost) return false;
+        await shell.openExternal(url.toString());
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  );
 
   ipcMain.handle(
     ACCOUNT_CHANNELS.finishMicrosoftAuth,

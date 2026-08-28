@@ -34,10 +34,12 @@ const features = [
 const themePreviews = [
     {
         name: 'Midnight blue',
+        description: 'A focused blue palette for late-night inbox sessions.',
         src: '/brand/screenshots/emzero-app-dark-blue.webp',
     },
     {
         name: 'Soft violet',
+        description: 'A warmer dark theme with a softer violet accent.',
         src: '/brand/screenshots/emzero-app-dark-violet.webp',
     },
 ];
@@ -45,20 +47,20 @@ const themePreviews = [
 export default function Home({ posts }: { posts: BlogPostSummary[] }) {
     return (
         <>
-            <Head title="A calmer way to do email">
+            <Head title="The email client for Linux">
                 <meta
                     name="description"
-                    content="Emzero brings every inbox into one calm, focused desktop workspace. Join the waitlist."
+                    content="A modern, private email client built first for Linux, with macOS support too. Bring every inbox into one focused desktop workspace."
                 />
                 <link rel="canonical" href="https://emzero.email/" />
                 <meta property="og:type" content="website" />
                 <meta
                     property="og:title"
-                    content="Emzero — A calmer way to do email"
+                    content="Emzero — The email client for Linux"
                 />
                 <meta
                     property="og:description"
-                    content="Every inbox in one fast, private desktop workspace."
+                    content="A modern, private email client built first for Linux, with macOS support too."
                 />
                 <meta property="og:url" content="https://emzero.email/" />
                 <meta
@@ -74,19 +76,19 @@ export default function Home({ posts }: { posts: BlogPostSummary[] }) {
                     <div className="flex max-w-4xl flex-col items-center gap-7">
                         <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-secondary px-3 py-1.5 text-xs font-bold tracking-[0.12em] text-primary uppercase">
                             <Sparkles className="size-3.5" />
-                            Private beta opening soon
+                            Built for Linux · macOS too
                         </div>
                         <div className="flex flex-col items-center gap-6">
                             <h1 className="text-5xl leading-[0.96] font-black tracking-[-0.065em] text-balance sm:text-7xl lg:text-[5.8rem]">
-                                All your inboxes.
+                                A modern email client
                                 <span className="block text-primary">
-                                    One calm place.
+                                    for Linux. Finally.
                                 </span>
                             </h1>
                             <p className="max-w-2xl text-lg leading-8 text-muted-foreground sm:text-xl">
-                                Emzero is a fast, private desktop mail client
-                                that brings every account into one focused
-                                workspace.
+                                Emzero is a fast, private, multi-account desktop
+                                mail client built for Linux—not ported there as
+                                an afterthought. And yes, it runs on macOS too.
                             </p>
                         </div>
                         <div className="w-full max-w-2xl text-left">
@@ -110,8 +112,8 @@ export default function Home({ posts }: { posts: BlogPostSummary[] }) {
                             />
                         </div>
                         <figcaption className="mt-5 text-sm text-muted-foreground">
-                            One workspace for every account, designed to stay
-                            out of your way.
+                            A real desktop mail workspace for Linux, with every
+                            account together and no browser tabs required.
                         </figcaption>
                     </figure>
 
@@ -131,12 +133,12 @@ export default function Home({ posts }: { posts: BlogPostSummary[] }) {
                                 The idea
                             </p>
                             <h2 className="text-4xl font-black tracking-[-0.05em] sm:text-5xl">
-                                Email without the browser clutter.
+                                Linux deserves a great email client.
                             </h2>
                             <p className="max-w-md leading-7 text-muted-foreground">
-                                A dedicated workspace for the conversations that
-                                matter, with less switching and fewer
-                                distractions.
+                                Emzero is designed around the Linux desktop from
+                                day one, while keeping the same polished
+                                experience available on macOS.
                             </p>
                         </div>
                         <div className="grid gap-5 sm:grid-cols-3">
@@ -160,8 +162,8 @@ export default function Home({ posts }: { posts: BlogPostSummary[] }) {
                     </div>
                 </section>
 
-                <section className="mx-auto grid w-full max-w-7xl gap-12 px-5 py-24 sm:px-8 lg:grid-cols-[0.6fr_1.4fr] lg:px-12">
-                    <div className="flex flex-col items-start gap-6">
+                <section className="mx-auto flex w-full max-w-7xl flex-col gap-12 px-5 py-24 sm:px-8 lg:px-12">
+                    <div className="flex max-w-3xl flex-col items-start gap-6">
                         <div className="grid size-12 place-items-center rounded-2xl bg-secondary text-primary">
                             <Palette className="size-6" />
                         </div>
@@ -178,11 +180,11 @@ export default function Home({ posts }: { posts: BlogPostSummary[] }) {
                             </p>
                         </div>
                     </div>
-                    <div className="grid gap-5 md:grid-cols-2">
+                    <div className="flex flex-col gap-10">
                         {themePreviews.map((theme) => (
                             <figure
                                 key={theme.name}
-                                className="overflow-hidden rounded-3xl border border-border bg-card p-2 shadow-[0_18px_50px_rgba(36,71,122,0.12)]"
+                                className="overflow-hidden rounded-[2rem] border border-border bg-card p-2.5 shadow-[0_24px_70px_rgba(36,71,122,0.14)] sm:p-3"
                             >
                                 <img
                                     src={theme.src}
@@ -190,11 +192,16 @@ export default function Home({ posts }: { posts: BlogPostSummary[] }) {
                                     width={1600}
                                     height={1063}
                                     loading="lazy"
-                                    className="aspect-[1.5] w-full rounded-2xl object-cover"
+                                    className="h-auto w-full rounded-[1.4rem]"
                                 />
-                                <figcaption className="flex items-center gap-2 px-3 py-3 text-sm font-semibold">
-                                    <span className="size-2 rounded-full bg-primary" />
-                                    {theme.name}
+                                <figcaption className="flex flex-col gap-1 px-3 py-4 text-left sm:px-5">
+                                    <span className="flex items-center gap-2 font-bold">
+                                        <span className="size-2 rounded-full bg-primary" />
+                                        {theme.name}
+                                    </span>
+                                    <span className="text-sm text-muted-foreground">
+                                        {theme.description}
+                                    </span>
                                 </figcaption>
                             </figure>
                         ))}
@@ -246,7 +253,7 @@ export default function Home({ posts }: { posts: BlogPostSummary[] }) {
                                 </p>
                             </div>
                             <h2 className="text-4xl font-black tracking-[-0.05em] sm:text-5xl">
-                                Be first in line for a calmer inbox.
+                                Join the Linux-first email client waitlist.
                             </h2>
                             <WaitlistForm compact />
                         </div>

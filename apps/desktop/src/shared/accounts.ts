@@ -462,6 +462,7 @@ export const ACCOUNT_CHANNELS = {
   test: 'accounts:test',
   save: 'accounts:save',
   beginMicrosoftAuth: 'accounts:microsoft-auth-begin',
+  openMicrosoftAuthPage: 'accounts:microsoft-auth-open-page',
   finishMicrosoftAuth: 'accounts:microsoft-auth-finish',
   cancelMicrosoftAuth: 'accounts:microsoft-auth-cancel',
   openGmailAppPasswordHelp: 'accounts:gmail-app-password-help',

@@ -6,6 +6,8 @@ import {
 import {
   CheckCircle2,
   ChevronDown,
+  Copy,
+  ExternalLink,
   LoaderCircle,
   LockKeyhole,
   Server,
@@ -107,6 +109,7 @@ export function AccountSetup({
     userCode: string;
     verificationUri: string;
   } | null>(null);
+  const [microsoftCodeCopied, setMicrosoftCodeCopied] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
 
   const choosePreset = (nextPreset: string) => {
@@ -138,6 +141,7 @@ export function AccountSetup({
       }));
     }
     setMicrosoftPrompt(null);
+    setMicrosoftCodeCopied(false);
     setDetection(null);
     setStatus(null);
   };
@@ -224,6 +228,7 @@ export function AccountSetup({
     setBusy('microsoft');
     setStatus(null);
     setMicrosoftPrompt(null);
+    setMicrosoftCodeCopied(false);
     try {
       const start = await window.emzero.accounts.beginMicrosoftAuth();
       if (!start.ok || !start.sessionId || !start.userCode || !start.verificationUri) {
@@ -381,32 +386,72 @@ export function AccountSetup({
             )}
           </fieldset>
 
-          <div className="h-px bg-border" />
+          {draft.credentials.type === 'password' && (
+            <>
+              <div className="h-px bg-border" />
 
-          <div className="grid gap-7 md:grid-cols-2">
-            <ServerFields
-              title="Incoming mail (IMAP)"
-              protocol="imap"
-              server={draft.imap}
-              onChange={setServer}
-            />
-            <ServerFields
-              title="Outgoing mail (SMTP)"
-              protocol="smtp"
-              server={draft.smtp}
-              onChange={setServer}
-            />
-          </div>
+              <div className="grid gap-7 md:grid-cols-2">
+                <ServerFields
+                  title="Incoming mail (IMAP)"
+                  protocol="imap"
+                  server={draft.imap}
+                  onChange={setServer}
+                />
+                <ServerFields
+                  title="Outgoing mail (SMTP)"
+                  protocol="smtp"
+                  server={draft.smtp}
+                  onChange={setServer}
+                />
+              </div>
+            </>
+          )}
         </div>
 
         {microsoftPrompt && (
           <div className="mt-4 rounded-lg border border-border bg-card px-4 py-3 text-sm" role="status">
             <p className="font-medium">Complete Microsoft sign-in in your browser</p>
-            <p className="mt-1 text-muted-foreground">{microsoftPrompt.message}</p>
-            <p className="mt-2 font-mono text-base font-semibold tracking-wider">
-              {microsoftPrompt.userCode}
+            <p className="mt-1 text-muted-foreground">
+              Copy this code, then open Microsoft and enter it to continue.
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">{microsoftPrompt.verificationUri}</p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                className="field min-w-0 flex-1 font-mono text-base font-semibold tracking-wider"
+                aria-label="Microsoft device code"
+                readOnly
+                value={microsoftPrompt.userCode}
+                onFocus={(event) => event.currentTarget.select()}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  void navigator.clipboard
+                    .writeText(microsoftPrompt.userCode)
+                    .then(() => setMicrosoftCodeCopied(true))
+                    .catch(() => {
+                      setStatus({
+                        kind: 'error',
+                        message: 'Could not copy the code. Select it and copy it manually.',
+                      });
+                    });
+                }}
+              >
+                <Copy className="size-4" />
+                {microsoftCodeCopied ? 'Copied' : 'Copy code'}
+              </Button>
+              <Button
+                type="button"
+                onClick={() =>
+                  void window.emzero.accounts.openMicrosoftAuthPage(
+                    microsoftPrompt.verificationUri,
+                  )
+                }
+              >
+                <ExternalLink className="size-4" />
+                Open Microsoft
+              </Button>
+            </div>
           </div>
         )}
 

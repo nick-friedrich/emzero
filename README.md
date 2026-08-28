@@ -58,6 +58,6 @@ Emzero uses its registered Microsoft public-client application and device-code O
 
 1. Add an account and select **Outlook / Microsoft 365**.
 2. Select **Connect with Microsoft**.
-3. Finish the device sign-in in the browser that opens and approve mail access.
+3. Copy the displayed device code, select **Open Microsoft**, and approve mail access in the browser.
 
 The public Microsoft application ID is stored with the account. The Microsoft refresh token is encrypted with Electron's operating-system credential storage; access tokens are kept in memory and refreshed as needed.

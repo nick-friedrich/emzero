@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   avatarColorClass,
@@ -30,6 +31,12 @@ describe('conversation avatars', () => {
 });
 
 describe('HTML email documents', () => {
+  it('allows the opted-in iframe policy through the inherited app-shell CSP', () => {
+    const appShell = readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
+
+    expect(appShell).toMatch(/img-src [^;]*http: [^;]*https:/);
+  });
+
   it('detects remote images but not embedded data images', () => {
     expect(hasRemoteImages('<img src="https://images.example/banner.png">')).toBe(true);
     expect(hasRemoteImages('<img src="//images.example/banner.png">')).toBe(true);

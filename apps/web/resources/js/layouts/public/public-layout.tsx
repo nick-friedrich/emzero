@@ -1,11 +1,13 @@
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import type { PropsWithChildren } from 'react';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { PublicHeader } from '@/components/public/public-header';
-import { home } from '@/routes';
+import { dashboard, home, login } from '@/routes';
 import { index as blogIndex } from '@/routes/blog';
 
 export default function PublicLayout({ children }: PropsWithChildren) {
+    const { auth } = usePage().props;
+
     return (
         <div className="emzero-light-theme min-h-screen overflow-hidden bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
             <PublicHeader />
@@ -27,6 +29,12 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                     </a>
                     <Link href={blogIndex()} className="hover:text-foreground">
                         Journal
+                    </Link>
+                    <Link
+                        href={auth.user ? dashboard() : login()}
+                        className="hover:text-foreground"
+                    >
+                        {auth.user ? 'Admin' : 'Admin login'}
                     </Link>
                     <span>© {new Date().getFullYear()} Emzero</span>
                 </div>
