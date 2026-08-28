@@ -65,6 +65,7 @@ import {
   displayFolderName,
   findInboxFolder,
   folderMoveRequestForDrop,
+  inboxUnreadCount,
   manageableFolder,
   optimisticFolderMove,
   orderedFolderTree,
@@ -236,6 +237,10 @@ export function Sidebar({
           ]),
         )
       : folderStates;
+  const unifiedInboxUnread = accounts.reduce((total, account) => {
+    const folderState = displayedFolderStates[account.id];
+    return total + (folderState?.status === 'loaded' ? inboxUnreadCount(folderState.folders) : 0);
+  }, 0);
 
   const dropAccount = async (targetId: string, position: 'before' | 'after') => {
     if (!draggedAccountId || draggedAccountId === targetId) return;
@@ -589,6 +594,7 @@ export function Sidebar({
         >
           <Inbox className="size-4" />
           Inbox
+          <UnreadBadge count={unifiedInboxUnread} />
         </Button>
         <Button
           variant={selection.kind === 'unified' && selection.mailbox === 'starred' ? 'secondary' : 'ghost'}

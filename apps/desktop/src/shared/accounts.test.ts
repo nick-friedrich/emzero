@@ -6,6 +6,7 @@ import {
   displayFolderName,
   findArchiveFolder,
   findInboxFolder,
+  inboxUnreadCount,
   folderMoveRequestForDrop,
   optimisticFolderMove,
   manageableFolder,
@@ -96,6 +97,14 @@ describe('findInboxFolder', () => {
     const unavailableInbox = folder('INBOX', null, false);
     const selectableInbox = folder('Inbox');
     expect(findInboxFolder([unavailableInbox, selectableInbox])).toBe(selectableInbox);
+  });
+
+  it('reports unread messages from the selected inbox only', () => {
+    const inbox = { ...folder('Mail/Incoming', '\\Inbox'), unreadCount: 4 };
+    const otherFolder = { ...folder('Receipts'), unreadCount: 7 };
+
+    expect(inboxUnreadCount([otherFolder, inbox])).toBe(4);
+    expect(inboxUnreadCount([otherFolder])).toBe(0);
   });
 });
 

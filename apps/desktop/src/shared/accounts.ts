@@ -51,6 +51,10 @@ export function findInboxFolder(
   );
 }
 
+export function inboxUnreadCount(folders: MailFolderSummary[]): number {
+  return findInboxFolder(folders)?.unreadCount ?? 0;
+}
+
 export function findArchiveFolder(
   folders: MailFolderSummary[],
 ): MailFolderSummary | undefined {
