@@ -94,6 +94,12 @@ const seeds: DemoSeed[] = [
     sentAt: '2026-08-24T15:10:00.000Z', unread: true,
   },
   {
+    id: 'partner-follow-up', accountId: 'demo-personal', folderPath: 'Drafts', sender: 'Alex Morgan',
+    address: 'alex@example.com', subject: 'Re: Partnership details',
+    body: 'Hi Jordan,\n\nThanks for sending the outline. I added a few notes below and will confirm the timeline tomorrow.\n\nAlex',
+    sentAt: '2026-08-24T12:30:00.000Z',
+  },
+  {
     id: 'intro', accountId: 'demo-work', folderPath: 'Sent', sender: 'Alex Morgan',
     address: 'hello@northstar.studio', subject: 'A calmer way to manage email',
     body: 'Thanks for taking a look at Emzero. Here is a quick overview of what we are building and why we think email can feel calmer.',
@@ -103,7 +109,7 @@ const seeds: DemoSeed[] = [
 
 const summaries = seeds.map((seed, index): MailMessageSummary => {
   const account = demoAccounts.find((candidate) => candidate.id === seed.accountId)!;
-  const fromSelf = seed.folderPath === 'Sent';
+  const fromSelf = seed.folderPath === 'Sent' || seed.folderPath === 'Drafts';
   return {
     folderPath: seed.folderPath,
     uid: 10_000 + index,
@@ -154,6 +160,9 @@ export function demoMailboxSnapshot(selection: MailboxSelection): DemoMailboxSna
   } else if (selection.mailbox === 'trash') {
     selected = [];
     title = 'Trash';
+  } else if (selection.mailbox === 'drafts') {
+    selected = summaries.filter((message) => message.folderPath === 'Drafts');
+    title = 'Drafts';
   } else {
     selected = summaries.filter((message) => message.folderPath === 'Inbox');
   }

@@ -265,6 +265,7 @@ export function MailSearch({
           folders={selectedFolders}
           conversation={selected.conversation}
           onBack={() => setSelected(null)}
+          navigationVariant={mailLayout === 'split' ? 'close' : 'back'}
           busy={actionBusy}
           actionError={actionError}
           onSetUnread={(unread) => void runAction(unread ? 'unread' : 'read')}

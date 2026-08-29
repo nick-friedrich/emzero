@@ -7,6 +7,7 @@ import {
 } from 'react';
 import {
   CircleAlert,
+  FileText,
   Inbox,
   LoaderCircle,
   RefreshCw,
@@ -94,7 +95,7 @@ export function UnifiedInbox({
   demo,
 }: {
   accounts: AccountSummary[];
-  mailbox: 'inbox' | 'starred' | 'trash';
+  mailbox: 'inbox' | 'starred' | 'drafts' | 'trash';
   onStartBulkOperation: StartBulkOperation;
   mailLayout: MailLayout;
   onMailLayoutChange: (layout: MailLayout) => void;
@@ -102,7 +103,12 @@ export function UnifiedInbox({
   onToggleSidebar: () => void;
   demo?: DemoMailboxSnapshot;
 }) {
-  const title = demo?.title ?? (mailbox === 'inbox' ? 'Inbox' : mailbox === 'starred' ? 'Starred' : 'Trash');
+  const title = demo?.title ?? {
+    inbox: 'Inbox',
+    starred: 'Starred',
+    drafts: 'Drafts',
+    trash: 'Trash',
+  }[mailbox];
   const [state, setState] = useState<UnifiedInboxLoadState>(
     () => demo ? demoLoadState(demo) : { status: 'loading' },
   );
@@ -142,7 +148,11 @@ export function UnifiedInbox({
           const designatedFolder = mailbox === 'inbox'
             ? findInboxFolder(folderResult.folders)
             : folderResult.folders.find((candidate) =>
-                candidate.selectable && candidate.specialUse === (mailbox === 'trash' ? '\\Trash' : '\\Flagged'),
+                candidate.selectable && candidate.specialUse === {
+                  starred: '\\Flagged',
+                  drafts: '\\Drafts',
+                  trash: '\\Trash',
+                }[mailbox],
               );
           const sourceFolders = designatedFolder
             ? [designatedFolder]
@@ -714,6 +724,7 @@ export function UnifiedInbox({
         folders={selectedItem.folders}
         conversation={selectedItem.conversation}
         onBack={() => setSelectedItem(null)}
+        navigationVariant={mailLayout === 'split' ? 'close' : 'back'}
         busy={busyConversations.has(itemKey(selectedItem))}
         actionError={actionError}
         onSetUnread={(unread) =>
@@ -884,7 +895,13 @@ export function UnifiedInbox({
       {state.status === 'loaded' && state.items.length === 0 && (
         <div className="grid flex-1 place-items-center p-8 text-center">
           <div>
-            {mailbox === 'trash' ? <Trash2 className="mx-auto size-8 text-muted-foreground" /> : mailbox === 'starred' ? <Star className="mx-auto size-8 text-muted-foreground" /> : <Inbox className="mx-auto size-8 text-muted-foreground" />}
+            {mailbox === 'trash'
+              ? <Trash2 className="mx-auto size-8 text-muted-foreground" />
+              : mailbox === 'starred'
+                ? <Star className="mx-auto size-8 text-muted-foreground" />
+                : mailbox === 'drafts'
+                  ? <FileText className="mx-auto size-8 text-muted-foreground" />
+                  : <Inbox className="mx-auto size-8 text-muted-foreground" />}
             <h2 className="mt-3 font-semibold">
               {state.failures.length === accounts.length
                 ? `${title} could not be loaded`

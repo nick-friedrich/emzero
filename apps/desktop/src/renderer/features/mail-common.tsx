@@ -56,7 +56,7 @@ import type { MailConversation } from '../../shared/conversations';
 import { MoveToDialog } from './message-move';
 
 export type MailboxSelection =
-  | { kind: 'unified'; mailbox?: 'inbox' | 'starred' | 'trash' }
+  | { kind: 'unified'; mailbox?: 'inbox' | 'starred' | 'drafts' | 'trash' }
   | { kind: 'search'; query: string }
   | { kind: 'folder'; account: AccountSummary; folder: MailFolderSummary };
 

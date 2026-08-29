@@ -16,6 +16,7 @@ import {
   Reply,
   RefreshCw,
   Send,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -721,6 +722,7 @@ export function ConversationReader({
   folders,
   conversation,
   onBack,
+  navigationVariant = 'back',
   busy,
   actionError,
   onSetUnread,
@@ -735,6 +737,7 @@ export function ConversationReader({
   folders: MailFolderSummary[];
   conversation: MailConversation;
   onBack: () => void;
+  navigationVariant?: 'back' | 'close';
   busy: boolean;
   actionError: string | null;
   onSetUnread: (unread: boolean) => void;
@@ -780,10 +783,22 @@ export function ConversationReader({
         'flex items-center gap-3 border-b border-border bg-card py-3 pl-16 pr-4 lg:px-4',
         window.emzero?.platform === 'darwin' && 'macos-content-header macos-titlebar-drag',
       )}>
-        <Button variant="ghost" className="px-3" onClick={onBack}>
-          <ArrowLeft className="size-4" />
-          Back
-        </Button>
+        {navigationVariant === 'close' ? (
+          <Button
+            variant="ghost"
+            className="size-9 px-0"
+            aria-label="Close message"
+            title="Close message"
+            onClick={onBack}
+          >
+            <X className="size-4" />
+          </Button>
+        ) : (
+          <Button variant="ghost" className="px-3" onClick={onBack}>
+            <ArrowLeft className="size-4" />
+            Back
+          </Button>
+        )}
         <span className="truncate text-sm text-muted-foreground">
           {selection.account.name} / {displayFolderName(selection.folder)}
         </span>

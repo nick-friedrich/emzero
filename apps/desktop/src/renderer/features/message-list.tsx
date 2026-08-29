@@ -568,6 +568,7 @@ export function MessageList({
         folders={folders}
         conversation={selectedConversation}
         onBack={() => setSelectedConversation(null)}
+        navigationVariant={mailLayout === 'split' ? 'close' : 'back'}
         busy={busyConversations.has(selectedConversation.id)}
         actionError={actionError}
         onSetUnread={(unread) =>

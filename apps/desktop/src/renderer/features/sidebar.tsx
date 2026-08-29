@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleAlert,
+  FileText,
   GripVertical,
   Inbox,
   LoaderCircle,
@@ -597,6 +598,14 @@ export function Sidebar({
         >
           <Star className="size-4" />
           Starred
+        </Button>
+        <Button
+          variant={selection.kind === 'unified' && selection.mailbox === 'drafts' ? 'secondary' : 'ghost'}
+          className="w-full shrink-0 justify-start"
+          onClick={() => onSelect({ kind: 'unified', mailbox: 'drafts' })}
+        >
+          <FileText className="size-4" />
+          Drafts
         </Button>
         <Button
           variant={selection.kind === 'unified' && selection.mailbox === 'trash' ? 'secondary' : 'ghost'}
