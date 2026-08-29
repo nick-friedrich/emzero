@@ -519,12 +519,9 @@ export function Sidebar({
       )}
     >
       {window.emzero?.platform === 'darwin' && (
-        <div className="macos-titlebar-drag absolute inset-x-0 top-0 h-10 shrink-0" />
+        <div className="macos-titlebar-drag absolute inset-x-0 top-0 h-6 shrink-0" />
       )}
-      <div className={cn(
-        'mb-8 flex shrink-0 items-center gap-3 px-2',
-        window.emzero?.platform === 'darwin' && 'macos-titlebar-drag',
-      )}>
+      <div className="mb-8 flex shrink-0 items-center gap-3 px-2">
         <button
           type="button"
           className="emzero-logo size-9 shrink-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"

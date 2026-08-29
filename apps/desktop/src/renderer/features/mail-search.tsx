@@ -30,6 +30,7 @@ import {
   addressLabel,
   conversationWithMessage,
   MailLayoutToggle,
+  SidebarHeaderToggle,
   messageDate,
   performConversationAction,
   type ConversationAction,
@@ -52,11 +53,15 @@ export function MailSearch({
   initialQuery,
   mailLayout,
   onMailLayoutChange,
+  sidebarPinned,
+  onToggleSidebar,
 }: {
   accounts: AccountSummary[];
   initialQuery: string;
   mailLayout: MailLayout;
   onMailLayoutChange: (layout: MailLayout) => void;
+  sidebarPinned: boolean;
+  onToggleSidebar: () => void;
 }) {
   const [query, setQuery] = useState(initialQuery);
   const [searchRequest, setSearchRequest] = useState({
@@ -291,7 +296,7 @@ export function MailSearch({
       <header className={cn(
         'border-b border-border bg-card py-3 pl-16 pr-4 lg:px-6',
         compactList && 'lg:px-4',
-        window.emzero?.platform === 'darwin' && 'macos-titlebar-drag',
+        window.emzero?.platform === 'darwin' && 'macos-content-header macos-titlebar-drag',
       )}>
         <form
           className={cn(
@@ -367,6 +372,7 @@ export function MailSearch({
             )}
             <span className={compactList ? 'sr-only' : undefined}>Search</span>
           </Button>
+          <SidebarHeaderToggle pinned={sidebarPinned} onToggle={onToggleSidebar} />
           <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
         </form>
       </header>

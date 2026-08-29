@@ -231,6 +231,54 @@ body {
   -webkit-app-region: no-drag;
 }
 
+.header-tooltip {
+  position: relative;
+}
+
+.header-tooltip::after {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 100;
+  width: max-content;
+  max-width: 16rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  content: attr(data-tooltip);
+  pointer-events: none;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 0.4rem 1rem color-mix(in oklab, black 24%, transparent);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(-0.2rem);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.header-tooltip:hover::after,
+.header-tooltip:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (min-width: 64rem) {
+  main[data-sidebar-pinned="false"] .macos-content-header {
+    padding-top: 3rem;
+    padding-left: 1.5rem;
+    background: var(--background);
+  }
+}
+
+@media (max-width: 63.999rem) {
+  .macos-content-header {
+    padding-top: 3rem;
+  }
+}
+
 .emzero-logo {
   position: relative;
   display: inline-block;

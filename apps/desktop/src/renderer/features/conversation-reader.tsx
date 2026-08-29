@@ -778,7 +778,7 @@ export function ConversationReader({
     <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
       <header className={cn(
         'flex items-center gap-3 border-b border-border bg-card py-3 pl-16 pr-4 lg:px-4',
-        window.emzero?.platform === 'darwin' && 'macos-titlebar-drag',
+        window.emzero?.platform === 'darwin' && 'macos-content-header macos-titlebar-drag',
       )}>
         <Button variant="ghost" className="px-3" onClick={onBack}>
           <ArrowLeft className="size-4" />

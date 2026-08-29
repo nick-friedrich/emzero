@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
-import { LoaderCircle, Menu, PanelLeftOpen } from 'lucide-react';
+import { LoaderCircle, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -94,11 +94,22 @@ export function App() {
     sidebarCloseTimer.current = window.setTimeout(() => {
       setSidebarHoverOpen(false);
       sidebarCloseTimer.current = null;
-    }, 300);
+    }, 250);
   };
 
   useEffect(() => () => {
     if (sidebarCloseTimer.current !== null) window.clearTimeout(sidebarCloseTimer.current);
+  }, []);
+
+  useEffect(() => {
+    const toggleSidebar = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'b' || !(event.metaKey || event.ctrlKey)) return;
+      event.preventDefault();
+      setSidebarPinned((current) => !current);
+      setSidebarHoverOpen(false);
+    };
+    window.addEventListener('keydown', toggleSidebar);
+    return () => window.removeEventListener('keydown', toggleSidebar);
   }, []);
 
   useEffect(() => {
@@ -267,7 +278,7 @@ export function App() {
 
   const visibleAccounts = demoMode ? demoAccounts : accounts;
   const isMac = window.emzero?.platform === 'darwin';
-  const macTitleBarInset = isMac ? 'pt-12' : undefined;
+  const macTitleBarInset = isMac ? '!pt-12' : undefined;
   const demoSnapshot = demoMode ? demoMailboxSnapshot(selection) : undefined;
   const demoSelectionKey = selection.kind === 'folder'
     ? `${selection.account.id}:${selection.folder.path}`
@@ -286,7 +297,8 @@ export function App() {
   return (
     <main
       className="grid h-screen grid-cols-1 overflow-hidden bg-background text-foreground lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]"
-      style={{ '--sidebar-width': sidebarPinned ? `${sidebarWidth}px` : '3rem' } as CSSProperties}
+      data-sidebar-pinned={sidebarPinned}
+      style={{ '--sidebar-width': sidebarPinned ? `${sidebarWidth}px` : '0.5rem' } as CSSProperties}
     >
       {sidebarPinned && (
         <div className="relative hidden min-h-0 min-w-0 lg:flex">
@@ -301,7 +313,7 @@ export function App() {
             demoFolderMap={demoMode ? demoFolders : undefined}
             onDemoModeChange={changeDemoMode}
             pinned
-            onPinnedChange={(pinned) => {
+            onPinnedChange={isMac ? undefined : (pinned) => {
               setSidebarPinned(pinned);
               setSidebarHoverOpen(!pinned);
             }}
@@ -356,21 +368,14 @@ export function App() {
         <>
           <button
             type="button"
-            className={cn(
-              'group hidden min-h-0 w-full items-start justify-center bg-background text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground lg:flex',
-              macTitleBarInset ?? 'pt-4',
-            )}
+            className="hidden min-h-0 w-full bg-background outline-none lg:block"
             aria-label="Reveal navigation"
             aria-expanded={sidebarHoverOpen}
-            title="Hover to reveal navigation"
+            title="Reveal navigation"
             onMouseEnter={keepSidebarOpen}
             onFocus={keepSidebarOpen}
             onClick={keepSidebarOpen}
-          >
-            <span className="grid size-8 place-items-center rounded-md transition-colors group-hover:bg-card group-focus-visible:bg-card">
-              <PanelLeftOpen className="size-4" />
-            </span>
-          </button>
+          />
           <div
             className={`fixed inset-y-0 left-0 z-50 hidden min-h-0 shadow-2xl transition-transform duration-200 ease-out lg:flex ${
               sidebarHoverOpen ? 'translate-x-0' : '-translate-x-full'
@@ -378,6 +383,7 @@ export function App() {
             style={{ width: sidebarWidth }}
             inert={!sidebarHoverOpen}
             onMouseEnter={keepSidebarOpen}
+            onMouseMove={keepSidebarOpen}
             onMouseLeave={scheduleSidebarClose}
             onBlur={(event) => {
               if (!event.currentTarget.contains(event.relatedTarget)) {
@@ -396,7 +402,7 @@ export function App() {
               demoFolderMap={demoMode ? demoFolders : undefined}
               onDemoModeChange={changeDemoMode}
               pinned={false}
-              onPinnedChange={(pinned) => {
+              onPinnedChange={isMac ? undefined : (pinned) => {
                 setSidebarPinned(pinned);
                 setSidebarHoverOpen(false);
               }}
@@ -452,7 +458,10 @@ export function App() {
         <SheetTrigger asChild>
           <Button
             variant="secondary"
-            className="fixed left-3 top-3 z-40 size-10 border border-border bg-card px-0 shadow-sm lg:hidden"
+            className={cn(
+              'fixed left-3 z-40 size-10 border border-border bg-card px-0 shadow-sm lg:hidden',
+              isMac ? 'top-12' : 'top-3',
+            )}
             aria-label="Open navigation"
             title="Open navigation"
           >
@@ -563,6 +572,8 @@ export function App() {
           onStartBulkOperation={startBulkOperation}
           mailLayout={mailLayout}
           onMailLayoutChange={setMailLayout}
+          sidebarPinned={sidebarPinned}
+          onToggleSidebar={() => setSidebarPinned((current) => !current)}
           demo={demoSnapshot}
         />
       ) : showSetup ? (
@@ -583,6 +594,8 @@ export function App() {
           onStartBulkOperation={startBulkOperation}
           mailLayout={mailLayout}
           onMailLayoutChange={setMailLayout}
+          sidebarPinned={sidebarPinned}
+          onToggleSidebar={() => setSidebarPinned((current) => !current)}
         />
       ) : selection.kind === 'search' ? (
         <MailSearch
@@ -590,6 +603,8 @@ export function App() {
           initialQuery={selection.query}
           mailLayout={mailLayout}
           onMailLayoutChange={setMailLayout}
+          sidebarPinned={sidebarPinned}
+          onToggleSidebar={() => setSidebarPinned((current) => !current)}
         />
       ) : (
         <UnifiedInbox
@@ -599,6 +614,8 @@ export function App() {
           onStartBulkOperation={startBulkOperation}
           mailLayout={mailLayout}
           onMailLayoutChange={setMailLayout}
+          sidebarPinned={sidebarPinned}
+          onToggleSidebar={() => setSidebarPinned((current) => !current)}
         />
       )}
       {bulkOperation && (

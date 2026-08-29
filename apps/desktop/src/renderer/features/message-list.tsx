@@ -42,6 +42,7 @@ import {
   conversationWithUnreadValues,
   isEditableTarget,
   MailLayoutToggle,
+  SidebarHeaderToggle,
   messageCountInFolder,
   messageDate,
   performConversationAction,
@@ -63,12 +64,16 @@ export function MessageList({
   onStartBulkOperation,
   mailLayout,
   onMailLayoutChange,
+  sidebarPinned,
+  onToggleSidebar,
 }: {
   accounts: AccountSummary[];
   selection: FolderSelection;
   onStartBulkOperation: StartBulkOperation;
   mailLayout: MailLayout;
   onMailLayoutChange: (layout: MailLayout) => void;
+  sidebarPinned: boolean;
+  onToggleSidebar: () => void;
 }) {
   const [state, setState] = useState<MessageLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
@@ -619,7 +624,7 @@ export function MessageList({
       <header className={cn(
         'flex min-w-0 items-center justify-between gap-3 border-b border-border bg-card py-4 pl-16 pr-4 lg:px-6',
         compactList && 'lg:px-4',
-        window.emzero?.platform === 'darwin' && 'macos-titlebar-drag',
+        window.emzero?.platform === 'darwin' && 'macos-content-header macos-titlebar-drag',
       )}>
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold tracking-tight">
@@ -630,6 +635,7 @@ export function MessageList({
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <SidebarHeaderToggle pinned={sidebarPinned} onToggle={onToggleSidebar} />
           <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
           {!compactList && state.status === 'loaded' && (
             <span className="hidden whitespace-nowrap text-xs text-muted-foreground lg:inline">

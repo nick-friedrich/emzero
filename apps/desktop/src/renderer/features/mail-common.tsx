@@ -18,6 +18,8 @@ import {
   Trash2,
   Columns2,
   Columns3,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import {
   Button,
@@ -89,12 +91,32 @@ export function MailLayoutToggle({
     <Button
       type="button"
       variant="ghost"
-      className="px-3"
+      className="header-tooltip px-3"
       aria-label={split ? 'Use list layout' : 'Use three-column layout'}
-      title={split ? 'Use list layout' : 'Show messages in a right-hand pane'}
+      data-tooltip={split ? 'Use list layout' : 'Use three-column layout'}
       onClick={() => onChange(split ? 'list' : 'split')}
     >
       {split ? <Columns2 className="size-4" /> : <Columns3 className="size-4" />}
+    </Button>
+  );
+}
+
+export function SidebarHeaderToggle({
+  pinned,
+  onToggle,
+}: {
+  pinned: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      className="header-tooltip px-3"
+      aria-label="Toggle main sidebar"
+      data-tooltip={`Toggle main sidebar (${window.emzero?.platform === 'darwin' ? '⌘B' : 'Ctrl+B'})`}
+      onClick={onToggle}
+    >
+      {pinned ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
     </Button>
   );
 }
