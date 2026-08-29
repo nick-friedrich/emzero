@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import {
   ACCOUNT_CHANNELS,
   type AccountDraft,
+  type AccountBackupExportRequest,
+  type AccountBackupResult,
   type AccountOperationResult,
   type AccountReorderResult,
   type AccountNameUpdate,
@@ -51,6 +53,8 @@ export interface EmzeroDesktopApi {
     update: (accountId: string, update: AccountNameUpdate) => Promise<AccountOperationResult>;
     reorder: (accountIds: string[]) => Promise<AccountReorderResult>;
     remove: (accountId: string) => Promise<AccountOperationResult>;
+    exportBackup: (request: AccountBackupExportRequest) => Promise<AccountBackupResult>;
+    importBackup: (password: string) => Promise<AccountBackupResult>;
   };
   folders: {
     list: (accountId: string, refresh?: boolean) => Promise<FolderListResult>;
@@ -141,6 +145,8 @@ contextBridge.exposeInMainWorld('emzero', {
     update: (accountId, update) => ipcRenderer.invoke(ACCOUNT_CHANNELS.update, accountId, update),
     reorder: (accountIds) => ipcRenderer.invoke(ACCOUNT_CHANNELS.reorder, accountIds),
     remove: (accountId) => ipcRenderer.invoke(ACCOUNT_CHANNELS.remove, accountId),
+    exportBackup: (request) => ipcRenderer.invoke(ACCOUNT_CHANNELS.exportBackup, request),
+    importBackup: (password) => ipcRenderer.invoke(ACCOUNT_CHANNELS.importBackup, password),
   },
   folders: {
     list: (accountId, refresh = false) =>

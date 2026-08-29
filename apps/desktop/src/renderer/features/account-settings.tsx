@@ -4,8 +4,11 @@ import {
 import {
   CheckCircle2,
   CircleAlert,
+  Download,
+  KeyRound,
   LoaderCircle,
   Trash2,
+  Upload,
 } from 'lucide-react';
 import {
   Button,
@@ -42,16 +45,61 @@ export function AccountSettingsDialog({
   onOpenChange,
   onUpdated,
   onRemoved,
+  onImported,
 }: {
   open: boolean;
   accounts: AccountSummary[];
   onOpenChange: (open: boolean) => void;
   onUpdated: (account: AccountSummary) => void;
   onRemoved: (accountId: string) => void;
+  onImported: (accounts: AccountSummary[]) => void;
 }) {
   const [names, setNames] = useState<Record<string, string>>({});
   const [busyAccount, setBusyAccount] = useState<string | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
+  const [backupPassword, setBackupPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [includeCredentials, setIncludeCredentials] = useState(true);
+  const [backupBusy, setBackupBusy] = useState<'export' | 'import' | null>(null);
+
+  const exportBackup = async () => {
+    if (backupPassword.length < 8) {
+      setStatus({ kind: 'error', message: 'Use a backup password with at least 8 characters.' });
+      return;
+    }
+    if (backupPassword !== confirmPassword) {
+      setStatus({ kind: 'error', message: 'The backup passwords do not match.' });
+      return;
+    }
+    setBackupBusy('export');
+    setStatus(null);
+    try {
+      const result = await window.emzero.accounts.exportBackup({ password: backupPassword, includeCredentials });
+      if (!result.canceled) setStatus({ kind: result.ok ? 'success' : 'error', message: result.message });
+    } catch {
+      setStatus({ kind: 'error', message: 'The account backup could not be exported.' });
+    } finally {
+      setBackupBusy(null);
+    }
+  };
+
+  const importBackup = async () => {
+    if (!backupPassword) {
+      setStatus({ kind: 'error', message: 'Enter the password used to encrypt the backup.' });
+      return;
+    }
+    setBackupBusy('import');
+    setStatus(null);
+    try {
+      const result = await window.emzero.accounts.importBackup(backupPassword);
+      if (result.ok && result.accounts) onImported(result.accounts);
+      if (!result.canceled) setStatus({ kind: result.ok ? 'success' : 'error', message: result.message });
+    } catch {
+      setStatus({ kind: 'error', message: 'The account backup could not be imported.' });
+    } finally {
+      setBackupBusy(null);
+    }
+  };
 
   const rename = async (account: AccountSummary) => {
     const name = names[account.id]?.trim() ?? '';
@@ -109,7 +157,7 @@ export function AccountSettingsDialog({
         <DialogHeader>
           <DialogTitle>Account settings</DialogTitle>
           <DialogDescription>
-            Rename connected accounts or remove them from Emzero.
+            Rename, remove, back up, or restore your connected accounts.
           </DialogDescription>
         </DialogHeader>
 
@@ -190,6 +238,72 @@ export function AccountSettingsDialog({
             </div>
           ))}
         </div>
+
+        <section className="space-y-3 rounded-lg border border-border bg-background p-4">
+          <div className="flex items-start gap-3">
+            <KeyRound className="mt-0.5 size-5 text-muted-foreground" />
+            <div>
+              <h3 className="text-sm font-medium">Encrypted account backup</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Save account settings in a password-encrypted file. Keep this password safe;
+                Emzero cannot recover it.
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label>
+              <span className="sr-only">Backup password</span>
+              <input
+                className="field"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Backup password"
+                value={backupPassword}
+                disabled={backupBusy !== null}
+                onChange={(event) => setBackupPassword(event.target.value)}
+              />
+            </label>
+            <label>
+              <span className="sr-only">Confirm backup password</span>
+              <input
+                className="field"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Confirm for export"
+                value={confirmPassword}
+                disabled={backupBusy !== null}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+              />
+            </label>
+          </div>
+          <label className="flex items-start gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={includeCredentials}
+              disabled={backupBusy !== null}
+              onChange={(event) => setIncludeCredentials(event.target.checked)}
+            />
+            <span>
+              Include passwords and sign-in tokens. Required for instant restoration on another device.
+            </span>
+          </label>
+          {!includeCredentials && (
+            <p className="text-xs text-warning">
+              Settings-only backups cannot restore accounts until credentials are included.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" disabled={backupBusy !== null} onClick={() => void exportBackup()}>
+              {backupBusy === 'export' ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
+              Export backup
+            </Button>
+            <Button type="button" variant="secondary" disabled={backupBusy !== null} onClick={() => void importBackup()}>
+              {backupBusy === 'import' ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />}
+              Import backup
+            </Button>
+          </div>
+        </section>
 
         {status && (
           <p

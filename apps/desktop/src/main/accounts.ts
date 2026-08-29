@@ -4,6 +4,7 @@ import {
   ACCOUNT_CHANNELS,
   MICROSOFT_CLIENT_ID,
   type AccountDraft,
+  type AccountBackupResult,
   type AccountNameUpdate,
   type AccountOperationResult,
   type AccountReorderResult,
@@ -22,6 +23,7 @@ import {
   type MessageOperationResult,
 } from '../shared/accounts.js';
 import { verifyConnections, verifyMicrosoftConnections } from './account-connection.js';
+import { exportAccountBackup, importAccountBackup } from './account-backup.js';
 import { saveMessageAttachment, selectOutgoingAttachments } from './attachment-files.js';
 import {
   createAccountFolder,
@@ -195,6 +197,21 @@ export function registerAccountHandlers(): void {
   ipcMain.handle(ACCOUNT_CHANNELS.list, async (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return (await readAccounts()).map(toAccountSummary);
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.exportBackup, async (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    const request = value as { password?: unknown; includeCredentials?: unknown } | null;
+    if (!request || typeof request.password !== 'string' || typeof request.includeCredentials !== 'boolean') {
+      return { ok: false, message: 'Invalid backup options.' } satisfies AccountBackupResult;
+    }
+    return exportAccountBackup(request.password, request.includeCredentials);
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.importBackup, async (event, password: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (typeof password !== 'string') return { ok: false, message: 'Enter the backup password.' } satisfies AccountBackupResult;
+    return importAccountBackup(password);
   });
 
   ipcMain.handle(

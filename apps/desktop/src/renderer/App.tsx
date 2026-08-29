@@ -527,6 +527,10 @@ export function App() {
             setShowSetup(true);
           }
         }}
+        onImported={(importedAccounts) => {
+          setAccounts(importedAccounts);
+          if (selection.kind === 'unified') setSyncRevision((current) => current + 1);
+        }}
       />}
       {demoMode ? (
         <UnifiedInbox

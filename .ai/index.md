@@ -32,6 +32,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/assets/` — renderer and native package branding assets, including the macOS `.icns` application icon.
 - `apps/desktop/src/main/accounts.ts` — trusted IPC validation and handler registration; delegates privileged work to focused main-process services.
 - `apps/desktop/src/main/account-storage.ts` — persisted, user-ordered account records and conversion to renderer-safe account summaries.
+- `apps/desktop/src/main/account-backup.ts` — portable password-encrypted account backup export/import and destination-machine credential re-wrapping.
 - `apps/desktop/src/main/account-connection.ts` — IMAP/SMTP account connectivity verification.
 - `apps/desktop/src/main/microsoft-oauth.ts` — personal Microsoft device-code authorization, token exchange, and refresh-token renewal.
 - `apps/desktop/src/main/account-folders.ts` — cached/server folder listing, validation, creation, rename, move, deletion, and ordering.

@@ -426,6 +426,18 @@ export interface AccountReorderResult {
   accounts?: AccountSummary[];
 }
 
+export interface AccountBackupExportRequest {
+  password: string;
+  includeCredentials: boolean;
+}
+
+export interface AccountBackupResult {
+  ok: boolean;
+  message: string;
+  accounts?: AccountSummary[];
+  canceled?: boolean;
+}
+
 export interface AccountNameUpdate {
   name: string;
 }
@@ -474,6 +486,8 @@ export const ACCOUNT_CHANNELS = {
   update: 'accounts:update',
   reorder: 'accounts:reorder',
   remove: 'accounts:remove',
+  exportBackup: 'accounts:backup-export',
+  importBackup: 'accounts:backup-import',
   providers: 'providers:list',
   discoverProvider: 'providers:discover',
   listFolders: 'folders:list',
