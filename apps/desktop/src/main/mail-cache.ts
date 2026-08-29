@@ -306,6 +306,18 @@ export class MailCache {
         PRAGMA user_version = 5;
         COMMIT;
       `);
+      version = 5;
+    }
+
+    if (version < 6) {
+      this.#database.exec(`
+        BEGIN;
+        -- Link destinations used to be removed during HTML sanitization.
+        -- Re-fetch bodies so safe HTTP(S) links can request browser opening.
+        DELETE FROM message_bodies;
+        PRAGMA user_version = 6;
+        COMMIT;
+      `);
     }
   }
 

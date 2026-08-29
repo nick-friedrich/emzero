@@ -2,15 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { hasQuotedHtml, sanitizedMessageHtml } from './message-html.js';
 
 describe('sanitizedMessageHtml', () => {
-  it('removes scripts, event handlers, forms, and navigable links', () => {
+  it('removes active content while retaining safe web links', () => {
     const result = sanitizedMessageHtml(`
       <script>alert('xss')</script>
       <form action="https://attacker.example"><input name="secret"></form>
       <a href="https://attacker.example" onclick="steal()">safe label</a>
+      <a href="javascript:steal()">unsafe link</a>
       <p onmouseover="steal()">message</p>
     `);
 
-    expect(result).not.toMatch(/script|onclick|onmouseover|form|input|href/i);
+    expect(result).not.toMatch(/script|onclick|onmouseover|form|input|javascript/i);
+    expect(result).toContain('href="https://attacker.example"');
     expect(result).toContain('safe label');
     expect(result).toContain('message');
   });

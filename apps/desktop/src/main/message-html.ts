@@ -26,6 +26,7 @@ export function sanitizedMessageHtml(value: string | false): string | null {
     ],
     allowedAttributes: {
       '*': ['style'],
+      a: ['href'],
       blockquote: ['type', 'class'],
       div: ['class', 'id'],
       img: ['src', 'alt', 'width', 'height'],
@@ -35,8 +36,11 @@ export function sanitizedMessageHtml(value: string | false): string | null {
     },
     // Keep remote image URLs in the sanitized document so the renderer can
     // offer an explicit "load images" action. Its CSP blocks them by default.
-    allowedSchemesByTag: { img: ['data', 'http', 'https'] },
-    allowedSchemesAppliedToAttributes: ['src'],
+    allowedSchemesByTag: {
+      a: ['http', 'https'],
+      img: ['data', 'http', 'https'],
+    },
+    allowedSchemesAppliedToAttributes: ['href', 'src'],
     allowedStyles: {
       '*': {
         color: [safeColor],

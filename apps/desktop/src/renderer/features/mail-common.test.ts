@@ -58,6 +58,6 @@ describe('HTML email documents', () => {
     expect(blocked).toContain('color-scheme:light');
     expect(blocked).toContain('background:#fff');
     expect(blocked).toContain("type:'emzero:open-link'");
-    expect(blocked).toContain("script-src 'unsafe-inline'");
+    expect(blocked).toContain("script-src 'sha256-WjIlQhU8kgACo60V/0qpiNd4Brn6ImW1j3ghP53B1Yg='");
   });
 });
