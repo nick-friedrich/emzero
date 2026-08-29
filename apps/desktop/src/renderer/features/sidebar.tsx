@@ -902,12 +902,15 @@ export function Sidebar({
       </div>
 
       <div className="mt-auto shrink-0 border-t border-border pt-4">
-        {!demoMode && <Button
+        <Button
           variant="ghost"
           className="mb-1 w-full justify-start text-muted-foreground"
           disabled={syncStatus.state === 'syncing' || accounts.length === 0}
-          title={syncStatus.message}
-          onClick={() => void window.emzero.sync.now()}
+          aria-disabled={demoMode}
+          title={demoMode ? 'Unavailable in demo mode' : syncStatus.message}
+          onClick={() => {
+            if (!demoMode) void window.emzero.sync.now();
+          }}
         >
           <RefreshCw
             className={`size-4 ${syncStatus.state === 'syncing' ? 'animate-spin' : ''}`}
@@ -919,19 +922,31 @@ export function Sidebar({
               : syncStatus.lastSyncedAt
                 ? `Synced ${messageDate(syncStatus.lastSyncedAt)}`
                 : 'Sync mail'}
-        </Button>}
-        {!demoMode && <Button
+        </Button>
+        <Button
           variant="ghost"
           className="mb-1 w-full justify-start text-muted-foreground"
-          onClick={onManage}
+          aria-disabled={demoMode}
+          title={demoMode ? 'Unavailable in demo mode' : undefined}
+          onClick={() => {
+            if (!demoMode) onManage();
+          }}
         >
           <Settings2 className="size-4" />
           Settings
-        </Button>}
-        {!demoMode && <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={onAdd}>
+        </Button>
+        <Button
+          variant="ghost"
+          className="w-full justify-start text-muted-foreground"
+          aria-disabled={demoMode}
+          title={demoMode ? 'Unavailable in demo mode' : undefined}
+          onClick={() => {
+            if (!demoMode) onAdd();
+          }}
+        >
           <Plus className="size-4" />
           Add account
-        </Button>}
+        </Button>
       </div>
       </aside>
       {folderEditor && (
