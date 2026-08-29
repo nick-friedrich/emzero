@@ -34,6 +34,17 @@ export function closeMailCache(): void {
   cache = null;
 }
 
+export function disconnectPooledImapConnections(): void {
+  for (const connection of pooledImapConnections.values()) {
+    if (connection.idleTimer) {
+      clearTimeout(connection.idleTimer);
+      connection.idleTimer = null;
+    }
+    connection.imap?.close();
+    connection.imap = null;
+  }
+}
+
 export function errorMessage(error: unknown, secret: string): string {
   const message = error instanceof Error ? error.message : 'Unknown connection error';
   return secret ? message.replaceAll(secret, '••••••••') : message;
@@ -154,7 +165,7 @@ export function createImapClient(
   secret: string,
   socketTimeout = 20_000,
 ): ImapFlow {
-  return new ImapFlow({
+  const imap = new ImapFlow({
     host: account.imap.host,
     port: account.imap.port,
     secure: account.imap.secure,
@@ -167,6 +178,12 @@ export function createImapClient(
     greetingTimeout: 12_000,
     socketTimeout,
   });
+
+  // ImapFlow reports transport failures both through the active operation and
+  // as an EventEmitter error. Without a listener, a routine EPIPE after system
+  // sleep becomes an uncaught exception in Electron's main process.
+  imap.on('error', () => undefined);
+  return imap;
 }
 
 export async function closeImap(imap: ImapFlow | null): Promise<void> {

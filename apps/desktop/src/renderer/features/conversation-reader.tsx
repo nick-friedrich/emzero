@@ -83,7 +83,7 @@ function MessageBody({
   message: MailMessageDetail;
   demo?: boolean;
 }) {
-  const { theme } = useTheme();
+  const { theme, alwaysLoadRemoteImages } = useTheme();
   const [view, setView] = useState<'html' | 'text'>('html');
   const [showQuoted, setShowQuoted] = useState(false);
   const [remoteImagesLoadedFor, setRemoteImagesLoadedFor] = useState<string | null>(null);
@@ -95,7 +95,7 @@ function MessageBody({
   const textParts = splitQuotedText(message.text);
   const hasQuotedText = view === 'html' ? message.htmlHasQuotedText : Boolean(textParts.quoted);
   const messageKey = `${accountId}\0${folderPath}\0${message.uid}`;
-  const loadRemoteImages = remoteImagesLoadedFor === messageKey;
+  const loadRemoteImages = alwaysLoadRemoteImages || remoteImagesLoadedFor === messageKey;
   const remoteImagesBlocked = Boolean(message.html && hasRemoteImages(message.html) && !loadRemoteImages);
 
   useEffect(() => {

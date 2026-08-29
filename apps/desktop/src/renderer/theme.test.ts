@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   applyInterfaceFont,
+  storedAlwaysLoadRemoteImages,
   storedInterfaceFont,
   themeColorSchemes,
   themes,
@@ -39,6 +40,20 @@ describe('interface font preference', () => {
     const dataset = stubBrowser(null);
     applyInterfaceFont('jetbrains-mono');
     expect(dataset.font).toBe('jetbrains-mono');
+  });
+});
+
+describe('remote image preference', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('defaults to blocking remote images', () => {
+    stubBrowser(null);
+    expect(storedAlwaysLoadRemoteImages()).toBe(false);
+  });
+
+  it('restores an explicit always-load preference', () => {
+    stubBrowser('true');
+    expect(storedAlwaysLoadRemoteImages()).toBe(true);
   });
 });
 

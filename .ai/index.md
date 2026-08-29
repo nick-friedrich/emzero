@@ -37,7 +37,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/microsoft-oauth.ts` — personal Microsoft device-code authorization, token exchange, and refresh-token renewal.
 - `apps/desktop/src/main/account-folders.ts` — cached/server folder listing, validation, creation, rename, move, deletion, and ordering.
 - `apps/desktop/src/main/background-sync.ts` — foreground-safe scheduled and on-demand Inbox/Sent synchronization state and execution.
-- `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential caching, safe error formatting, and isolated interactive/background per-account IMAP connections.
+- `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential caching, safe error formatting, and sleep-safe isolated interactive/background per-account IMAP connections.
 - `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization with periodic full reconciliation, message parsing, and cached/server message reading.
 - `apps/desktop/src/main/message-sender.ts` — SMTP delivery, IMAP Sent-copy persistence, and sent-message cache updates.
 - `apps/desktop/src/main/mail-drafts.ts` — MIME draft compilation plus append-first IMAP draft autosave and deletion.
@@ -64,21 +64,22 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `apps/desktop/src/renderer/main.tsx` — React renderer entry point and providers.
 - `apps/desktop/src/renderer/App.tsx` — application-level orchestration only: account loading, current mailbox selection, persisted sidebar/mail-layout preferences, dialog visibility, sync revision, and active bulk-operation state.
 - `apps/desktop/src/renderer/styles.css` — global Tailwind styles and visual tokens.
-- `apps/desktop/src/renderer/theme.tsx` — theme/font persistence, context, and message color schemes.
+- `apps/desktop/src/renderer/theme.tsx` — appearance and mail-behavior preference persistence/context, plus message color schemes.
 - `apps/desktop/src/renderer/lib/utils.ts` — small renderer-wide helpers such as class merging and range selection.
 - `apps/desktop/src/renderer/components/ui/` — reusable low-level UI primitives.
 
 ## Renderer features
 
-- `features/sidebar.tsx` — desktop/mobile navigation content, drag-to-reorder accounts, account folder trees, folder CRUD, drag-and-drop folder moves, sync status, and theme controls.
+- `features/sidebar.tsx` — desktop/mobile navigation with a fixed brand header and action footer, scrollable mailbox/account navigation, drag-to-reorder accounts, folder CRUD, drag-and-drop folder moves, and sync status.
 - `features/demo-mode.tsx` — persistent, privacy-safe show-off dataset injected into the existing mailbox and conversation UI for screenshots.
 - `features/account-setup.tsx` — provider detection, password/app-password setup, and personal Microsoft device-code connection flow.
-- `features/account-settings.tsx` — account rename/removal dialog.
+- `features/account-settings.tsx` — unified settings dialog for appearance, mail behavior, account rename/removal, and encrypted backup/restore.
 - `features/compose-dialog.tsx` — new-message composer, recipient suggestions, attachments, validation, confirmation, and sending.
 - `features/mail-search.tsx` — search form/results and selected-result reader.
 - `features/message-list.tsx` — one account-folder conversation list, selection, and folder-scoped actions.
 - `features/unified-inbox.tsx` — multi-account Inbox, Starred, and Trash aggregation, selection, and actions.
 - `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: action controls, selection toolbar, and mail-view types/helpers.
+- `features/mail-split-layout.tsx` — persisted, pointer- and keyboard-resizable list/reader layout shared by three-column mail views.
 - `features/mail-common.test.ts` — renderer tests for isolated HTML-email document generation and remote-image privacy controls.
 - `features/message-move.tsx` — account-and-folder destination picker for single and bulk message moves.
 - `features/conversation-reader.tsx` — conversation reader, message body/thread cards, received-attachment saving, quoted-content display, and inline reply composer.

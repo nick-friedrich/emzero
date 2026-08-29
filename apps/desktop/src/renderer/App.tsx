@@ -16,7 +16,7 @@ import type {
   MailSyncStatus,
 } from '../shared/accounts';
 import { AccountSetup } from './features/account-setup';
-import { AccountSettingsDialog } from './features/account-settings';
+import { SettingsDialog } from './features/account-settings';
 import {
   BulkOperationBar,
   type BulkOperationView,
@@ -530,7 +530,7 @@ export function App() {
         onOpenChange={setComposeOpen}
         onSent={() => setSyncRevision((current) => current + 1)}
       />}
-      {!demoMode && <AccountSettingsDialog
+      {!demoMode && <SettingsDialog
         open={settingsOpen}
         accounts={accounts}
         onOpenChange={setSettingsOpen}

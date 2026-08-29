@@ -1,8 +1,8 @@
 import path from 'node:path';
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, Menu, powerMonitor } from 'electron';
 import { registerAccountHandlers } from './accounts.js';
 import { startBackgroundSync, stopBackgroundSync } from './background-sync.js';
-import { closeMailCache } from './mail-runtime.js';
+import { closeMailCache, disconnectPooledImapConnections } from './mail-runtime.js';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -67,6 +67,7 @@ void app.whenReady().then(() => {
   registerAccountHandlers();
   createWindow();
   startBackgroundSync();
+  powerMonitor.on('suspend', disconnectPooledImapConnections);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -79,5 +80,6 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   stopBackgroundSync();
+  powerMonitor.removeListener('suspend', disconnectPooledImapConnections);
   closeMailCache();
 });

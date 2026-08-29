@@ -28,6 +28,7 @@ export type InterfaceFont = (typeof interfaceFonts)[number]['value'];
 
 const themeStorageKey = 'emzero-theme';
 const fontStorageKey = 'emzero-interface-font';
+const alwaysLoadRemoteImagesStorageKey = 'emzero-always-load-remote-images';
 const themeValues = new Set<Theme>(themes.map(({ value }) => value));
 const fontValues = new Set<InterfaceFont>(interfaceFonts.map(({ value }) => value));
 
@@ -65,11 +66,21 @@ export function applyInterfaceFont(font: InterfaceFont): void {
   document.documentElement.dataset.font = font;
 }
 
+export function storedAlwaysLoadRemoteImages(): boolean {
+  try {
+    return window.localStorage.getItem(alwaysLoadRemoteImagesStorageKey) === 'true';
+  } catch {
+    return false;
+  }
+}
+
 interface ThemeContextValue {
   theme: Theme;
   setTheme: (theme: Theme) => void;
   interfaceFont: InterfaceFont;
   setInterfaceFont: (font: InterfaceFont) => void;
+  alwaysLoadRemoteImages: boolean;
+  setAlwaysLoadRemoteImages: (enabled: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -77,6 +88,9 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(storedTheme);
   const [interfaceFont, setInterfaceFont] = useState<InterfaceFont>(storedInterfaceFont);
+  const [alwaysLoadRemoteImages, setAlwaysLoadRemoteImages] = useState(
+    storedAlwaysLoadRemoteImages,
+  );
 
   useEffect(() => {
     applyTheme(theme);
@@ -96,8 +110,26 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, [interfaceFont]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        alwaysLoadRemoteImagesStorageKey,
+        String(alwaysLoadRemoteImages),
+      );
+    } catch {
+      // A read-only storage context should not prevent preference changes for this session.
+    }
+  }, [alwaysLoadRemoteImages]);
+
   return (
-    <ThemeContext value={{ theme, setTheme, interfaceFont, setInterfaceFont }}>
+    <ThemeContext value={{
+      theme,
+      setTheme,
+      interfaceFont,
+      setInterfaceFont,
+      alwaysLoadRemoteImages,
+      setAlwaysLoadRemoteImages,
+    }}>
       {children}
     </ThemeContext>
   );

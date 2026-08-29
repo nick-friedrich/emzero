@@ -5,8 +5,11 @@ import {
   CheckCircle2,
   CircleAlert,
   Download,
+  Image,
   LoaderCircle,
+  Palette,
   Trash2,
+  Type,
   Upload,
 } from 'lucide-react';
 import {
@@ -36,9 +39,16 @@ import {
 import {
   type AccountSummary,
 } from '../../shared/accounts';
+import {
+  interfaceFonts,
+  themes,
+  useTheme,
+  type InterfaceFont,
+  type Theme,
+} from '@/theme';
 import type { Status } from './app-shared';
 
-export function AccountSettingsDialog({
+export function SettingsDialog({
   open,
   accounts,
   onOpenChange,
@@ -53,6 +63,14 @@ export function AccountSettingsDialog({
   onRemoved: (accountId: string) => void;
   onImported: (accounts: AccountSummary[]) => void;
 }) {
+  const {
+    theme,
+    setTheme,
+    interfaceFont,
+    setInterfaceFont,
+    alwaysLoadRemoteImages,
+    setAlwaysLoadRemoteImages,
+  } = useTheme();
   const [names, setNames] = useState<Record<string, string>>({});
   const [busyAccount, setBusyAccount] = useState<string | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
@@ -183,15 +201,89 @@ export function AccountSettingsDialog({
         onOpenChange(nextOpen);
       }}
     >
-      <DialogContent>
+      <DialogContent className="w-[min(46rem,calc(100%-2rem))]">
         <DialogHeader>
-          <DialogTitle>Account settings</DialogTitle>
+          <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
-            Rename, remove, back up, or restore your connected accounts.
+            Personalize Emzero, control mail behavior, and manage your accounts and backups.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <section className="space-y-3 rounded-lg border border-border bg-background p-4">
+          <div className="flex items-start gap-3">
+            <Palette className="mt-0.5 size-5 text-muted-foreground" />
+            <div>
+              <h3 className="text-sm font-medium">Appearance</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose how Emzero looks on this device.
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1.5 text-xs font-medium">
+              <span>Color theme</span>
+              <span className="relative block">
+                <Palette className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                <select
+                  className="preference-select"
+                  value={theme}
+                  onChange={(event) => setTheme(event.target.value as Theme)}
+                >
+                  {themes.map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </span>
+            </label>
+            <label className="space-y-1.5 text-xs font-medium">
+              <span>Interface font</span>
+              <span className="relative block">
+                <Type className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                <select
+                  className="preference-select"
+                  value={interfaceFont}
+                  onChange={(event) => setInterfaceFont(event.target.value as InterfaceFont)}
+                >
+                  {interfaceFonts.map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <section className="space-y-3 rounded-lg border border-border bg-background p-4">
+          <div className="flex items-start gap-3">
+            <Image className="mt-0.5 size-5 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-medium">Mail behavior</h3>
+              <label className="mt-3 flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={alwaysLoadRemoteImages}
+                  onChange={(event) => setAlwaysLoadRemoteImages(event.target.checked)}
+                />
+                <span>
+                  <span className="block text-sm text-foreground">Always load remote images</span>
+                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                    Remote senders may use images to learn when you open a message. Leave this off
+                    for better privacy.
+                  </span>
+                </span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-sm font-medium">Accounts</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Rename or remove connected mail accounts.
+            </p>
+          </div>
           {accounts.map((account) => (
             <div key={account.id} className="rounded-lg border border-border bg-background p-4">
               <div className="mb-3 flex items-center gap-3">
@@ -267,7 +359,7 @@ export function AccountSettingsDialog({
               </form>
             </div>
           ))}
-        </div>
+        </section>
 
         <section className="space-y-3 rounded-lg border border-border bg-background p-4">
           <div className="flex items-start gap-3">

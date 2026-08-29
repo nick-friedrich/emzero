@@ -13,7 +13,6 @@ import {
   GripVertical,
   Inbox,
   LoaderCircle,
-  Palette,
   PenLine,
   Plus,
   PanelLeftClose,
@@ -23,7 +22,6 @@ import {
   Settings2,
   Star,
   Trash2,
-  Type,
 } from 'lucide-react';
 import {
   Button,
@@ -48,13 +46,6 @@ import {
 import {
   cn,
 } from '@/lib/utils';
-import {
-  interfaceFonts,
-  themes,
-  useTheme,
-  type InterfaceFont,
-  type Theme,
-} from '@/theme';
 import {
   type AccountSummary,
   type MailFolderSummary,
@@ -203,7 +194,6 @@ export function Sidebar({
   onDemoModeChange: (enabled: boolean) => void;
   className?: string;
 }) {
-  const { theme, setTheme, interfaceFont, setInterfaceFont } = useTheme();
   const demoClickTimes = useRef<number[]>([]);
   const [expanded, setExpanded] = useState(
     () => new Set(demoMode ? accounts.map((account) => account.id) : []),
@@ -514,7 +504,7 @@ export function Sidebar({
     <>
       <aside
       className={cn(
-        'relative flex min-h-0 flex-col overflow-y-auto border-r border-border bg-sidebar p-4',
+        'relative flex min-h-0 flex-col overflow-hidden border-r border-border bg-sidebar p-4',
         className,
       )}
     >
@@ -568,31 +558,32 @@ export function Sidebar({
         )}
       </div>
 
-      <Button
-        className="mb-4 w-full shrink-0 justify-start"
-        disabled={accounts.length === 0}
-        onClick={onCompose}
-      >
-        <PenLine className="size-4" />
-        Compose
-      </Button>
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        <Button
+          className="mb-4 w-full justify-start"
+          disabled={accounts.length === 0}
+          onClick={onCompose}
+        >
+          <PenLine className="size-4" />
+          Compose
+        </Button>
 
-      <Button
-        variant={selection.kind === 'search' ? 'secondary' : 'ghost'}
-        className="mb-2 w-full shrink-0 justify-start"
-        onClick={() => onSelect({ kind: 'search', query: '' })}
-      >
-        <Search className="size-4" />
-        Search mail
-        <kbd className="ml-auto text-[0.62rem] font-normal text-muted-foreground">
-          {window.emzero?.platform === 'darwin' ? '⌘K' : 'Ctrl K'}
-        </kbd>
-      </Button>
+        <Button
+          variant={selection.kind === 'search' ? 'secondary' : 'ghost'}
+          className="mb-2 w-full justify-start"
+          onClick={() => onSelect({ kind: 'search', query: '' })}
+        >
+          <Search className="size-4" />
+          Search mail
+          <kbd className="ml-auto text-[0.62rem] font-normal text-muted-foreground">
+            {window.emzero?.platform === 'darwin' ? '⌘K' : 'Ctrl K'}
+          </kbd>
+        </Button>
 
-      <nav aria-label="Mailboxes" className="shrink-0 space-y-1">
+        <nav aria-label="Mailboxes" className="space-y-1">
         <Button
           variant={selection.kind === 'unified' && (selection.mailbox ?? 'inbox') === 'inbox' ? 'secondary' : 'ghost'}
-          className="w-full justify-start"
+          className="w-full shrink-0 justify-start"
           onClick={() => onSelect({ kind: 'unified', mailbox: 'inbox' })}
         >
           <Inbox className="size-4" />
@@ -601,7 +592,7 @@ export function Sidebar({
         </Button>
         <Button
           variant={selection.kind === 'unified' && selection.mailbox === 'starred' ? 'secondary' : 'ghost'}
-          className="w-full justify-start"
+          className="w-full shrink-0 justify-start"
           onClick={() => onSelect({ kind: 'unified', mailbox: 'starred' })}
         >
           <Star className="size-4" />
@@ -609,7 +600,7 @@ export function Sidebar({
         </Button>
         <Button
           variant={selection.kind === 'unified' && selection.mailbox === 'trash' ? 'secondary' : 'ghost'}
-          className="w-full justify-start"
+          className="w-full shrink-0 justify-start"
           onClick={() => onSelect({ kind: 'unified', mailbox: 'trash' })}
         >
           <Trash2 className="size-4" />
@@ -898,41 +889,10 @@ export function Sidebar({
             )}
           </div>
         )}
-      </nav>
+        </nav>
+      </div>
 
       <div className="mt-auto shrink-0 border-t border-border pt-4">
-        <label className="relative mb-2 block" aria-label="Color theme">
-          <Palette className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-          <select
-            className="preference-select"
-            value={theme}
-            title="Color theme"
-            onChange={(event) => setTheme(event.target.value as Theme)}
-          >
-            {themes.map(({ value, label }) => (
-              <option key={value} value={value}>
-                {label} theme
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-3 top-2.5 size-4 text-muted-foreground" />
-        </label>
-        <label className="relative mb-2 block" aria-label="Interface font">
-          <Type className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-          <select
-            className="preference-select"
-            value={interfaceFont}
-            title="Interface font"
-            onChange={(event) => setInterfaceFont(event.target.value as InterfaceFont)}
-          >
-            {interfaceFonts.map(({ value, label }) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-3 top-2.5 size-4 text-muted-foreground" />
-        </label>
         {!demoMode && <Button
           variant="ghost"
           className="mb-1 w-full justify-start text-muted-foreground"
@@ -957,7 +917,7 @@ export function Sidebar({
           onClick={onManage}
         >
           <Settings2 className="size-4" />
-          Manage accounts
+          Settings
         </Button>}
         {!demoMode && <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={onAdd}>
           <Plus className="size-4" />

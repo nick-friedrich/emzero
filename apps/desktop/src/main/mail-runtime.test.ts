@@ -1,6 +1,19 @@
 import type { ImapFlow } from 'imapflow';
 import { describe, expect, it, vi } from 'vitest';
-import { closeImap } from './mail-runtime.js';
+import type { StoredAccount } from './account-storage.js';
+import { closeImap, createImapClient } from './mail-runtime.js';
+
+const account: StoredAccount = {
+  id: 'account-1',
+  name: 'Account',
+  email: 'mail@example.com',
+  username: 'mail@example.com',
+  authentication: 'password',
+  encryptedSecret: 'encrypted',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  imap: { host: 'imap.example.com', port: 993, secure: true },
+  smtp: { host: 'smtp.example.com', port: 465, secure: true },
+};
 
 function cleanupClient({
   usable,
@@ -48,5 +61,16 @@ describe('closeImap', () => {
     await expect(closeImap(imap)).resolves.toBeUndefined();
 
     expect(imap.close).toHaveBeenCalledOnce();
+  });
+});
+
+describe('createImapClient', () => {
+  it('absorbs supplemental socket error events instead of crashing the main process', () => {
+    const imap = createImapClient(account, 'secret');
+
+    expect(imap.listenerCount('error')).toBeGreaterThan(0);
+    expect(() => imap.emit('error', new Error('write EPIPE'))).not.toThrow();
+
+    imap.close();
   });
 });

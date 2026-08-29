@@ -28,6 +28,9 @@ async function verifyConnectionsWithSecret(
     greetingTimeout: 12_000,
     socketTimeout: 15_000,
   });
+  // The connect/logout promises carry the actionable error. This listener is
+  // still required because a socket failure is also emitted by ImapFlow.
+  imap.on('error', () => undefined);
 
   const smtp = nodemailer.createTransport({
     host: draft.smtp.host.trim(),

@@ -55,6 +55,7 @@ import {
   type UnifiedInboxLoadState,
   useCompactMailList,
 } from './mail-common';
+import { MailSplitLayout } from './mail-split-layout';
 import { ConversationReader } from './conversation-reader';
 import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableAction } from './undoable-delete';
@@ -1107,18 +1108,16 @@ export function UnifiedInbox({
   if (mailLayout === 'list') return list;
 
   return (
-    <div className="grid min-h-0 min-w-0 grid-cols-[minmax(20rem,24rem)_minmax(0,1fr)] overflow-hidden">
-      <div className="min-h-0 min-w-0 border-r border-border">{list}</div>
-      <div className="min-h-0 min-w-0 bg-background">
-        {reader ?? (
+    <MailSplitLayout
+      list={list}
+      reader={reader ?? (
           <div className="grid h-full place-items-center p-8 text-center text-muted-foreground">
             <div>
               <Inbox className="mx-auto size-8" />
               <p className="mt-3 text-sm">Select a conversation to read it here.</p>
             </div>
           </div>
-        )}
-      </div>
-    </div>
+      )}
+    />
   );
 }
