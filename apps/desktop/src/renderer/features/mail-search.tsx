@@ -291,6 +291,7 @@ export function MailSearch({
       <header className={cn(
         'border-b border-border bg-card py-3 pl-16 pr-4 lg:px-6',
         compactList && 'lg:px-4',
+        window.emzero?.platform === 'darwin' && 'macos-titlebar-drag',
       )}>
         <form
           className={cn(

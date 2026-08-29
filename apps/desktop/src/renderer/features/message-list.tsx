@@ -619,6 +619,7 @@ export function MessageList({
       <header className={cn(
         'flex min-w-0 items-center justify-between gap-3 border-b border-border bg-card py-4 pl-16 pr-4 lg:px-6',
         compactList && 'lg:px-4',
+        window.emzero?.platform === 'darwin' && 'macos-titlebar-drag',
       )}>
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold tracking-tight">

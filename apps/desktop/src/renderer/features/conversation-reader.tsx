@@ -9,6 +9,8 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  ExternalLink,
+  FolderOpen,
   LoaderCircle,
   Paperclip,
   Reply,
@@ -85,8 +87,9 @@ function MessageBody({
   const [view, setView] = useState<'html' | 'text'>('html');
   const [showQuoted, setShowQuoted] = useState(false);
   const [remoteImagesLoadedFor, setRemoteImagesLoadedFor] = useState<string | null>(null);
-  const [savingAttachment, setSavingAttachment] = useState<number | null>(null);
+  const [attachmentAction, setAttachmentAction] = useState<{ index: number; kind: 'open' | 'save' } | null>(null);
   const [attachmentStatus, setAttachmentStatus] = useState<Status | null>(null);
+  const [savedAttachmentId, setSavedAttachmentId] = useState<string | null>(null);
   const [pendingLink, setPendingLink] = useState<string | null>(null);
   const messageFrameRef = useRef<HTMLIFrameElement>(null);
   const textParts = splitQuotedText(message.text);
@@ -216,40 +219,86 @@ function MessageBody({
               .map((attachment, index) => ({ attachment, index }))
               .filter(({ attachment }) => !attachment.related)
               .map(({ attachment, index }) => (
-                <button
-                  type="button"
+                <div
                   key={`${attachment.filename}:${index}`}
-                  className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-left text-xs hover:bg-accent disabled:opacity-60"
-                  disabled={savingAttachment !== null}
-                  title={`Save ${attachment.filename}`}
-                  onClick={() => {
-                    if (demo) return;
-                    setSavingAttachment(index);
-                    setAttachmentStatus(null);
-                    void window.emzero.messages
-                      .saveAttachment(accountId, folderPath, message.uid, index)
-                      .then((result) => {
-                        if (!result.canceled) {
+                  className="flex overflow-hidden rounded-md border border-border bg-background text-xs"
+                >
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 px-3 py-2 text-left hover:bg-accent disabled:opacity-60"
+                    disabled={attachmentAction !== null || demo}
+                    title={`Open ${attachment.filename}`}
+                    onClick={() => {
+                      setAttachmentAction({ index, kind: 'open' });
+                      setAttachmentStatus(null);
+                      setSavedAttachmentId(null);
+                      void window.emzero.messages
+                        .openAttachment(accountId, folderPath, message.uid, index)
+                        .then((result) =>
                           setAttachmentStatus({
                             kind: result.ok ? 'success' : 'error',
-                            message: result.message ?? (result.ok ? 'Attachment saved.' : 'Could not save attachment.'),
-                          });
-                        }
-                      })
-                      .catch(() =>
-                        setAttachmentStatus({ kind: 'error', message: 'Could not save attachment.' }),
-                      )
-                      .finally(() => setSavingAttachment(null));
-                  }}
-                >
-                  {savingAttachment === index ? (
-                    <LoaderCircle className="size-3.5 animate-spin" />
-                  ) : (
-                    <Download className="size-3.5" />
-                  )}
-                  <span className="font-medium">{attachment.filename}</span>
-                  <span className="text-muted-foreground">{fileSize(attachment.size)}</span>
-                </button>
+                            message:
+                              result.message ??
+                              (result.ok ? 'Attachment opened.' : 'Could not open attachment.'),
+                          }),
+                        )
+                        .catch(() =>
+                          setAttachmentStatus({
+                            kind: 'error',
+                            message: 'Could not open attachment.',
+                          }),
+                        )
+                        .finally(() => setAttachmentAction(null));
+                    }}
+                  >
+                    {attachmentAction?.index === index && attachmentAction.kind === 'open' ? (
+                      <LoaderCircle className="size-3.5 animate-spin" />
+                    ) : (
+                      <ExternalLink className="size-3.5" />
+                    )}
+                    <span className="font-medium">{attachment.filename}</span>
+                    <span className="text-muted-foreground">{fileSize(attachment.size)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="border-l border-border px-2.5 hover:bg-accent disabled:opacity-60"
+                    disabled={attachmentAction !== null || demo}
+                    aria-label={`Save ${attachment.filename}`}
+                    title={`Save ${attachment.filename}`}
+                    onClick={() => {
+                      if (demo) return;
+                      setAttachmentAction({ index, kind: 'save' });
+                      setAttachmentStatus(null);
+                      setSavedAttachmentId(null);
+                      void window.emzero.messages
+                        .saveAttachment(accountId, folderPath, message.uid, index)
+                        .then((result) => {
+                          if (!result.canceled) {
+                            setAttachmentStatus({
+                              kind: result.ok ? 'success' : 'error',
+                              message:
+                                result.message ??
+                                (result.ok ? 'Attachment saved.' : 'Could not save attachment.'),
+                            });
+                            setSavedAttachmentId(result.savedAttachmentId ?? null);
+                          }
+                        })
+                        .catch(() =>
+                          setAttachmentStatus({
+                            kind: 'error',
+                            message: 'Could not save attachment.',
+                          }),
+                        )
+                        .finally(() => setAttachmentAction(null));
+                    }}
+                  >
+                    {attachmentAction?.index === index && attachmentAction.kind === 'save' ? (
+                      <LoaderCircle className="size-3.5 animate-spin" />
+                    ) : (
+                      <Download className="size-3.5" />
+                    )}
+                  </button>
+                </div>
               ))}
           </div>
           {attachmentStatus && (
@@ -261,6 +310,16 @@ function MessageBody({
               role="status"
             >
               {attachmentStatus.message}
+              {savedAttachmentId && (
+                <button
+                  type="button"
+                  className="ml-2 inline-flex items-center gap-1 font-medium underline underline-offset-2"
+                  onClick={() => void window.emzero.messages.revealSavedAttachment(savedAttachmentId)}
+                >
+                  <FolderOpen className="size-3.5" />
+                  Show in folder
+                </button>
+              )}
             </p>
           )}
         </section>
@@ -717,7 +776,10 @@ export function ConversationReader({
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
-      <header className="flex items-center gap-3 border-b border-border bg-card py-3 pl-16 pr-4 lg:px-4">
+      <header className={cn(
+        'flex items-center gap-3 border-b border-border bg-card py-3 pl-16 pr-4 lg:px-4',
+        window.emzero?.platform === 'darwin' && 'macos-titlebar-drag',
+      )}>
         <Button variant="ghost" className="px-3" onClick={onBack}>
           <ArrowLeft className="size-4" />
           Back

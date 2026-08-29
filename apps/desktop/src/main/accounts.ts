@@ -24,7 +24,12 @@ import {
 } from '../shared/accounts.js';
 import { verifyConnections, verifyMicrosoftConnections } from './account-connection.js';
 import { exportAccountBackup, importAccountBackup, selectAccountBackup } from './account-backup.js';
-import { saveMessageAttachment, selectOutgoingAttachments } from './attachment-files.js';
+import {
+  openMessageAttachment,
+  revealSavedAttachment,
+  saveMessageAttachment,
+  selectOutgoingAttachments,
+} from './attachment-files.js';
 import {
   createAccountFolder,
   deleteAccountFolder,
@@ -583,6 +588,35 @@ export function registerAccountHandlers(): void {
   });
 
   ipcMain.handle(
+    ACCOUNT_CHANNELS.openAttachment,
+    async (
+      event,
+      accountId: unknown,
+      folderPath: unknown,
+      uid: unknown,
+      attachmentIndex: unknown,
+    ) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (
+        typeof accountId !== 'string' ||
+        typeof folderPath !== 'string' ||
+        !folderPath ||
+        typeof uid !== 'number' ||
+        !Number.isSafeInteger(uid) ||
+        uid < 1 ||
+        typeof attachmentIndex !== 'number' ||
+        !Number.isSafeInteger(attachmentIndex) ||
+        attachmentIndex < 0
+      ) {
+        return { ok: false, message: 'Invalid attachment.' };
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return { ok: false, message: 'Account not found.' };
+      return openMessageAttachment(account, folderPath, uid, attachmentIndex);
+    },
+  );
+
+  ipcMain.handle(
     ACCOUNT_CHANNELS.saveAttachment,
     async (
       event,
@@ -610,6 +644,11 @@ export function registerAccountHandlers(): void {
       return saveMessageAttachment(account, folderPath, uid, attachmentIndex);
     },
   );
+
+  ipcMain.handle(ACCOUNT_CHANNELS.revealSavedAttachment, (event, savedAttachmentId: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    return typeof savedAttachmentId === 'string' && revealSavedAttachment(savedAttachmentId);
+  });
 
   ipcMain.handle(
     ACCOUNT_CHANNELS.sendReply,

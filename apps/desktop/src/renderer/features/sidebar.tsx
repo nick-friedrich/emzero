@@ -514,10 +514,13 @@ export function Sidebar({
     <>
       <aside
       className={cn(
-        'flex min-h-0 flex-col overflow-y-auto border-r border-border bg-sidebar p-4',
+        'relative flex min-h-0 flex-col overflow-y-auto border-r border-border bg-sidebar p-4',
         className,
       )}
     >
+      {window.emzero?.platform === 'darwin' && (
+        <div className="macos-titlebar-drag absolute inset-x-0 top-0 h-10 shrink-0" />
+      )}
       <div className={cn(
         'mb-8 flex shrink-0 items-center gap-3 px-2',
         window.emzero?.platform === 'darwin' && 'macos-titlebar-drag',

@@ -353,6 +353,7 @@ export interface AttachmentSelectionResult {
 
 export interface AttachmentSaveResult extends MessageOperationResult {
   canceled?: boolean;
+  savedAttachmentId?: string;
 }
 
 export interface MailMessageDetail {
@@ -524,7 +525,9 @@ export const ACCOUNT_CHANNELS = {
   sendMessage: 'messages:send',
   suggestRecipients: 'messages:suggest-recipients',
   selectAttachments: 'attachments:select',
+  openAttachment: 'attachments:open',
   saveAttachment: 'attachments:save',
+  revealSavedAttachment: 'attachments:reveal-saved',
   saveDraft: 'drafts:save',
   deleteDraft: 'drafts:delete',
   syncStatus: 'sync:status',

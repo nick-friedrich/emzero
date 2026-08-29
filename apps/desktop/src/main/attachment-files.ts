@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
-import { dialog } from 'electron';
+import { dialog, shell } from 'electron';
 import type { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import type {
@@ -20,6 +21,35 @@ const maximumAttachmentCount = 20;
 const maximumAttachmentSize = 25 * 1024 * 1024;
 const maximumTotalSize = 50 * 1024 * 1024;
 const selectedAttachments = new Map<string, SelectedAttachment>();
+const savedAttachments = new Map<string, string>();
+
+async function loadMessageAttachment(
+  account: StoredAccount,
+  password: string,
+  folderPath: string,
+  uid: number,
+  attachmentIndex: number,
+): Promise<{ filename: string; content: Buffer }> {
+  let imap: ImapFlow | null = null;
+  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
+  try {
+    imap = createImapClient(account, password, 30_000);
+    await imap.connect();
+    lock = await imap.getMailboxLock(folderPath, { readOnly: true });
+    const fetched = await imap.fetchOne(uid, { source: true }, { uid: true });
+    if (!fetched || !fetched.source) throw new Error('This message is no longer available.');
+    const parsed = await simpleParser(fetched.source);
+    const attachment = parsed.attachments[attachmentIndex];
+    if (!attachment || attachment.related) throw new Error('This attachment is no longer available.');
+    return {
+      filename: path.basename(attachment.filename || 'attachment'),
+      content: attachment.content,
+    };
+  } finally {
+    lock?.release();
+    await closeImap(imap);
+  }
+}
 
 export async function selectOutgoingAttachments(): Promise<AttachmentSelectionResult> {
   const result = await dialog.showOpenDialog({
@@ -102,36 +132,61 @@ export async function saveMessageAttachment(
   attachmentIndex: number,
 ): Promise<AttachmentSaveResult> {
   let password = '';
-  let imap: ImapFlow | null = null;
-  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
     password = await resolveMailSecret(account);
-    imap = createImapClient(account, password, 30_000);
-    await imap.connect();
-    lock = await imap.getMailboxLock(folderPath, { readOnly: true });
-    const fetched = await imap.fetchOne(uid, { source: true }, { uid: true });
-    if (!fetched || !fetched.source) {
-      return { ok: false, message: 'This message is no longer available.' };
-    }
-    const parsed = await simpleParser(fetched.source);
-    const attachment = parsed.attachments[attachmentIndex];
-    if (!attachment || attachment.related) {
-      return { ok: false, message: 'This attachment is no longer available.' };
-    }
-    const filename = path.basename(attachment.filename || 'attachment');
-    const content = attachment.content;
-    lock.release();
-    lock = null;
-    await closeImap(imap);
-    imap = null;
+    const { filename, content } = await loadMessageAttachment(
+      account,
+      password,
+      folderPath,
+      uid,
+      attachmentIndex,
+    );
     const destination = await dialog.showSaveDialog({ title: 'Save attachment', defaultPath: filename });
     if (destination.canceled || !destination.filePath) return { ok: true, canceled: true };
     await writeFile(destination.filePath, content);
-    return { ok: true, message: `${filename} saved.` };
+    const savedAttachmentId = randomUUID();
+    savedAttachments.set(savedAttachmentId, destination.filePath);
+    while (savedAttachments.size > 100) {
+      const oldestId = savedAttachments.keys().next().value;
+      if (oldestId) savedAttachments.delete(oldestId);
+    }
+    return { ok: true, message: `${filename} saved.`, savedAttachmentId };
   } catch (error) {
     return { ok: false, message: `Could not save attachment: ${errorMessage(error, password)}` };
-  } finally {
-    lock?.release();
-    await closeImap(imap);
   }
+}
+
+export async function openMessageAttachment(
+  account: StoredAccount,
+  folderPath: string,
+  uid: number,
+  attachmentIndex: number,
+): Promise<AttachmentSaveResult> {
+  let password = '';
+  try {
+    password = await resolveMailSecret(account);
+    const { filename, content } = await loadMessageAttachment(
+      account,
+      password,
+      folderPath,
+      uid,
+      attachmentIndex,
+    );
+    const directory = path.join(os.tmpdir(), 'emzero-attachments', randomUUID());
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const temporaryPath = path.join(directory, filename);
+    await writeFile(temporaryPath, content, { mode: 0o600 });
+    const openError = await shell.openPath(temporaryPath);
+    if (openError) return { ok: false, message: `Could not open attachment: ${openError}` };
+    return { ok: true, message: `${filename} opened.` };
+  } catch (error) {
+    return { ok: false, message: `Could not open attachment: ${errorMessage(error, password)}` };
+  }
+}
+
+export function revealSavedAttachment(savedAttachmentId: string): boolean {
+  const filePath = savedAttachments.get(savedAttachmentId);
+  if (!filePath) return false;
+  shell.showItemInFolder(filePath);
+  return true;
 }

@@ -102,12 +102,19 @@ export interface EmzeroDesktopApi {
     send: (accountId: string, draft: MailSendDraft) => Promise<MailSendResult>;
     suggestRecipients: (accountId: string, query: string) => Promise<RecipientSuggestion[]>;
     selectAttachments: () => Promise<AttachmentSelectionResult>;
+    openAttachment: (
+      accountId: string,
+      folderPath: string,
+      uid: number,
+      attachmentIndex: number,
+    ) => Promise<AttachmentSaveResult>;
     saveAttachment: (
       accountId: string,
       folderPath: string,
       uid: number,
       attachmentIndex: number,
     ) => Promise<AttachmentSaveResult>;
+    revealSavedAttachment: (savedAttachmentId: string) => Promise<boolean>;
     saveDraft: (
       accountId: string,
       draft: MailSendDraft,
@@ -203,6 +210,8 @@ contextBridge.exposeInMainWorld('emzero', {
     suggestRecipients: (accountId, query) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.suggestRecipients, accountId, query),
     selectAttachments: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.selectAttachments),
+    openAttachment: (accountId, folderPath, uid, attachmentIndex) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.openAttachment, accountId, folderPath, uid, attachmentIndex),
     saveAttachment: (accountId, folderPath, uid, attachmentIndex) =>
       ipcRenderer.invoke(
         ACCOUNT_CHANNELS.saveAttachment,
@@ -211,6 +220,8 @@ contextBridge.exposeInMainWorld('emzero', {
         uid,
         attachmentIndex,
       ),
+    revealSavedAttachment: (savedAttachmentId) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.revealSavedAttachment, savedAttachmentId),
     saveDraft: (accountId, draft, previous) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.saveDraft, accountId, draft, previous),
     deleteDraft: (accountId, draft) =>
