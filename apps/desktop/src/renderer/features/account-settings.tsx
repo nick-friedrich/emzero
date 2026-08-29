@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   CircleAlert,
   Download,
-  KeyRound,
   LoaderCircle,
   Trash2,
   Upload,
@@ -57,24 +56,26 @@ export function AccountSettingsDialog({
   const [names, setNames] = useState<Record<string, string>>({});
   const [busyAccount, setBusyAccount] = useState<string | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
-  const [backupPassword, setBackupPassword] = useState('');
+  const [exportPassword, setExportPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [importPassword, setImportPassword] = useState('');
+  const [selectedBackup, setSelectedBackup] = useState<{ id: string; fileName: string } | null>(null);
   const [includeCredentials, setIncludeCredentials] = useState(true);
   const [backupBusy, setBackupBusy] = useState<'export' | 'import' | null>(null);
 
   const exportBackup = async () => {
-    if (backupPassword.length < 8) {
+    if (exportPassword.length < 8) {
       setStatus({ kind: 'error', message: 'Use a backup password with at least 8 characters.' });
       return;
     }
-    if (backupPassword !== confirmPassword) {
+    if (exportPassword !== confirmPassword) {
       setStatus({ kind: 'error', message: 'The backup passwords do not match.' });
       return;
     }
     setBackupBusy('export');
     setStatus(null);
     try {
-      const result = await window.emzero.accounts.exportBackup({ password: backupPassword, includeCredentials });
+      const result = await window.emzero.accounts.exportBackup({ password: exportPassword, includeCredentials });
       if (!result.canceled) setStatus({ kind: result.ok ? 'success' : 'error', message: result.message });
     } catch {
       setStatus({ kind: 'error', message: 'The account backup could not be exported.' });
@@ -84,18 +85,47 @@ export function AccountSettingsDialog({
   };
 
   const importBackup = async () => {
-    if (!backupPassword) {
+    if (!selectedBackup) {
+      setStatus({ kind: 'error', message: 'Choose an Emzero backup file first.' });
+      return;
+    }
+    if (!importPassword) {
       setStatus({ kind: 'error', message: 'Enter the password used to encrypt the backup.' });
       return;
     }
     setBackupBusy('import');
     setStatus(null);
     try {
-      const result = await window.emzero.accounts.importBackup(backupPassword);
-      if (result.ok && result.accounts) onImported(result.accounts);
+      const result = await window.emzero.accounts.importBackup({
+        selectionId: selectedBackup.id,
+        password: importPassword,
+      });
+      if (result.ok && result.accounts) {
+        onImported(result.accounts);
+        setSelectedBackup(null);
+        setImportPassword('');
+      }
       if (!result.canceled) setStatus({ kind: result.ok ? 'success' : 'error', message: result.message });
     } catch {
       setStatus({ kind: 'error', message: 'The account backup could not be imported.' });
+    } finally {
+      setBackupBusy(null);
+    }
+  };
+
+  const chooseBackup = async () => {
+    setBackupBusy('import');
+    setStatus(null);
+    try {
+      const result = await window.emzero.accounts.selectBackup();
+      if (result.ok && result.selectionId && result.fileName) {
+        setSelectedBackup({ id: result.selectionId, fileName: result.fileName });
+        setImportPassword('');
+      } else if (!result.canceled) {
+        setStatus({ kind: 'error', message: result.message });
+      }
+    } catch {
+      setStatus({ kind: 'error', message: 'The backup file could not be selected.' });
     } finally {
       setBackupBusy(null);
     }
@@ -241,9 +271,9 @@ export function AccountSettingsDialog({
 
         <section className="space-y-3 rounded-lg border border-border bg-background p-4">
           <div className="flex items-start gap-3">
-            <KeyRound className="mt-0.5 size-5 text-muted-foreground" />
+            <Download className="mt-0.5 size-5 text-muted-foreground" />
             <div>
-              <h3 className="text-sm font-medium">Encrypted account backup</h3>
+              <h3 className="text-sm font-medium">Export backup</h3>
               <p className="mt-1 text-xs text-muted-foreground">
                 Save account settings in a password-encrypted file. Keep this password safe;
                 Emzero cannot recover it.
@@ -258,9 +288,9 @@ export function AccountSettingsDialog({
                 type="password"
                 autoComplete="new-password"
                 placeholder="Backup password"
-                value={backupPassword}
+                value={exportPassword}
                 disabled={backupBusy !== null}
-                onChange={(event) => setBackupPassword(event.target.value)}
+                onChange={(event) => setExportPassword(event.target.value)}
               />
             </label>
             <label>
@@ -298,11 +328,48 @@ export function AccountSettingsDialog({
               {backupBusy === 'export' ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
               Export backup
             </Button>
-            <Button type="button" variant="secondary" disabled={backupBusy !== null} onClick={() => void importBackup()}>
-              {backupBusy === 'import' ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />}
-              Import backup
-            </Button>
           </div>
+        </section>
+
+        <section className="space-y-3 rounded-lg border border-border bg-background p-4">
+          <div className="flex items-start gap-3">
+            <Upload className="mt-0.5 size-5 text-muted-foreground" />
+            <div>
+              <h3 className="text-sm font-medium">Import backup</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose an Emzero backup from another device, then enter the password used to encrypt it.
+              </p>
+            </div>
+          </div>
+          <Button type="button" variant="secondary" disabled={backupBusy !== null} onClick={() => void chooseBackup()}>
+            {backupBusy === 'import' && !selectedBackup
+              ? <LoaderCircle className="size-4 animate-spin" />
+              : <Upload className="size-4" />}
+            {selectedBackup ? 'Choose another file' : 'Choose backup file'}
+          </Button>
+          {selectedBackup && (
+            <div className="space-y-2">
+              <p className="truncate text-xs text-muted-foreground" title={selectedBackup.fileName}>
+                Selected: {selectedBackup.fileName}
+              </p>
+              <label className="block">
+                <span className="sr-only">Backup password</span>
+                <input
+                  className="field"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="Backup password"
+                  value={importPassword}
+                  disabled={backupBusy !== null}
+                  onChange={(event) => setImportPassword(event.target.value)}
+                />
+              </label>
+              <Button type="button" variant="secondary" disabled={backupBusy !== null} onClick={() => void importBackup()}>
+                {backupBusy === 'import' ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />}
+                Import accounts
+              </Button>
+            </div>
+          )}
         </section>
 
         {status && (

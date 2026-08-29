@@ -431,6 +431,19 @@ export interface AccountBackupExportRequest {
   includeCredentials: boolean;
 }
 
+export interface AccountBackupImportRequest {
+  selectionId: string;
+  password: string;
+}
+
+export interface AccountBackupSelectionResult {
+  ok: boolean;
+  message: string;
+  selectionId?: string;
+  fileName?: string;
+  canceled?: boolean;
+}
+
 export interface AccountBackupResult {
   ok: boolean;
   message: string;
@@ -487,6 +500,7 @@ export const ACCOUNT_CHANNELS = {
   reorder: 'accounts:reorder',
   remove: 'accounts:remove',
   exportBackup: 'accounts:backup-export',
+  selectBackup: 'accounts:backup-select',
   importBackup: 'accounts:backup-import',
   providers: 'providers:list',
   discoverProvider: 'providers:discover',

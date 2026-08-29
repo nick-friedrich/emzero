@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties, type PointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { LoaderCircle, Menu, PanelLeftOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -69,6 +69,7 @@ export function App() {
     () => window.localStorage.getItem(sidebarPinnedStorageKey) !== 'false',
   );
   const [sidebarHoverOpen, setSidebarHoverOpen] = useState(false);
+  const sidebarCloseTimer = useRef<number | null>(null);
   const [mailLayout, setMailLayout] = useState<MailLayout>(
     () => window.localStorage.getItem(mailLayoutStorageKey) === 'split' ? 'split' : 'list',
   );
@@ -79,6 +80,26 @@ export function App() {
   });
   const [syncRevision, setSyncRevision] = useState(0);
   const [bulkOperation, setBulkOperation] = useState<BulkOperationView | null>(null);
+
+  const keepSidebarOpen = () => {
+    if (sidebarCloseTimer.current !== null) {
+      window.clearTimeout(sidebarCloseTimer.current);
+      sidebarCloseTimer.current = null;
+    }
+    setSidebarHoverOpen(true);
+  };
+
+  const scheduleSidebarClose = () => {
+    if (sidebarCloseTimer.current !== null) window.clearTimeout(sidebarCloseTimer.current);
+    sidebarCloseTimer.current = window.setTimeout(() => {
+      setSidebarHoverOpen(false);
+      sidebarCloseTimer.current = null;
+    }, 300);
+  };
+
+  useEffect(() => () => {
+    if (sidebarCloseTimer.current !== null) window.clearTimeout(sidebarCloseTimer.current);
+  }, []);
 
   useEffect(() => {
     window.localStorage.setItem(sidebarWidthStorageKey, String(sidebarWidth));
@@ -245,7 +266,8 @@ export function App() {
   }
 
   const visibleAccounts = demoMode ? demoAccounts : accounts;
-  const macTitleBarInset = window.emzero?.platform === 'darwin' ? 'pt-12' : undefined;
+  const isMac = window.emzero?.platform === 'darwin';
+  const macTitleBarInset = isMac ? 'pt-12' : undefined;
   const demoSnapshot = demoMode ? demoMailboxSnapshot(selection) : undefined;
   const demoSelectionKey = selection.kind === 'folder'
     ? `${selection.account.id}:${selection.folder.path}`
@@ -266,6 +288,7 @@ export function App() {
       className="grid h-screen grid-cols-1 overflow-hidden bg-background text-foreground lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]"
       style={{ '--sidebar-width': sidebarPinned ? `${sidebarWidth}px` : '3rem' } as CSSProperties}
     >
+      {isMac && <div className="macos-titlebar-drag fixed left-20 right-0 top-0 z-[60] h-3" />}
       {sidebarPinned && (
         <div className="relative hidden min-h-0 min-w-0 lg:flex">
           <Sidebar
@@ -335,15 +358,15 @@ export function App() {
           <button
             type="button"
             className={cn(
-              'group hidden min-h-0 w-full items-start justify-center border-r border-border bg-sidebar text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground lg:flex',
+              'group hidden min-h-0 w-full items-start justify-center bg-background text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground lg:flex',
               macTitleBarInset ?? 'pt-4',
             )}
             aria-label="Reveal navigation"
             aria-expanded={sidebarHoverOpen}
             title="Hover to reveal navigation"
-            onMouseEnter={() => setSidebarHoverOpen(true)}
-            onFocus={() => setSidebarHoverOpen(true)}
-            onClick={() => setSidebarHoverOpen(true)}
+            onMouseEnter={keepSidebarOpen}
+            onFocus={keepSidebarOpen}
+            onClick={keepSidebarOpen}
           >
             <span className="grid size-8 place-items-center rounded-md transition-colors group-hover:bg-card group-focus-visible:bg-card">
               <PanelLeftOpen className="size-4" />
@@ -355,7 +378,8 @@ export function App() {
             }`}
             style={{ width: sidebarWidth }}
             inert={!sidebarHoverOpen}
-            onMouseLeave={() => setSidebarHoverOpen(false)}
+            onMouseEnter={keepSidebarOpen}
+            onMouseLeave={scheduleSidebarClose}
             onBlur={(event) => {
               if (!event.currentTarget.contains(event.relatedTarget)) {
                 setSidebarHoverOpen(false);

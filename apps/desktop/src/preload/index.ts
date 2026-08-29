@@ -3,7 +3,9 @@ import {
   ACCOUNT_CHANNELS,
   type AccountDraft,
   type AccountBackupExportRequest,
+  type AccountBackupImportRequest,
   type AccountBackupResult,
+  type AccountBackupSelectionResult,
   type AccountOperationResult,
   type AccountReorderResult,
   type AccountNameUpdate,
@@ -54,7 +56,8 @@ export interface EmzeroDesktopApi {
     reorder: (accountIds: string[]) => Promise<AccountReorderResult>;
     remove: (accountId: string) => Promise<AccountOperationResult>;
     exportBackup: (request: AccountBackupExportRequest) => Promise<AccountBackupResult>;
-    importBackup: (password: string) => Promise<AccountBackupResult>;
+    selectBackup: () => Promise<AccountBackupSelectionResult>;
+    importBackup: (request: AccountBackupImportRequest) => Promise<AccountBackupResult>;
   };
   folders: {
     list: (accountId: string, refresh?: boolean) => Promise<FolderListResult>;
@@ -146,7 +149,8 @@ contextBridge.exposeInMainWorld('emzero', {
     reorder: (accountIds) => ipcRenderer.invoke(ACCOUNT_CHANNELS.reorder, accountIds),
     remove: (accountId) => ipcRenderer.invoke(ACCOUNT_CHANNELS.remove, accountId),
     exportBackup: (request) => ipcRenderer.invoke(ACCOUNT_CHANNELS.exportBackup, request),
-    importBackup: (password) => ipcRenderer.invoke(ACCOUNT_CHANNELS.importBackup, password),
+    selectBackup: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.selectBackup),
+    importBackup: (request) => ipcRenderer.invoke(ACCOUNT_CHANNELS.importBackup, request),
   },
   folders: {
     list: (accountId, refresh = false) =>

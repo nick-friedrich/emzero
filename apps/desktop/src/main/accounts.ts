@@ -23,7 +23,7 @@ import {
   type MessageOperationResult,
 } from '../shared/accounts.js';
 import { verifyConnections, verifyMicrosoftConnections } from './account-connection.js';
-import { exportAccountBackup, importAccountBackup } from './account-backup.js';
+import { exportAccountBackup, importAccountBackup, selectAccountBackup } from './account-backup.js';
 import { saveMessageAttachment, selectOutgoingAttachments } from './attachment-files.js';
 import {
   createAccountFolder,
@@ -208,10 +208,18 @@ export function registerAccountHandlers(): void {
     return exportAccountBackup(request.password, request.includeCredentials);
   });
 
-  ipcMain.handle(ACCOUNT_CHANNELS.importBackup, async (event, password: unknown) => {
+  ipcMain.handle(ACCOUNT_CHANNELS.selectBackup, async (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-    if (typeof password !== 'string') return { ok: false, message: 'Enter the backup password.' } satisfies AccountBackupResult;
-    return importAccountBackup(password);
+    return selectAccountBackup();
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.importBackup, async (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    const request = value as { selectionId?: unknown; password?: unknown } | null;
+    if (!request || typeof request.selectionId !== 'string' || typeof request.password !== 'string') {
+      return { ok: false, message: 'Invalid backup import request.' } satisfies AccountBackupResult;
+    }
+    return importAccountBackup(request.selectionId, request.password);
   });
 
   ipcMain.handle(

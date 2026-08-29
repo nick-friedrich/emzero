@@ -219,6 +219,18 @@ body {
   color: var(--foreground);
 }
 
+/* Electron's hidden macOS title bar needs explicit draggable renderer regions. */
+.macos-titlebar-drag {
+  -webkit-app-region: drag;
+}
+
+.macos-titlebar-drag button,
+.macos-titlebar-drag input,
+.macos-titlebar-drag select,
+.macos-titlebar-drag a {
+  -webkit-app-region: no-drag;
+}
+
 .emzero-logo {
   position: relative;
   display: inline-block;

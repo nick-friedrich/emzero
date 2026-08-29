@@ -518,7 +518,10 @@ export function Sidebar({
         className,
       )}
     >
-      <div className="mb-8 flex shrink-0 items-center gap-3 px-2">
+      <div className={cn(
+        'mb-8 flex shrink-0 items-center gap-3 px-2',
+        window.emzero?.platform === 'darwin' && 'macos-titlebar-drag',
+      )}>
         <button
           type="button"
           className="emzero-logo size-9 shrink-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -951,7 +954,6 @@ export function Sidebar({
         {!demoMode && <Button
           variant="ghost"
           className="mb-1 w-full justify-start text-muted-foreground"
-          disabled={accounts.length === 0}
           onClick={onManage}
         >
           <Settings2 className="size-4" />

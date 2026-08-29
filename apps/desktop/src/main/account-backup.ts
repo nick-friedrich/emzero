@@ -3,7 +3,9 @@ import {
   createDecipheriv,
   randomBytes,
   scrypt as scryptCallback,
+  randomUUID,
 } from 'node:crypto';
+import path from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { dialog, safeStorage } from 'electron';
@@ -14,6 +16,7 @@ const scrypt = promisify(scryptCallback);
 const FORMAT = 'emzero-account-backup';
 const VERSION = 1;
 const KEY_LENGTH = 32;
+const selectedBackups = new Map<string, string>();
 
 interface PortableAccount extends Omit<StoredAccount, 'encryptedSecret'> {
   secret?: string;
@@ -112,23 +115,39 @@ export async function exportAccountBackup(
   return { ok: true, message: `Exported ${accounts.length} account${accounts.length === 1 ? '' : 's'}.` };
 }
 
-export async function importAccountBackup(password: string): Promise<AccountBackupResult> {
-  if (!password) return { ok: false, message: 'Enter the backup password.' };
-  if (!secureStorageAvailable() || !(await safeStorage.isAsyncEncryptionAvailable())) {
-    return { ok: false, message: 'Secure credential storage is unavailable.' };
-  }
+export async function selectAccountBackup() {
   const result = await dialog.showOpenDialog({
-    title: 'Import account backup',
+    title: 'Choose account backup',
     properties: ['openFile'],
     filters: [{ name: 'Emzero encrypted backup', extensions: ['emzero-backup'] }],
   });
-  if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true, message: 'Import canceled.' };
+  if (result.canceled || !result.filePaths[0]) {
+    return { ok: false, canceled: true, message: 'Import canceled.' };
+  }
+  const selectionId = randomUUID();
+  selectedBackups.set(selectionId, result.filePaths[0]);
+  return {
+    ok: true,
+    message: 'Backup selected.',
+    selectionId,
+    fileName: path.basename(result.filePaths[0]),
+  };
+}
+
+export async function importAccountBackup(selectionId: string, password: string): Promise<AccountBackupResult> {
+  if (!password) return { ok: false, message: 'Enter the backup password.' };
+  const filePath = selectedBackups.get(selectionId);
+  if (!filePath) return { ok: false, message: 'Choose the backup file again.' };
+  if (!secureStorageAvailable() || !(await safeStorage.isAsyncEncryptionAvailable())) {
+    return { ok: false, message: 'Secure credential storage is unavailable.' };
+  }
   let payload: BackupPayload;
   try {
-    payload = await decryptBackup(await readFile(result.filePaths[0], 'utf8'), password);
+    payload = await decryptBackup(await readFile(filePath, 'utf8'), password);
   } catch {
     return { ok: false, message: 'The backup password is incorrect, or the backup is damaged.' };
   }
+  selectedBackups.delete(selectionId);
   const existing = await readAccounts();
   const emails = new Set(existing.map((account) => account.email.toLowerCase()));
   const imported: StoredAccount[] = [];
