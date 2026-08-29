@@ -288,7 +288,7 @@ export function App() {
       className="grid h-screen grid-cols-1 overflow-hidden bg-background text-foreground lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]"
       style={{ '--sidebar-width': sidebarPinned ? `${sidebarWidth}px` : '3rem' } as CSSProperties}
     >
-      {isMac && <div className="macos-titlebar-drag fixed left-20 right-0 top-0 z-[60] h-3" />}
+      {isMac && <div className="macos-titlebar-drag fixed left-20 right-0 top-0 z-[60] h-10" />}
       {sidebarPinned && (
         <div className="relative hidden min-h-0 min-w-0 lg:flex">
           <Sidebar
