@@ -35,6 +35,7 @@ import {
 
 export interface EmzeroDesktopApi {
   platform: NodeJS.Platform;
+  openExternalLink: (url: string) => Promise<boolean>;
   accounts: {
     list: () => Promise<AccountSummary[]>;
     test: (draft: AccountDraft) => Promise<AccountOperationResult>;
@@ -123,6 +124,7 @@ export interface EmzeroDesktopApi {
 
 contextBridge.exposeInMainWorld('emzero', {
   platform: process.platform,
+  openExternalLink: (url) => ipcRenderer.invoke(ACCOUNT_CHANNELS.openExternalLink, url),
   accounts: {
     list: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.list),
     test: (draft) => ipcRenderer.invoke(ACCOUNT_CHANNELS.test, draft),

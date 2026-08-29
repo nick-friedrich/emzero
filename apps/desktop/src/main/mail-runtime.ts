@@ -26,7 +26,7 @@ export function mailCache(): MailCache {
 export function closeMailCache(): void {
   for (const connection of pooledImapConnections.values()) {
     if (connection.idleTimer) clearTimeout(connection.idleTimer);
-    connection.imap?.close();
+    void closeImap(connection.imap);
   }
   pooledImapConnections.clear();
   passwordCache.clear();
@@ -122,21 +122,21 @@ export async function withAccountImap<T>(
   try {
     const secret = await resolveMailSecret(account);
     if (!connection.imap?.usable) {
-      connection.imap?.close();
+      await closeImap(connection.imap);
       connection.imap = createImapClient(account, secret, socketTimeout);
       await connection.imap.connect();
     }
     return await operation(connection.imap, secret);
   } catch (error) {
     if (connection.imap && !connection.imap.usable) {
-      connection.imap.close();
+      await closeImap(connection.imap);
       connection.imap = null;
     }
     throw error;
   } finally {
     releaseQueue();
     connection.idleTimer = setTimeout(() => {
-      connection.imap?.close();
+      void closeImap(connection.imap);
       connection.imap = null;
       connection.idleTimer = null;
     }, 2 * 60_000);
@@ -170,6 +170,22 @@ export function createImapClient(
 }
 
 export async function closeImap(imap: ImapFlow | null): Promise<void> {
-  if (imap?.usable) await imap.logout().catch(() => imap.close());
-  else imap?.close();
+  if (!imap) return;
+
+  if (imap.usable) {
+    try {
+      await imap.logout();
+      return;
+    } catch {
+      // Fall through to a best-effort close if graceful logout failed.
+    }
+  }
+
+  // Suspend, network changes, and remote disconnects can destroy the socket
+  // before cleanup runs. Closing an already-dead connection is best effort.
+  try {
+    await imap.close();
+  } catch {
+    // The connection is already closed, so there is nothing left to release.
+  }
 }

@@ -39,7 +39,7 @@ import {
 } from './mail-common';
 import { ConversationReader } from './conversation-reader';
 import { useMessagePrefetch } from './message-prefetch';
-import { useUndoableDelete } from './undoable-delete';
+import { useUndoableAction } from './undoable-delete';
 
 type SearchLoadState =
   | { status: 'idle' }
@@ -78,7 +78,7 @@ export function MailSearch({
     accountId: string;
     folders: MailFolderSummary[];
   } | null>(null);
-  const { scheduleDelete, undoBar } = useUndoableDelete();
+  const { scheduleAction, undoBar } = useUndoableAction();
   const { ref: listSurfaceRef, compact: compactList } = useCompactMailList(
     mailLayout === 'split',
   );
@@ -193,10 +193,14 @@ export function MailSearch({
           setSelected(previousSelection);
         };
 
-        if (action === 'delete') {
+        if (action === 'delete' || action === 'move') {
           removeSelection();
           setActionBusy(false);
-          scheduleDelete(
+          const archive = destination?.accountId === account.id
+            ? selectedFolders.find((folder) => folder.path === destination.folderPath)?.specialUse === '\\Archive'
+            : false;
+          scheduleAction(
+            action === 'delete' ? 'Conversation deleted' : archive ? 'Conversation archived' : 'Conversation moved',
             () => performConversationAction(
               account.id,
               selection.folder.path,
@@ -209,7 +213,6 @@ export function MailSearch({
           );
           return;
         }
-        if (action === 'move') removeSelection();
         try {
           const error = await performConversationAction(
             account.id,
@@ -220,33 +223,29 @@ export function MailSearch({
           );
           if (error) {
             setActionError(error);
-            if (action === 'move') restoreSelection();
             return;
           }
-          if (action !== 'move') {
-            const isFlagAction = action === 'star' || action === 'unstar';
-            const nextValue = action === 'unread' || action === 'star';
-            setSelected((current) =>
-              current
-                ? {
-                    ...current,
-                    conversation: {
-                      ...current.conversation,
-                      messages: current.conversation.messages.map((message) =>
-                        message.folderPath !== selection.folder.path
-                          ? message
-                          : isFlagAction
-                            ? { ...message, flagged: nextValue }
-                            : { ...message, unread: nextValue },
-                      ),
-                    },
-                  }
-                : current,
-            );
-          }
+          const isFlagAction = action === 'star' || action === 'unstar';
+          const nextValue = action === 'unread' || action === 'star';
+          setSelected((current) =>
+            current
+              ? {
+                  ...current,
+                  conversation: {
+                    ...current.conversation,
+                    messages: current.conversation.messages.map((message) =>
+                      message.folderPath !== selection.folder.path
+                        ? message
+                        : isFlagAction
+                          ? { ...message, flagged: nextValue }
+                          : { ...message, unread: nextValue },
+                    ),
+                  },
+                }
+              : current,
+          );
         } catch {
           setActionError('The action could not be completed.');
-          if (action === 'move') restoreSelection();
         } finally {
           setActionBusy(false);
         }

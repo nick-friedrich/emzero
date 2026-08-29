@@ -85,7 +85,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/attachment-picker.tsx` — reusable outgoing-attachment selection and removal UI for compose and reply.
 - `features/draft-autosave.ts` — debounced, sequential IMAP autosave state shared by compose and inline reply.
 - `features/bulk-operation.tsx` — persistent progress/status bar for background bulk message jobs.
-- `features/undoable-delete.tsx` — shared delayed-delete controller and Undo bar for optimistic conversation deletion.
+- `features/undoable-delete.tsx` — shared delayed-action controller and Undo bar for optimistic conversation deletion, archiving, and moves.
 - `features/app-shared.ts` — small cross-feature status and send-shortcut preferences/hooks.
 - `features/form-field.tsx` — shared labeled form-field wrapper.
 

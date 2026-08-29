@@ -57,5 +57,7 @@ describe('HTML email documents', () => {
     expect(allowed).toContain("img-src data: http: https:");
     expect(blocked).toContain('color-scheme:light');
     expect(blocked).toContain('background:#fff');
+    expect(blocked).toContain("type:'emzero:open-link'");
+    expect(blocked).toContain("script-src 'unsafe-inline'");
   });
 });

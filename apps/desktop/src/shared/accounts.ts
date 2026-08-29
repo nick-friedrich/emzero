@@ -470,6 +470,7 @@ export const ACCOUNT_CHANNELS = {
   finishMicrosoftAuth: 'accounts:microsoft-auth-finish',
   cancelMicrosoftAuth: 'accounts:microsoft-auth-cancel',
   openGmailAppPasswordHelp: 'accounts:gmail-app-password-help',
+  openExternalLink: 'app:open-external-link',
   update: 'accounts:update',
   reorder: 'accounts:reorder',
   remove: 'accounts:remove',

@@ -55,7 +55,7 @@ import {
 } from './mail-common';
 import { ConversationReader } from './conversation-reader';
 import { useMessagePrefetch } from './message-prefetch';
-import { useUndoableDelete } from './undoable-delete';
+import { useUndoableAction } from './undoable-delete';
 
 export function MessageList({
   accounts,
@@ -84,7 +84,7 @@ export function MessageList({
   const pendingConversationFocusId = useRef<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [folders, setFolders] = useState<MailFolderSummary[]>([selection.folder]);
-  const { scheduleDelete, undoBar } = useUndoableDelete();
+  const { scheduleAction, undoBar } = useUndoableAction();
   const { ref: listSurfaceRef, compact: compactList } = useCompactMailList(
     mailLayout === 'split',
   );
@@ -424,7 +424,7 @@ export function MessageList({
       setSelectedConversation(previousSelection);
     };
 
-    if (action === 'delete') {
+    if (action === 'delete' || action === 'move') {
       removeConversation();
       pendingActions.current.delete(conversation.id);
       setBusyConversations((current) => {
@@ -432,7 +432,11 @@ export function MessageList({
         next.delete(conversation.id);
         return next;
       });
-      scheduleDelete(
+      const archive = destination?.accountId === selection.account.id
+        ? folders.find((folder) => folder.path === destination.folderPath)?.specialUse === '\\Archive'
+        : false;
+      scheduleAction(
+        action === 'delete' ? 'Conversation deleted' : archive ? 'Conversation archived' : 'Conversation moved',
         () => performConversationAction(
           selection.account.id,
           selection.folder.path,
@@ -446,8 +450,6 @@ export function MessageList({
       return true;
     }
 
-    if (action === 'move') removeConversation();
-
     try {
       const error = await performConversationAction(
         selection.account.id,
@@ -458,7 +460,6 @@ export function MessageList({
       );
       if (error) {
         setActionError(error);
-        if (action === 'move') restoreConversation();
         if (action === 'read' || action === 'unread') updateUnread(previousUnread);
         if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
         return false;
@@ -466,7 +467,6 @@ export function MessageList({
       return true;
     } catch {
       setActionError('The action could not be completed.');
-      if (action === 'move') restoreConversation();
       if (action === 'read' || action === 'unread') updateUnread(previousUnread);
       if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
       return false;

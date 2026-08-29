@@ -87,11 +87,30 @@ function MessageBody({
   const [remoteImagesLoadedFor, setRemoteImagesLoadedFor] = useState<string | null>(null);
   const [savingAttachment, setSavingAttachment] = useState<number | null>(null);
   const [attachmentStatus, setAttachmentStatus] = useState<Status | null>(null);
+  const [pendingLink, setPendingLink] = useState<string | null>(null);
+  const messageFrameRef = useRef<HTMLIFrameElement>(null);
   const textParts = splitQuotedText(message.text);
   const hasQuotedText = view === 'html' ? message.htmlHasQuotedText : Boolean(textParts.quoted);
   const messageKey = `${accountId}\0${folderPath}\0${message.uid}`;
   const loadRemoteImages = remoteImagesLoadedFor === messageKey;
   const remoteImagesBlocked = Boolean(message.html && hasRemoteImages(message.html) && !loadRemoteImages);
+
+  useEffect(() => {
+    const receiveLink = (event: MessageEvent<unknown>) => {
+      if (event.source !== messageFrameRef.current?.contentWindow) return;
+      if (!event.data || typeof event.data !== 'object') return;
+      const data = event.data as { type?: unknown; url?: unknown };
+      if (data.type !== 'emzero:open-link' || typeof data.url !== 'string') return;
+      try {
+        const url = new URL(data.url);
+        if (url.protocol === 'http:' || url.protocol === 'https:') setPendingLink(url.toString());
+      } catch {
+        // Ignore malformed or relative links that cannot be opened safely.
+      }
+    };
+    window.addEventListener('message', receiveLink);
+    return () => window.removeEventListener('message', receiveLink);
+  }, []);
 
   return (
     <>
@@ -135,9 +154,10 @@ function MessageBody({
             </div>
           )}
           <iframe
+            ref={messageFrameRef}
             className="mt-3 h-[55vh] min-h-80 w-full rounded-md border border-border bg-white"
             title="Email content"
-            sandbox=""
+            sandbox="allow-scripts"
             referrerPolicy="no-referrer"
             srcDoc={htmlDocument(message.html, showQuoted, theme, loadRemoteImages)}
           />
@@ -162,6 +182,28 @@ function MessageBody({
           {showQuoted ? 'Hide quoted text' : 'Show quoted text'}
         </Button>
       )}
+
+      <AlertDialog open={pendingLink !== null} onOpenChange={(open) => { if (!open) setPendingLink(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Open this link?</AlertDialogTitle>
+            <AlertDialogDescription className="break-all">
+              This link will open in your default browser: {pendingLink}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingLink) void window.emzero.openExternalLink(pendingLink);
+                setPendingLink(null);
+              }}
+            >
+              Open link
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {message.attachments.some(({ related }) => !related) && (
         <section className="mt-6 border-t border-border pt-5" aria-label="Attachments">

@@ -56,7 +56,7 @@ import {
 } from './mail-common';
 import { ConversationReader } from './conversation-reader';
 import { useMessagePrefetch } from './message-prefetch';
-import { useUndoableDelete } from './undoable-delete';
+import { useUndoableAction } from './undoable-delete';
 import type { DemoMailboxSnapshot } from './demo-mode';
 
 function demoLoadState(demo: DemoMailboxSnapshot): UnifiedInboxLoadState {
@@ -112,7 +112,7 @@ export function UnifiedInbox({
   const unifiedDeleteButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingUnifiedFocusKey = useRef<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
-  const { scheduleDelete, undoBar } = useUndoableDelete();
+  const { scheduleAction, undoBar } = useUndoableAction();
   const { ref: listSurfaceRef, compact: compactList } = useCompactMailList(
     mailLayout === 'split',
   );
@@ -559,7 +559,7 @@ export function UnifiedInbox({
       setSelectedItem(previousSelection);
     };
 
-    if (action === 'delete') {
+    if (action === 'delete' || action === 'move') {
       removeItem();
       pendingActions.current.delete(key);
       setBusyConversations((current) => {
@@ -567,7 +567,11 @@ export function UnifiedInbox({
         next.delete(key);
         return next;
       });
-      scheduleDelete(
+      const archive = destination?.accountId === item.selection.account.id
+        ? item.folders.find((folder) => folder.path === destination.folderPath)?.specialUse === '\\Archive'
+        : false;
+      scheduleAction(
+        action === 'delete' ? 'Conversation deleted' : archive ? 'Conversation archived' : 'Conversation moved',
         () => performConversationAction(
           item.selection.account.id,
           item.selection.folder.path,
@@ -581,8 +585,6 @@ export function UnifiedInbox({
       return true;
     }
 
-    if (action === 'move') removeItem();
-
     try {
       const error = await performConversationAction(
         item.selection.account.id,
@@ -593,7 +595,6 @@ export function UnifiedInbox({
       );
       if (error) {
         setActionError(error);
-        if (action === 'move') restoreItem();
         if (action === 'read' || action === 'unread') updateUnread(previousUnread);
         if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
         return false;
@@ -602,7 +603,6 @@ export function UnifiedInbox({
       return true;
     } catch {
       setActionError('The action could not be completed.');
-      if (action === 'move') restoreItem();
       if (action === 'read' || action === 'unread') updateUnread(previousUnread);
       if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
       return false;

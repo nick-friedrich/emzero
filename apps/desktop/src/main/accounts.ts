@@ -159,6 +159,19 @@ function validDraftReference(value: unknown): value is MailDraftReference {
 }
 
 export function registerAccountHandlers(): void {
+  ipcMain.handle(ACCOUNT_CHANNELS.openExternalLink, async (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (typeof value !== 'string') return false;
+    try {
+      const url = new URL(value);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+      await shell.openExternal(url.toString());
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
   ipcMain.handle(ACCOUNT_CHANNELS.syncStatus, (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return getBackgroundSyncStatus();
