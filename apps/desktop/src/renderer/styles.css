@@ -279,6 +279,11 @@ body {
   }
 }
 
+/* Keep standalone mail-window content clear of macOS traffic-light controls. */
+.macos-native-window-header {
+  padding-left: 6rem;
+}
+
 .emzero-logo {
   position: relative;
   display: inline-block;

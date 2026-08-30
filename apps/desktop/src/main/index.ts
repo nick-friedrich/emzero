@@ -3,6 +3,7 @@ import { app, BrowserWindow, Menu, powerMonitor } from 'electron';
 import { registerAccountHandlers } from './accounts.js';
 import { startBackgroundSync, stopBackgroundSync } from './background-sync.js';
 import { closeMailCache, disconnectPooledImapConnections } from './mail-runtime.js';
+import { registerMailWindowHandlers } from './mail-windows.js';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -65,6 +66,7 @@ void app.whenReady().then(() => {
     }
   }
   registerAccountHandlers();
+  registerMailWindowHandlers();
   createWindow();
   startBackgroundSync();
   powerMonitor.on('suspend', disconnectPooledImapConnections);

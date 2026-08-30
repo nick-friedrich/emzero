@@ -26,6 +26,7 @@ import { verifyConnections, verifyMicrosoftConnections } from './account-connect
 import { exportAccountBackup, importAccountBackup, selectAccountBackup } from './account-backup.js';
 import {
   openMessageAttachment,
+  prepareDraftAttachments,
   revealSavedAttachment,
   saveMessageAttachment,
   selectOutgoingAttachments,
@@ -586,6 +587,26 @@ export function registerAccountHandlers(): void {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return selectOutgoingAttachments();
   });
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.prepareDraftAttachments,
+    async (event, accountId: unknown, folderPath: unknown, uid: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (
+        typeof accountId !== 'string' ||
+        typeof folderPath !== 'string' ||
+        !folderPath ||
+        typeof uid !== 'number' ||
+        !Number.isSafeInteger(uid) ||
+        uid < 1
+      ) {
+        return { ok: false, attachments: [], message: 'Invalid draft.' };
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return { ok: false, attachments: [], message: 'Account not found.' };
+      return prepareDraftAttachments(account, folderPath, uid);
+    },
+  );
 
   ipcMain.handle(
     ACCOUNT_CHANNELS.openAttachment,

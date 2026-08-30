@@ -31,6 +31,7 @@ import {
   type MicrosoftAuthStartResult,
   type MailDraftReference,
   type MailDraftSaveResult,
+  type MailWindowContext,
   type ProviderDiscoveryResult,
   type RecipientSuggestion,
   type AttachmentSaveResult,
@@ -40,6 +41,8 @@ import {
 export interface EmzeroDesktopApi {
   platform: NodeJS.Platform;
   openExternalLink: (url: string) => Promise<boolean>;
+  openMailWindow: (context: MailWindowContext) => Promise<boolean>;
+  getMailWindowContext: (windowId: string) => Promise<MailWindowContext | null>;
   accounts: {
     list: () => Promise<AccountSummary[]>;
     test: (draft: AccountDraft) => Promise<AccountOperationResult>;
@@ -102,6 +105,11 @@ export interface EmzeroDesktopApi {
     send: (accountId: string, draft: MailSendDraft) => Promise<MailSendResult>;
     suggestRecipients: (accountId: string, query: string) => Promise<RecipientSuggestion[]>;
     selectAttachments: () => Promise<AttachmentSelectionResult>;
+    prepareDraftAttachments: (
+      accountId: string,
+      folderPath: string,
+      uid: number,
+    ) => Promise<AttachmentSelectionResult>;
     openAttachment: (
       accountId: string,
       folderPath: string,
@@ -139,6 +147,9 @@ export interface EmzeroDesktopApi {
 contextBridge.exposeInMainWorld('emzero', {
   platform: process.platform,
   openExternalLink: (url) => ipcRenderer.invoke(ACCOUNT_CHANNELS.openExternalLink, url),
+  openMailWindow: (context) => ipcRenderer.invoke(ACCOUNT_CHANNELS.openMailWindow, context),
+  getMailWindowContext: (windowId) =>
+    ipcRenderer.invoke(ACCOUNT_CHANNELS.getMailWindowContext, windowId),
   accounts: {
     list: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.list),
     test: (draft) => ipcRenderer.invoke(ACCOUNT_CHANNELS.test, draft),
@@ -210,6 +221,8 @@ contextBridge.exposeInMainWorld('emzero', {
     suggestRecipients: (accountId, query) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.suggestRecipients, accountId, query),
     selectAttachments: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.selectAttachments),
+    prepareDraftAttachments: (accountId, folderPath, uid) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.prepareDraftAttachments, accountId, folderPath, uid),
     openAttachment: (accountId, folderPath, uid, attachmentIndex) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.openAttachment, accountId, folderPath, uid, attachmentIndex),
     saveAttachment: (accountId, folderPath, uid, attachmentIndex) =>

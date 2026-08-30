@@ -36,6 +36,7 @@ import {
 import { MessageList } from './features/message-list';
 import { Sidebar } from './features/sidebar';
 import { UnifiedInbox } from './features/unified-inbox';
+import { mailEventsChannel } from './mail-window';
 
 const sidebarWidthStorageKey = 'emzero.sidebar-width';
 const sidebarPinnedStorageKey = 'emzero.sidebar-pinned';
@@ -63,6 +64,7 @@ export function App() {
   const [showSetup, setShowSetup] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [composeRevision, setComposeRevision] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(storedSidebarWidth);
   const [sidebarPinned, setSidebarPinned] = useState(
@@ -127,6 +129,17 @@ export function App() {
   useEffect(() => {
     window.localStorage.setItem(demoModeStorageKey, String(demoMode));
   }, [demoMode]);
+
+  useEffect(() => {
+    const channel = new BroadcastChannel(mailEventsChannel);
+    channel.onmessage = (event) => {
+      if ((event.data as { type?: unknown } | null)?.type !== 'changed') return;
+      setComposeOpen(false);
+      setComposeRevision((current) => current + 1);
+      setSyncRevision((current) => current + 1);
+    };
+    return () => channel.close();
+  }, []);
 
   const startSidebarResize = (event: PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -293,6 +306,11 @@ export function App() {
     setComposeOpen(false);
     setBulkOperation(null);
   };
+  const openComposer = () => {
+    if (demoMode) return;
+    setComposeRevision((current) => current + 1);
+    setComposeOpen(true);
+  };
 
   return (
     <main
@@ -341,7 +359,7 @@ export function App() {
                 return false;
               }
             }}
-            onCompose={() => { if (!demoMode) setComposeOpen(true); }}
+            onCompose={openComposer}
           />
           <div
             role="separator"
@@ -430,7 +448,7 @@ export function App() {
                   return false;
                 }
               }}
-              onCompose={() => { if (!demoMode) setComposeOpen(true); }}
+              onCompose={openComposer}
             />
             <div
               role="separator"
@@ -515,20 +533,24 @@ export function App() {
               }
             }}
             onCompose={() => {
-              if (!demoMode) setComposeOpen(true);
+              openComposer();
               setSidebarOpen(false);
             }}
           />
         </SheetContent>
       </Sheet>
       {!demoMode && <ComposeDialog
+        key={composeRevision}
         open={composeOpen}
         accounts={visibleAccounts}
         defaultAccountId={
           selection.kind === 'folder' ? selection.account.id : (accounts[0]?.id ?? null)
         }
         onOpenChange={setComposeOpen}
-        onSent={() => setSyncRevision((current) => current + 1)}
+        onSent={() => {
+          setComposeRevision((current) => current + 1);
+          setSyncRevision((current) => current + 1);
+        }}
       />}
       {!demoMode && <SettingsDialog
         open={settingsOpen}

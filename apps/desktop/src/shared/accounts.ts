@@ -411,6 +411,23 @@ export interface MailDraftSaveResult extends MessageOperationResult {
   draft?: MailDraftReference;
 }
 
+export type MailComposerKind = 'new' | 'reply' | 'draft';
+
+export type MailWindowContext =
+  | {
+      kind: 'composer';
+      composerKind: MailComposerKind;
+      accountId: string;
+      draft: MailSendDraft;
+      draftReference?: MailDraftReference;
+    }
+  | {
+      kind: 'message';
+      accountId: string;
+      folderPath: string;
+      uid: number;
+    };
+
 export interface RecipientSuggestion extends MailAddressSummary {
   address: string;
 }
@@ -497,6 +514,8 @@ export const ACCOUNT_CHANNELS = {
   cancelMicrosoftAuth: 'accounts:microsoft-auth-cancel',
   openGmailAppPasswordHelp: 'accounts:gmail-app-password-help',
   openExternalLink: 'app:open-external-link',
+  openMailWindow: 'window:open-mail',
+  getMailWindowContext: 'window:get-mail-context',
   update: 'accounts:update',
   reorder: 'accounts:reorder',
   remove: 'accounts:remove',
@@ -525,6 +544,7 @@ export const ACCOUNT_CHANNELS = {
   sendMessage: 'messages:send',
   suggestRecipients: 'messages:suggest-recipients',
   selectAttachments: 'attachments:select',
+  prepareDraftAttachments: 'attachments:prepare-draft',
   openAttachment: 'attachments:open',
   saveAttachment: 'attachments:save',
   revealSavedAttachment: 'attachments:reveal-saved',

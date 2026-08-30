@@ -41,11 +41,12 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization with periodic full reconciliation, message parsing, and cached/server message reading.
 - `apps/desktop/src/main/message-sender.ts` — SMTP delivery, IMAP Sent-copy persistence, and sent-message cache updates.
 - `apps/desktop/src/main/mail-drafts.ts` — MIME draft compilation plus append-first IMAP draft autosave and deletion.
-- `apps/desktop/src/main/attachment-files.ts` — native file selection, opaque outgoing-file authorization, attachment limits, and received-attachment saving.
+- `apps/desktop/src/main/attachment-files.ts` — native file selection, opaque outgoing-file authorization, attachment limits, retained-draft attachment authorization, and received-attachment saving.
 - `apps/desktop/src/main/message-actions.ts` — read/unread, star/unstar, delete, same-account move, and cross-account message-transfer operations.
 - `apps/desktop/src/main/bulk-message-jobs.ts` — bulk-action request validation, execution, cancellation, and progress publication.
 - `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache and search.
 - `apps/desktop/src/main/message-html.ts` — sanitization and quoted-content detection for message HTML.
+- `apps/desktop/src/main/mail-windows.ts` — validated creation of standalone message and composer windows.
 - `apps/desktop/src/main/provider-discovery.ts` — provider catalog lookup and domain/MX discovery.
 - `apps/desktop/src/main/folder-subscriptions.ts` — IMAP folder subscription and deletion helpers.
 - `apps/desktop/src/preload/index.ts` — typed `window.emzero` bridge exposed to the sandboxed renderer.
@@ -62,6 +63,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 ## Renderer shell
 
 - `apps/desktop/src/renderer/main.tsx` — React renderer entry point and providers.
+- `apps/desktop/src/renderer/mail-window.tsx` — standalone composer and conversation window loading and actions.
 - `apps/desktop/src/renderer/App.tsx` — application-level orchestration only: account loading, current mailbox selection, persisted sidebar/mail-layout preferences, dialog visibility, sync revision, and active bulk-operation state.
 - `apps/desktop/src/renderer/styles.css` — global Tailwind styles and visual tokens.
 - `apps/desktop/src/renderer/theme.tsx` — appearance and mail-behavior preference persistence/context, plus message color schemes.
@@ -74,7 +76,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/demo-mode.tsx` — persistent, privacy-safe show-off dataset injected into the existing mailbox and conversation UI for screenshots.
 - `features/account-setup.tsx` — provider detection, password/app-password setup, and personal Microsoft device-code connection flow.
 - `features/account-settings.tsx` — unified settings dialog for appearance, mail behavior, account rename/removal, and encrypted backup/restore.
-- `features/compose-dialog.tsx` — new-message composer, recipient suggestions, attachments, validation, confirmation, and sending.
+- `features/compose-dialog.tsx` — reusable docked, full-area, inline-draft, and standalone composer with recipient suggestions, attachments, validation, confirmation, and sending.
 - `features/mail-search.tsx` — search form/results and selected-result reader.
 - `features/message-list.tsx` — one account-folder conversation list, selection, and folder-scoped actions.
 - `features/unified-inbox.tsx` — multi-account Inbox, Starred, and Trash aggregation, selection, and actions.

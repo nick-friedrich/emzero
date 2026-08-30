@@ -12,10 +12,13 @@ import {
   ExternalLink,
   FolderOpen,
   LoaderCircle,
+  Maximize2,
+  Minimize2,
   Paperclip,
   Reply,
   RefreshCw,
   Send,
+  Trash2,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -72,6 +75,7 @@ import {
 } from './mail-common';
 import { AttachmentPicker } from './attachment-picker';
 import { useDraftAutosave } from './draft-autosave';
+import { ComposeDialog } from './compose-dialog';
 
 function MessageBody({
   accountId,
@@ -342,6 +346,7 @@ function ReplyComposer({
 }) {
   const recipients = replyRecipients(account, message);
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<MailOutgoingAttachment[]>([]);
   const [busy, setBusy] = useState(false);
@@ -351,7 +356,7 @@ function ReplyComposer({
   const [pendingDraft, setPendingDraft] = useState<MailSendDraft | null>(null);
   const confirmationActionRef = useRef<HTMLButtonElement>(null);
   const currentDraft = { ...createReplyDraft(account, summary, message, text), attachments };
-  const { status: draftStatus, discardSavedDraft } = useDraftAutosave(
+  const { status: draftStatus, handoffSavedDraft, discardSavedDraft } = useDraftAutosave(
     account.id,
     currentDraft,
     open && Boolean(text.trim() || attachments.length),
@@ -436,13 +441,46 @@ function ReplyComposer({
   return (
     <>
       <form
-        className="mt-6 border-t border-border pt-5"
+        className={cn(
+          'mt-6 border-t border-border pt-5',
+          expanded && 'fixed inset-y-0 right-0 z-50 overflow-y-auto bg-background p-6 shadow-2xl lg:left-[var(--sidebar-width)] lg:p-10',
+        )}
         onSubmit={submit}
       >
         <div className="mb-3 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
         <Reply className="size-4 shrink-0" />
         <span className="shrink-0">Reply to</span>
         <span className="truncate font-medium text-foreground">{addressDetails(recipients)}</span>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            className="size-8 px-0"
+            aria-label={expanded ? 'Return reply to conversation' : 'Expand reply to message area'}
+            title={expanded ? 'Return reply to conversation' : 'Expand reply to message area'}
+            onClick={() => setExpanded((current) => !current)}
+          >
+            {expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="size-8 px-0"
+            aria-label="Open reply in new window"
+            title="Open reply in new window"
+            onClick={() => {
+              void handoffSavedDraft().then((reference) => window.emzero.openMailWindow({
+                kind: 'composer',
+                composerKind: 'reply',
+                accountId: account.id,
+                draft: currentDraft,
+                ...(reference ? { draftReference: reference } : {}),
+              })).then((opened) => { if (opened) setOpen(false); });
+            }}
+          >
+            <ExternalLink className="size-4" />
+          </Button>
+        </div>
         </div>
         <textarea
           className="field min-h-36 resize-y leading-6"
@@ -486,10 +524,14 @@ function ReplyComposer({
             variant="ghost"
             disabled={busy}
             onClick={() => {
-              setOpen(false);
-              setText('');
-              setAttachments([]);
-              setStatus(null);
+              void discardSavedDraft().then((deleted) => {
+                if (!deleted) return;
+                setOpen(false);
+                setExpanded(false);
+                setText('');
+                setAttachments([]);
+                setStatus(null);
+              });
             }}
           >
             Cancel
@@ -602,14 +644,26 @@ function ReplyComposer({
 function ThreadMessageCard({
   selection,
   summary,
+  isSavedDraft,
+  draftEditorOpen,
+  draftEditBlocked,
+  onEditDraft,
+  onCloseDraft,
   defaultExpanded,
   onReplySent,
+  onDraftSent,
   demoDetail,
 }: {
   selection: FolderSelection;
   summary: MailMessageSummary;
+  isSavedDraft: boolean;
+  draftEditorOpen: boolean;
+  draftEditBlocked: boolean;
+  onEditDraft: () => void;
+  onCloseDraft: () => void;
   defaultExpanded: boolean;
   onReplySent: (message: MailMessageSummary) => void;
+  onDraftSent?: () => void;
   demoDetail?: MailMessageDetail;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -617,6 +671,14 @@ function ThreadMessageCard({
     demoDetail ? { status: 'loaded', message: demoDetail } : { status: 'loading' },
   );
   const [refreshKey, setRefreshKey] = useState(0);
+  const [draftAttachments, setDraftAttachments] = useState<MailOutgoingAttachment[] | null>(
+    isSavedDraft && (!demoDetail || demoDetail.attachments.some((attachment) => !attachment.related))
+      ? null
+      : [],
+  );
+  const [draftAttachmentError, setDraftAttachmentError] = useState<string | null>(null);
+  const [deleteDraftConfirmationOpen, setDeleteDraftConfirmationOpen] = useState(false);
+  const [deletingDraft, setDeletingDraft] = useState(false);
 
   useEffect(() => {
     if (demoDetail) return;
@@ -626,11 +688,17 @@ function ThreadMessageCard({
       .get(selection.account.id, summary.folderPath, summary.uid)
       .then((result) => {
         if (!active) return;
-        setState(
-          result.ok && result.messageDetail
-            ? { status: 'loaded', message: result.messageDetail }
-            : { status: 'error', message: result.message ?? 'Could not load message.' },
-        );
+        if (result.ok && result.messageDetail) {
+          setState({ status: 'loaded', message: result.messageDetail });
+          if (
+            isSavedDraft &&
+            !result.messageDetail.attachments.some((attachment) => !attachment.related)
+          ) {
+            setDraftAttachments([]);
+          }
+        } else {
+          setState({ status: 'error', message: result.message ?? 'Could not load message.' });
+        }
       })
       .catch(() => {
         if (active) setState({ status: 'error', message: 'Could not load message.' });
@@ -638,7 +706,32 @@ function ThreadMessageCard({
     return () => {
       active = false;
     };
-  }, [demoDetail, expanded, refreshKey, selection.account.id, state.status, summary.folderPath, summary.uid]);
+  }, [demoDetail, expanded, isSavedDraft, refreshKey, selection.account.id, state.status, summary.folderPath, summary.uid]);
+
+  useEffect(() => {
+    if (
+      demoDetail ||
+      !isSavedDraft ||
+      !draftEditorOpen ||
+      state.status !== 'loaded' ||
+      draftAttachments !== null
+    ) return;
+    let active = true;
+    void window.emzero.messages.prepareDraftAttachments(
+      selection.account.id,
+      summary.folderPath,
+      summary.uid,
+    ).then((result) => {
+      if (!active) return;
+      setDraftAttachments(result.attachments);
+      setDraftAttachmentError(result.ok ? null : (result.message ?? 'Could not load draft attachments.'));
+    }).catch(() => {
+      if (!active) return;
+      setDraftAttachments([]);
+      setDraftAttachmentError('Could not load draft attachments.');
+    });
+    return () => { active = false; };
+  }, [demoDetail, draftAttachments, draftEditorOpen, isSavedDraft, selection.account.id, state.status, summary.folderPath, summary.uid]);
 
   const retry = () => {
     setState({ status: 'loading' });
@@ -651,7 +744,9 @@ function ThreadMessageCard({
         type="button"
         className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-accent/50 focus-visible:bg-accent focus-visible:outline-none"
         aria-expanded={expanded}
-        onClick={() => setExpanded((current) => !current)}
+        onClick={() => {
+          if (!draftEditorOpen) setExpanded((current) => !current);
+        }}
       >
         <div className="flex min-w-0 items-center gap-3">
           <span className="grid size-8 shrink-0 place-items-center rounded-full bg-account text-xs font-semibold text-primary">
@@ -663,6 +758,11 @@ function ThreadMessageCard({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+          {isSavedDraft && (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+              Draft
+            </span>
+          )}
           <time dateTime={summary.sentAt ?? summary.receivedAt ?? undefined}>
             {messageDate(summary.sentAt ?? summary.receivedAt)}
           </time>
@@ -689,25 +789,117 @@ function ThreadMessageCard({
           )}
           {state.status === 'loaded' && (
             <>
-              <MessageBody
+              {draftEditorOpen && draftAttachments === null ? (
+                <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+                  <LoaderCircle className="size-4 animate-spin" />
+                  Preparing draft
+                </div>
+              ) : draftEditorOpen ? (
+                <ComposeDialog
+                  open
+                  accounts={[selection.account]}
+                  defaultAccountId={selection.account.id}
+                  composerKind="draft"
+                  variant="floating"
+                  initialDraft={{
+                    to: state.message.to,
+                    cc: state.message.cc,
+                    bcc: [],
+                    subject: state.message.subject,
+                    text: state.message.text,
+                    inReplyTo: summary.inReplyTo,
+                    references: summary.references,
+                    attachments: draftAttachments ?? [],
+                  }}
+                  initialDraftReference={{ folderPath: summary.folderPath, uid: summary.uid }}
+                  onOpenChange={(open) => { if (!open) onCloseDraft(); }}
+                  onSent={(sentMessage) => {
+                    if (sentMessage) onReplySent(sentMessage);
+                    onDraftSent?.();
+                  }}
+                  onDeleted={onDraftSent}
+                />
+              ) : <MessageBody
                 accountId={selection.account.id}
                 folderPath={summary.folderPath}
                 message={state.message}
                 demo={Boolean(demoDetail)}
-              />
-              {demoDetail ? (
+              />}
+              {!draftEditorOpen && isSavedDraft ? (
+                <div className="mt-6 flex justify-end gap-2 border-t border-border pt-5">
+                  <Button
+                    variant="ghost"
+                    className="text-danger hover:text-danger"
+                    disabled={deletingDraft}
+                    onClick={() => setDeleteDraftConfirmationOpen(true)}
+                  >
+                    <Trash2 className="size-4" />
+                    Delete
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={draftEditBlocked}
+                    title={draftEditBlocked ? 'Close the current draft editor first.' : undefined}
+                    onClick={onEditDraft}
+                  >
+                    Edit draft
+                  </Button>
+                </div>
+              ) : !draftEditorOpen && demoDetail ? (
                 <div className="mt-6 border-t border-border pt-5">
                   <Button variant="secondary" title="Sending is disabled for sample messages">
                     <Reply className="size-4" />
                     Reply
                   </Button>
                 </div>
-              ) : <ReplyComposer
+              ) : !draftEditorOpen ? <ReplyComposer
                 account={selection.account}
                 summary={summary}
                 message={state.message}
                 onSent={onReplySent}
-              />}
+              /> : null}
+              {draftAttachmentError && (
+                <p className="mt-3 text-xs text-danger" role="status">{draftAttachmentError}</p>
+              )}
+              <AlertDialog
+                open={deleteDraftConfirmationOpen}
+                onOpenChange={setDeleteDraftConfirmationOpen}
+              >
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete this draft?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This draft will be permanently removed from the mail server.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      variant="destructive"
+                      disabled={deletingDraft}
+                      onClick={() => {
+                        setDeletingDraft(true);
+                        void window.emzero.messages.deleteDraft(selection.account.id, {
+                          folderPath: summary.folderPath,
+                          uid: summary.uid,
+                        }).then((result) => {
+                          if (!result.ok) {
+                            setDraftAttachmentError(result.message ?? 'Could not delete draft.');
+                            return;
+                          }
+                          setDeleteDraftConfirmationOpen(false);
+                          onDraftSent?.();
+                        }).catch(() => {
+                          setDraftAttachmentError('Could not delete draft.');
+                        }).finally(() => setDeletingDraft(false));
+                      }}
+                    >
+                      <Trash2 className="size-4" />
+                      Delete draft
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </>
           )}
         </div>
@@ -723,6 +915,7 @@ export function ConversationReader({
   conversation,
   onBack,
   navigationVariant = 'back',
+  nativeWindow = false,
   busy,
   actionError,
   onSetUnread,
@@ -730,6 +923,7 @@ export function ConversationReader({
   onMove,
   onDelete,
   onReplySent,
+  onDraftSent,
   demoDetails,
 }: {
   accounts: AccountSummary[];
@@ -738,6 +932,7 @@ export function ConversationReader({
   conversation: MailConversation;
   onBack: () => void;
   navigationVariant?: 'back' | 'close';
+  nativeWindow?: boolean;
   busy: boolean;
   actionError: string | null;
   onSetUnread: (unread: boolean) => void;
@@ -745,15 +940,21 @@ export function ConversationReader({
   onMove: (destination: MessageMoveDestination) => void;
   onDelete: () => void;
   onReplySent: (message: MailMessageSummary) => void;
+  onDraftSent?: () => void;
   demoDetails?: ReadonlyMap<string, MailMessageDetail>;
 }) {
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
+  const nativeMacWindow = nativeWindow && window.emzero?.platform === 'darwin';
   const unread = conversation.messages.some(
     (message) => message.folderPath === selection.folder.path && message.unread,
   );
   const flagged = conversation.messages.some(
     (message) => message.folderPath === selection.folder.path && message.flagged,
   );
+  const draftFolderPaths = new Set(
+    folders.filter((folder) => folder.specialUse === '\\Drafts').map((folder) => folder.path),
+  );
+  const [activeDraftKey, setActiveDraftKey] = useState<string | null>(null);
 
   useEffect(() => {
     const handleKeyboardShortcut = (event: KeyboardEvent) => {
@@ -782,8 +983,9 @@ export function ConversationReader({
       <header className={cn(
         'flex items-center gap-3 border-b border-border bg-card py-3 pl-16 pr-4 lg:px-4',
         window.emzero?.platform === 'darwin' && 'macos-content-header macos-titlebar-drag',
+        nativeMacWindow && 'macos-native-window-header',
       )}>
-        {navigationVariant === 'close' ? (
+        {navigationVariant === 'close' && !nativeMacWindow ? (
           <Button
             variant="ghost"
             className="size-9 px-0"
@@ -793,16 +995,35 @@ export function ConversationReader({
           >
             <X className="size-4" />
           </Button>
-        ) : (
+        ) : navigationVariant === 'back' ? (
           <Button variant="ghost" className="px-3" onClick={onBack}>
             <ArrowLeft className="size-4" />
             Back
           </Button>
-        )}
+        ) : null}
         <span className="truncate text-sm text-muted-foreground">
           {selection.account.name} / {displayFolderName(selection.folder)}
         </span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {!nativeWindow && <Button
+            variant="ghost"
+            className="size-9 px-0"
+            aria-label="Open conversation in new window"
+            title="Open conversation in new window"
+            onClick={() => {
+              const target = conversation.messages.find(
+                (message) => message.folderPath === selection.folder.path,
+              ) ?? conversation.messages[0];
+              void window.emzero.openMailWindow({
+                kind: 'message',
+                accountId: selection.account.id,
+                folderPath: target.folderPath,
+                uid: target.uid,
+              });
+            }}
+          >
+            <ExternalLink className="size-4" />
+          </Button>}
           <ConversationActions
             accounts={accounts}
             sourceAccountId={selection.account.id}
@@ -838,18 +1059,34 @@ export function ConversationReader({
             </span>
           </div>
           <div className="space-y-3">
-            {conversation.messages.map((message, index) => (
-              <ThreadMessageCard
-                key={`${message.folderPath}:${message.uid}`}
-                selection={selection}
-                summary={message}
-                defaultExpanded={index === 0}
-                onReplySent={onReplySent}
-                demoDetail={demoDetails?.get(
-                  `${selection.account.id}:${message.folderPath}:${message.uid}`,
-                )}
-              />
-            ))}
+            {conversation.messages.map((message, index) => {
+              const messageKey = `${message.folderPath}:${message.uid}`;
+              const isSavedDraft = draftFolderPaths.has(message.folderPath);
+              return (
+                <ThreadMessageCard
+                  key={messageKey}
+                  selection={selection}
+                  summary={message}
+                  isSavedDraft={isSavedDraft}
+                  draftEditorOpen={isSavedDraft && activeDraftKey === messageKey}
+                  draftEditBlocked={activeDraftKey !== null && activeDraftKey !== messageKey}
+                  onEditDraft={() => setActiveDraftKey(messageKey)}
+                  onCloseDraft={() => setActiveDraftKey(null)}
+                  defaultExpanded={
+                    index === 0 ||
+                    (isSavedDraft && (
+                      selection.folder.specialUse === '\\Drafts' ||
+                      activeDraftKey === messageKey
+                    ))
+                  }
+                  onReplySent={onReplySent}
+                  onDraftSent={onDraftSent}
+                  demoDetail={demoDetails?.get(
+                    `${selection.account.id}:${message.folderPath}:${message.uid}`,
+                  )}
+                />
+              );
+            })}
           </div>
         </div>
       </div>

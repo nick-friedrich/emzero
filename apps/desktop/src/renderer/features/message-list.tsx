@@ -122,32 +122,38 @@ export function MessageList({
         folderPath: selection.folder.path,
       }));
 
-      let relatedMessages: MailMessageSummary[] = [];
+      const relatedMessages: MailMessageSummary[] = [];
       const notices = [result.message];
-      if (selection.folder.specialUse !== '\\Sent') {
-        const folderResult = await window.emzero.folders.list(
+      const folderResult = await window.emzero.folders.list(
+        selection.account.id,
+        refreshKey > 0,
+      );
+      const relatedFolders = folderResult.ok
+        ? folderResult.folders.filter((folder) =>
+            folder.selectable &&
+            folder.path !== selection.folder.path &&
+            (folder.specialUse === '\\Sent' ||
+              folder.specialUse === '\\Drafts' ||
+              (['\\Sent', '\\Drafts'].includes(selection.folder.specialUse ?? '') &&
+                folder.specialUse === '\\Inbox')),
+          )
+        : [];
+      notices.push(folderResult.message);
+      const relatedResults = await Promise.all(relatedFolders.map(async (folder) => ({
+        folder,
+        result: await window.emzero.messages.list(
           selection.account.id,
+          folder.path,
           refreshKey > 0,
-        );
-        const sentFolder = folderResult.ok
-          ? folderResult.folders.find(
-              (folder) => folder.selectable && folder.specialUse === '\\Sent',
-            )
-          : undefined;
-        notices.push(folderResult.message);
-        if (sentFolder && sentFolder.path !== selection.folder.path) {
-          const sentResult = await window.emzero.messages.list(
-            selection.account.id,
-            sentFolder.path,
-            refreshKey > 0,
-          );
-          if (sentResult.ok) {
-            notices.push(sentResult.message);
-            relatedMessages = sentResult.messages.map((message) => ({
-              ...message,
-              folderPath: sentFolder.path,
-            }));
-          }
+        ),
+      })));
+      for (const { folder, result: relatedResult } of relatedResults) {
+        notices.push(relatedResult.message);
+        if (relatedResult.ok) {
+          relatedMessages.push(...relatedResult.messages.map((message) => ({
+            ...message,
+            folderPath: folder.path,
+          })));
         }
       }
 
@@ -611,6 +617,7 @@ export function MessageList({
             };
           });
         }}
+        onDraftSent={refresh}
       />
     ) : null;
 

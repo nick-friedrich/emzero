@@ -166,14 +166,26 @@ export function UnifiedInbox({
           const sentFolder = folderResult.folders.find(
             (candidate) => candidate.selectable && candidate.specialUse === '\\Sent',
           );
-          const [sourceResults, sentResult] = await Promise.all([
+          const inboxFolder = findInboxFolder(folderResult.folders);
+          const draftsFolder = folderResult.folders.find(
+            (candidate) => candidate.selectable && candidate.specialUse === '\\Drafts',
+          );
+          const relatedFolders = mailbox === 'inbox'
+            ? [sentFolder, draftsFolder]
+            : mailbox === 'drafts'
+              ? [sentFolder, inboxFolder]
+              : [];
+          const [sourceResults, relatedResults] = await Promise.all([
             Promise.all(sourceFolders.map((folder) =>
               window.emzero.messages.list(account.id, folder.path, refreshKey > 0)
                 .then((result) => ({ folder, result })),
             )),
-            mailbox === 'inbox' && sentFolder && sentFolder.path !== designatedFolder?.path
-              ? window.emzero.messages.list(account.id, sentFolder.path, refreshKey > 0)
-              : Promise.resolve(null),
+            Promise.all(relatedFolders.flatMap((folder) =>
+              folder && folder.path !== designatedFolder?.path
+                ? [window.emzero.messages.list(account.id, folder.path, refreshKey > 0)
+                    .then((result) => ({ folder, result }))]
+                : [],
+            )),
           ]);
           const failedResult = sourceResults.find(({ result }) => !result.ok);
           if (failedResult) {
@@ -195,18 +207,22 @@ export function UnifiedInbox({
               : result.total,
             notice: result.message,
           }));
-          const relatedMessages =
-            sentFolder && sentResult?.ok
-              ? sentResult.messages.map((message) => ({
+          const relatedMessages = relatedResults.flatMap(({ folder, result }) =>
+            result.ok
+              ? result.messages.map((message) => ({
                   ...message,
-                  folderPath: sentFolder.path,
+                  folderPath: folder.path,
                 }))
-              : [];
+              : [],
+          );
           return {
             account,
             items: loadedSources.flatMap(({ folder, messages }) => {
               const selection: FolderSelection = { kind: 'folder', account, folder };
-              return groupMessagesWithRelated(messages, mailbox === 'inbox' ? relatedMessages : []).map((conversation) => ({
+              return groupMessagesWithRelated(
+                messages,
+                ['inbox', 'drafts'].includes(mailbox) ? relatedMessages : [],
+              ).map((conversation) => ({
                 selection,
                 folders: folderResult.folders,
                 conversation,
@@ -214,7 +230,7 @@ export function UnifiedInbox({
             }),
             loadedMessages: loadedSources.reduce((total, source) => total + source.messages.length, 0),
             totalMessages: loadedSources.reduce((total, source) => total + source.total, 0),
-            notices: [folderResult.message, ...loadedSources.map(({ notice }) => notice), sentResult?.message].filter(
+            notices: [folderResult.message, ...loadedSources.map(({ notice }) => notice), ...relatedResults.map(({ result }) => result.message)].filter(
               (message): message is string => Boolean(message),
             ),
           };
@@ -757,6 +773,7 @@ export function UnifiedInbox({
               : current,
           );
         }}
+        onDraftSent={refresh}
         demoDetails={demo?.details}
       />
     ) : null;

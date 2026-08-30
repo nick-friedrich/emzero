@@ -89,6 +89,28 @@ describe('groupMessagesIntoConversations', () => {
     const conversations = groupMessagesWithRelated([inboxCopy], [sentCopy]);
     expect(conversations[0].messages).toEqual([inboxCopy]);
   });
+
+  it('reconstructs a draft thread from related inbox and sent messages', () => {
+    const inboxRoot = message(1);
+    const sentReply = message(2, {
+      folderPath: 'Sent',
+      inReplyTo: inboxRoot.messageId,
+      references: [inboxRoot.messageId!],
+    });
+    const draft = message(3, {
+      folderPath: 'Drafts',
+      inReplyTo: sentReply.messageId,
+      references: [inboxRoot.messageId!, sentReply.messageId!],
+    });
+
+    const conversations = groupMessagesWithRelated([draft], [inboxRoot, sentReply]);
+    expect(conversations).toHaveLength(1);
+    expect(conversations[0].messages.map(({ folderPath }) => folderPath)).toEqual([
+      'Drafts',
+      'Sent',
+      'INBOX',
+    ]);
+  });
 });
 
 describe('reply presentation helpers', () => {

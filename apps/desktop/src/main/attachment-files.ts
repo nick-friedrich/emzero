@@ -14,7 +14,8 @@ import type { StoredAccount } from './account-storage.js';
 import { closeImap, createImapClient, errorMessage, resolveMailSecret } from './mail-runtime.js';
 
 interface SelectedAttachment extends MailOutgoingAttachment {
-  path: string;
+  path?: string;
+  content?: Buffer;
 }
 
 const maximumAttachmentCount = 20;
@@ -95,6 +96,58 @@ export async function selectOutgoingAttachments(): Promise<AttachmentSelectionRe
   }
 }
 
+export async function prepareDraftAttachments(
+  account: StoredAccount,
+  folderPath: string,
+  uid: number,
+): Promise<AttachmentSelectionResult> {
+  let password = '';
+  let imap: ImapFlow | null = null;
+  let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
+  try {
+    password = await resolveMailSecret(account);
+    imap = createImapClient(account, password, 30_000);
+    await imap.connect();
+    lock = await imap.getMailboxLock(folderPath, { readOnly: true });
+    const fetched = await imap.fetchOne(uid, { source: true }, { uid: true });
+    if (!fetched || !fetched.source) throw new Error('This draft is no longer available.');
+    const parsed = await simpleParser(fetched.source);
+    const sourceAttachments = parsed.attachments.filter((attachment) => !attachment.related);
+    if (sourceAttachments.length > maximumAttachmentCount) throw new Error('This draft has too many attachments.');
+    if (sourceAttachments.some((attachment) => attachment.size > maximumAttachmentSize)) {
+      throw new Error('This draft contains an attachment larger than 25 MB.');
+    }
+    if (sourceAttachments.reduce((total, attachment) => total + attachment.size, 0) > maximumTotalSize) {
+      throw new Error('This draft contains more than 50 MB of attachments.');
+    }
+    const attachments = sourceAttachments.map((attachment): SelectedAttachment => ({
+      id: randomUUID(),
+      filename: path.basename(attachment.filename || 'attachment'),
+      size: attachment.size,
+      content: attachment.content,
+    }));
+    for (const attachment of attachments) selectedAttachments.set(attachment.id, attachment);
+    while (selectedAttachments.size > 200) {
+      const oldestId = selectedAttachments.keys().next().value;
+      if (oldestId) selectedAttachments.delete(oldestId);
+      else break;
+    }
+    return {
+      ok: true,
+      attachments: attachments.map(({ id, filename, size }) => ({ id, filename, size })),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      attachments: [],
+      message: `Could not prepare draft attachments: ${errorMessage(error, password)}`,
+    };
+  } finally {
+    lock?.release();
+    await closeImap(imap);
+  }
+}
+
 export async function resolveOutgoingAttachments(
   attachments: MailOutgoingAttachment[],
 ): Promise<Array<{ filename: string; content: Buffer }>> {
@@ -110,7 +163,8 @@ export async function resolveOutgoingAttachments(
       ) {
         throw new Error(`Select ${attachment.filename} again before sending.`);
       }
-      const content = await readFile(selected.path);
+      const content = selected.content ?? (selected.path ? await readFile(selected.path) : null);
+      if (!content) throw new Error(`Select ${selected.filename} again before sending.`);
       if (content.length !== selected.size || content.length > maximumAttachmentSize) {
         throw new Error(`${selected.filename} changed after it was selected.`);
       }

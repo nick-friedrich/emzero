@@ -9,6 +9,7 @@ import {
   storedTheme,
   ThemeProvider,
 } from '@/theme';
+import { MailWindowBootstrap, parsedMailWindowId } from '@/mail-window';
 
 const root = document.getElementById('root');
 
@@ -17,10 +18,12 @@ if (!root) throw new Error('Missing application root');
 applyTheme(storedTheme());
 applyInterfaceFont(storedInterfaceFont());
 
+const mailWindowId = parsedMailWindowId();
+
 createRoot(root).render(
   <StrictMode>
     <ThemeProvider>
-      <App />
+      {mailWindowId ? <MailWindowBootstrap windowId={mailWindowId} /> : <App />}
     </ThemeProvider>
   </StrictMode>,
 );

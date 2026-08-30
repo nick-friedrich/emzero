@@ -279,6 +279,10 @@ export function MailSearch({
                 : current,
             );
           }}
+          onDraftSent={() => {
+            setSelected(null);
+            setSearchRequest((current) => ({ ...current, revision: current.revision + 1 }));
+          }}
         />
         {undoBar}
         </>

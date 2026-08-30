@@ -7,8 +7,13 @@ import {
 } from 'react';
 import {
   ChevronDown,
+  ExternalLink,
   LoaderCircle,
+  Maximize2,
+  Minimize2,
   Send,
+  Trash2,
+  X,
 } from 'lucide-react';
 import {
   Button,
@@ -24,17 +29,12 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
   cn,
 } from '@/lib/utils';
 import {
   type AccountSummary,
+  type MailComposerKind,
+  type MailDraftReference,
   type MailSendDraft,
   type MailOutgoingAttachment,
   type RecipientSuggestion,
@@ -59,6 +59,13 @@ function insertRecipient(value: string, suggestion: RecipientSuggestion): string
   const safeName = suggestion.name && !/[,;]/.test(suggestion.name) ? suggestion.name : null;
   const formatted = safeName ? `${safeName} <${suggestion.address}>` : suggestion.address;
   return `${prefix}${prefix && !/\s$/.test(prefix) ? ' ' : ''}${formatted}, `;
+}
+
+function editableAddressList(addresses: MailSendDraft['to']): string {
+  return addresses.flatMap(({ name, address }) => {
+    if (!address) return [];
+    return name && !/[,;]/.test(name) ? [`${name} <${address}>`] : [address];
+  }).join(', ');
 }
 
 function RecipientField({
@@ -194,30 +201,42 @@ export function ComposeDialog({
   defaultAccountId,
   onOpenChange,
   onSent,
+  initialDraft,
+  initialDraftReference,
+  composerKind = 'new',
+  variant = 'floating',
+  onDeleted,
 }: {
   open: boolean;
   accounts: AccountSummary[];
   defaultAccountId: string | null;
   onOpenChange: (open: boolean) => void;
-  onSent: () => void;
+  onSent: (message?: import('../../shared/accounts').MailMessageSummary) => void;
+  initialDraft?: MailSendDraft;
+  initialDraftReference?: MailDraftReference;
+  composerKind?: MailComposerKind;
+  variant?: 'floating' | 'inline' | 'window';
+  onDeleted?: () => void;
 }) {
   const [accountId, setAccountId] = useState(() =>
     accounts.some((account) => account.id === defaultAccountId)
       ? defaultAccountId!
       : (accounts[0]?.id ?? ''),
   );
-  const [to, setTo] = useState('');
-  const [cc, setCc] = useState('');
-  const [bcc, setBcc] = useState('');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
-  const [attachments, setAttachments] = useState<MailOutgoingAttachment[]>([]);
+  const [to, setTo] = useState(() => editableAddressList(initialDraft?.to ?? []));
+  const [cc, setCc] = useState(() => editableAddressList(initialDraft?.cc ?? []));
+  const [bcc, setBcc] = useState(() => editableAddressList(initialDraft?.bcc ?? []));
+  const [subject, setSubject] = useState(initialDraft?.subject ?? '');
+  const [body, setBody] = useState(initialDraft?.text ?? '');
+  const [attachments, setAttachments] = useState<MailOutgoingAttachment[]>(initialDraft?.attachments ?? []);
+  const [expanded, setExpanded] = useState(variant === 'window');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
   const [skipSendConfirmation, setSkipSendConfirmation] = useState(
     storedSkipSendConfirmation,
   );
   const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<MailSendDraft | null>(null);
   const confirmationActionRef = useRef<HTMLButtonElement>(null);
@@ -227,24 +246,27 @@ export function ComposeDialog({
     bcc: parseAddressList(bcc),
     subject,
     text: body,
-    inReplyTo: null,
-    references: [],
+    inReplyTo: initialDraft?.inReplyTo ?? null,
+    references: initialDraft?.references ?? [],
     attachments,
   };
   const hasDraftContent = Boolean(
     to.trim() || cc.trim() || bcc.trim() || subject.trim() || body.trim() || attachments.length,
   );
-  const { status: draftStatus, discardSavedDraft } = useDraftAutosave(
+  const { status: draftStatus, handoffSavedDraft, discardSavedDraft } = useDraftAutosave(
     accountId,
     currentDraft,
     hasDraftContent,
+    initialDraftReference,
   );
 
   const deliver = async (draft: MailSendDraft) => {
     setBusy(true);
     setStatus(null);
     try {
-      const result = await window.emzero.messages.send(accountId, draft);
+      const result = composerKind === 'reply'
+        ? await window.emzero.messages.sendReply(accountId, draft)
+        : await window.emzero.messages.send(accountId, draft);
       if (!result.ok) {
         setStatus({ kind: 'error', message: result.message ?? 'Could not send message.' });
         return;
@@ -255,7 +277,7 @@ export function ComposeDialog({
       setBcc('');
       setSubject('');
       setBody('');
-      onSent();
+      onSent(result.sentMessage);
       setAttachments([]);
       onOpenChange(false);
     } catch {
@@ -288,29 +310,87 @@ export function ComposeDialog({
     requestSend();
   };
 
+  const closeComposer = () => {
+    if (busy) return;
+    void handoffSavedDraft().then(() => onOpenChange(false));
+  };
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!busy) onOpenChange(nextOpen);
-      }}
-    >
-      <DialogContent
-        className="w-[min(44rem,calc(100%-2rem))]"
-        onOpenAutoFocus={() => {
-          if (
-            !hasDraftContent &&
-            defaultAccountId &&
-            accounts.some((account) => account.id === defaultAccountId)
-          ) {
-            setAccountId(defaultAccountId);
-          }
-        }}
+    <>
+      {open && <section
+        className={cn(
+          'z-40 flex flex-col overflow-hidden border border-border bg-card shadow-2xl',
+          variant === 'inline' && !expanded && 'relative mt-5 rounded-lg',
+          variant === 'floating' && !expanded && 'fixed bottom-4 right-4 max-h-[min(44rem,calc(100vh-2rem))] w-[min(42rem,calc(100vw-2rem))] rounded-xl',
+          expanded && variant !== 'window' && 'fixed inset-y-0 right-0 lg:left-[var(--sidebar-width)]',
+          variant === 'window' && 'h-screen border-0',
+        )}
+        aria-label={composerKind === 'reply' ? 'Reply composer' : composerKind === 'draft' ? 'Draft editor' : 'New message'}
       >
-        <DialogHeader>
-          <DialogTitle>New message</DialogTitle>
-          <DialogDescription>Send an email with optional attachments from any connected account.</DialogDescription>
-        </DialogHeader>
+        <header className={cn(
+          'flex items-center gap-2 border-b border-border px-4 py-3',
+          window.emzero?.platform === 'darwin' && variant === 'window' && 'macos-content-header macos-native-window-header macos-titlebar-drag',
+        )}>
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-semibold">
+              {composerKind === 'reply' ? 'Reply' : composerKind === 'draft' ? 'Edit draft' : 'New message'}
+            </h2>
+            {subject && <p className="truncate text-xs text-muted-foreground">{subject}</p>}
+          </div>
+          <div className="ml-auto flex items-center gap-1">
+            {composerKind === 'draft' && <Button
+              type="button"
+              variant="ghost"
+              className="size-8 px-0 text-danger hover:text-danger"
+              disabled={busy}
+              aria-label="Delete draft"
+              title="Delete draft"
+              onClick={() => setDeleteConfirmationOpen(true)}
+            >
+              <Trash2 className="size-4" />
+            </Button>}
+            {variant !== 'window' && <Button
+              type="button"
+              variant="ghost"
+              className="size-8 px-0"
+              aria-label={expanded ? 'Return to compact composer' : 'Expand to message area'}
+              title={expanded ? 'Return to compact composer' : 'Expand to message area'}
+              onClick={() => setExpanded((current) => !current)}
+            >
+              {expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+            </Button>}
+            {variant !== 'window' && <Button
+              type="button"
+              variant="ghost"
+              className="size-8 px-0"
+              aria-label="Open in new window"
+              title="Open in new window"
+              onClick={() => {
+                void handoffSavedDraft().then((reference) => window.emzero.openMailWindow({
+                  kind: 'composer',
+                  composerKind,
+                  accountId,
+                  draft: currentDraft,
+                  ...(reference ? { draftReference: reference } : {}),
+                })).then((opened) => { if (opened) onOpenChange(false); });
+              }}
+            >
+              <ExternalLink className="size-4" />
+            </Button>}
+            <Button
+              type="button"
+              variant="ghost"
+              className="size-8 px-0"
+              disabled={busy}
+              aria-label="Close composer"
+              title="Close composer"
+              onClick={closeComposer}
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
         <form
           className="space-y-4"
           onSubmit={submit}
@@ -423,9 +503,9 @@ export function ComposeDialog({
               type="button"
               variant="ghost"
               disabled={busy}
-              onClick={() => onOpenChange(false)}
+              onClick={closeComposer}
             >
-              Cancel
+              Close
             </Button>
             <Button
               type="submit"
@@ -441,7 +521,8 @@ export function ComposeDialog({
             Send with {sendShortcutLabel()}
           </p>
         </form>
-      </DialogContent>
+        </div>
+      </section>}
       <AlertDialog
         open={confirmationOpen}
         onOpenChange={(nextOpen) => {
@@ -530,6 +611,34 @@ export function ComposeDialog({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Dialog>
+      <AlertDialog open={deleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The saved draft will be permanently removed from the mail server.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                setBusy(true);
+                void discardSavedDraft().then((deleted) => {
+                  if (!deleted) return;
+                  setDeleteConfirmationOpen(false);
+                  onOpenChange(false);
+                  onDeleted?.();
+                }).finally(() => setBusy(false));
+              }}
+            >
+              <Trash2 className="size-4" />
+              Delete draft
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
