@@ -447,6 +447,24 @@ export interface AccountReorderResult {
 export interface AccountBackupExportRequest {
   password: string;
   includeCredentials: boolean;
+  includeAppSettings: boolean;
+  appSettings?: AppSettingsBackup;
+}
+
+export interface BackupSignature {
+  id: string;
+  name: string;
+  body: string;
+  accountIds: string[];
+}
+
+export interface AppSettingsBackup {
+  theme: string;
+  interfaceFont: string;
+  alwaysLoadRemoteImages: boolean;
+  markReadOnOpen: boolean;
+  selectNextOnDelete: boolean;
+  signatures: BackupSignature[];
 }
 
 export interface AccountBackupImportRequest {
@@ -467,6 +485,7 @@ export interface AccountBackupResult {
   message: string;
   accounts?: AccountSummary[];
   canceled?: boolean;
+  appSettings?: AppSettingsBackup;
 }
 
 export interface AccountNameUpdate {
@@ -515,6 +534,7 @@ export const ACCOUNT_CHANNELS = {
   openGmailAppPasswordHelp: 'accounts:gmail-app-password-help',
   openExternalLink: 'app:open-external-link',
   openMailWindow: 'window:open-mail',
+  openSettingsWindow: 'window:open-settings',
   getMailWindowContext: 'window:get-mail-context',
   update: 'accounts:update',
   reorder: 'accounts:reorder',

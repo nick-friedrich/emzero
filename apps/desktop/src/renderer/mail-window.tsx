@@ -153,6 +153,7 @@ function MessageWindow({ context }: { context: Extract<MailWindowContext, { kind
         setActionError(error);
         return;
       }
+      notifyMailChanged();
       if (action === 'delete' || action === 'move') {
         window.close();
         return;

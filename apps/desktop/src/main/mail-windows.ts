@@ -9,6 +9,7 @@ import {
 } from '../shared/accounts.js';
 
 const mailWindowContexts = new Map<string, { context: MailWindowContext; webContentsId: number }>();
+let settingsWindow: BrowserWindow | null = null;
 
 function validDraftReference(value: unknown): value is MailDraftReference {
   if (!value || typeof value !== 'object') return false;
@@ -61,6 +62,49 @@ function trustedSender(event: Electron.IpcMainInvokeEvent): boolean {
 }
 
 export function registerMailWindowHandlers(): void {
+  ipcMain.handle(ACCOUNT_CHANNELS.openSettingsWindow, async (event) => {
+    if (!trustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      if (settingsWindow.isMinimized()) settingsWindow.restore();
+      settingsWindow.show();
+      settingsWindow.focus();
+      return true;
+    }
+    settingsWindow = new BrowserWindow({
+      width: 920,
+      height: 720,
+      minWidth: 700,
+      minHeight: 560,
+      backgroundColor: '#f5f5f4',
+      icon: path.join(app.getAppPath(), 'assets', 'emzero-logo.png'),
+      show: false,
+      title: 'Settings — Emzero',
+      ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.cjs'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+    if (process.platform === 'linux') settingsWindow.setMenu(null);
+    settingsWindow.once('ready-to-show', () => settingsWindow?.show());
+    settingsWindow.once('closed', () => { settingsWindow = null; });
+    settingsWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    settingsWindow.webContents.on('will-navigate', (navigationEvent) => navigationEvent.preventDefault());
+    if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+      const url = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+      url.hash = 'settings';
+      await settingsWindow.loadURL(url.toString());
+    } else {
+      await settingsWindow.loadFile(
+        path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+        { hash: 'settings' },
+      );
+    }
+    return true;
+  });
+
   ipcMain.handle(ACCOUNT_CHANNELS.getMailWindowContext, (event, windowId: unknown) => {
     if (!trustedSender(event)) throw new Error('Untrusted IPC sender');
     if (typeof windowId !== 'string') return null;

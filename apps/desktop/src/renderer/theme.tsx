@@ -29,6 +29,8 @@ export type InterfaceFont = (typeof interfaceFonts)[number]['value'];
 const themeStorageKey = 'emzero-theme';
 const fontStorageKey = 'emzero-interface-font';
 const alwaysLoadRemoteImagesStorageKey = 'emzero-always-load-remote-images';
+const markReadOnOpenStorageKey = 'emzero-mark-read-on-open';
+const selectNextOnDeleteStorageKey = 'emzero-select-next-on-delete';
 const themeValues = new Set<Theme>(themes.map(({ value }) => value));
 const fontValues = new Set<InterfaceFont>(interfaceFonts.map(({ value }) => value));
 
@@ -74,6 +76,18 @@ export function storedAlwaysLoadRemoteImages(): boolean {
   }
 }
 
+function storedBoolean(key: string, fallback: boolean): boolean {
+  try {
+    const value = window.localStorage.getItem(key);
+    return value === null ? fallback : value === 'true';
+  } catch {
+    return fallback;
+  }
+}
+
+export const storedMarkReadOnOpen = () => storedBoolean(markReadOnOpenStorageKey, true);
+export const storedSelectNextOnDelete = () => storedBoolean(selectNextOnDeleteStorageKey, true);
+
 interface ThemeContextValue {
   theme: Theme;
   setTheme: (theme: Theme) => void;
@@ -81,6 +95,10 @@ interface ThemeContextValue {
   setInterfaceFont: (font: InterfaceFont) => void;
   alwaysLoadRemoteImages: boolean;
   setAlwaysLoadRemoteImages: (enabled: boolean) => void;
+  markReadOnOpen: boolean;
+  setMarkReadOnOpen: (enabled: boolean) => void;
+  selectNextOnDelete: boolean;
+  setSelectNextOnDelete: (enabled: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -91,6 +109,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [alwaysLoadRemoteImages, setAlwaysLoadRemoteImages] = useState(
     storedAlwaysLoadRemoteImages,
   );
+  const [markReadOnOpen, setMarkReadOnOpen] = useState(storedMarkReadOnOpen);
+  const [selectNextOnDelete, setSelectNextOnDelete] = useState(storedSelectNextOnDelete);
 
   useEffect(() => {
     applyTheme(theme);
@@ -121,6 +141,26 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, [alwaysLoadRemoteImages]);
 
+  useEffect(() => {
+    window.localStorage.setItem(markReadOnOpenStorageKey, String(markReadOnOpen));
+  }, [markReadOnOpen]);
+
+  useEffect(() => {
+    window.localStorage.setItem(selectNextOnDeleteStorageKey, String(selectNextOnDelete));
+  }, [selectNextOnDelete]);
+
+  useEffect(() => {
+    const syncPreferences = (event: StorageEvent) => {
+      if (event.key === themeStorageKey) setTheme(storedTheme());
+      if (event.key === fontStorageKey) setInterfaceFont(storedInterfaceFont());
+      if (event.key === alwaysLoadRemoteImagesStorageKey) setAlwaysLoadRemoteImages(storedAlwaysLoadRemoteImages());
+      if (event.key === markReadOnOpenStorageKey) setMarkReadOnOpen(storedMarkReadOnOpen());
+      if (event.key === selectNextOnDeleteStorageKey) setSelectNextOnDelete(storedSelectNextOnDelete());
+    };
+    window.addEventListener('storage', syncPreferences);
+    return () => window.removeEventListener('storage', syncPreferences);
+  }, []);
+
   return (
     <ThemeContext value={{
       theme,
@@ -129,6 +169,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setInterfaceFont,
       alwaysLoadRemoteImages,
       setAlwaysLoadRemoteImages,
+      markReadOnOpen,
+      setMarkReadOnOpen,
+      selectNextOnDelete,
+      setSelectNextOnDelete,
     }}>
       {children}
     </ThemeContext>

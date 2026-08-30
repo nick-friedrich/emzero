@@ -5,6 +5,7 @@ import {
   MICROSOFT_CLIENT_ID,
   type AccountDraft,
   type AccountBackupResult,
+  type AppSettingsBackup,
   type AccountNameUpdate,
   type AccountOperationResult,
   type AccountReorderResult,
@@ -23,7 +24,7 @@ import {
   type MessageOperationResult,
 } from '../shared/accounts.js';
 import { verifyConnections, verifyMicrosoftConnections } from './account-connection.js';
-import { exportAccountBackup, importAccountBackup, selectAccountBackup } from './account-backup.js';
+import { exportAccountBackup, importAccountBackup, selectAccountBackup, validAppSettingsBackup } from './account-backup.js';
 import {
   openMessageAttachment,
   prepareDraftAttachments,
@@ -207,11 +208,20 @@ export function registerAccountHandlers(): void {
 
   ipcMain.handle(ACCOUNT_CHANNELS.exportBackup, async (event, value: unknown) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-    const request = value as { password?: unknown; includeCredentials?: unknown } | null;
-    if (!request || typeof request.password !== 'string' || typeof request.includeCredentials !== 'boolean') {
+    const request = value as { password?: unknown; includeCredentials?: unknown; includeAppSettings?: unknown; appSettings?: unknown } | null;
+    if (!request || typeof request.password !== 'string' ||
+      typeof request.includeCredentials !== 'boolean' ||
+      typeof request.includeAppSettings !== 'boolean' ||
+      (request.includeAppSettings && !validAppSettingsBackup(request.appSettings))) {
       return { ok: false, message: 'Invalid backup options.' } satisfies AccountBackupResult;
     }
-    return exportAccountBackup(request.password, request.includeCredentials);
+    return exportAccountBackup(
+      request.password,
+      request.includeCredentials,
+      request.includeAppSettings
+        ? request.appSettings as AppSettingsBackup
+        : undefined,
+    );
   });
 
   ipcMain.handle(ACCOUNT_CHANNELS.selectBackup, async (event) => {

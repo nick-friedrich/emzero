@@ -10,6 +10,7 @@ import {
   ThemeProvider,
 } from '@/theme';
 import { MailWindowBootstrap, parsedMailWindowId } from '@/mail-window';
+import { SettingsWindow } from '@/features/account-settings';
 
 const root = document.getElementById('root');
 
@@ -23,7 +24,11 @@ const mailWindowId = parsedMailWindowId();
 createRoot(root).render(
   <StrictMode>
     <ThemeProvider>
-      {mailWindowId ? <MailWindowBootstrap windowId={mailWindowId} /> : <App />}
+      {window.location.hash === '#settings'
+        ? <SettingsWindow />
+        : mailWindowId
+          ? <MailWindowBootstrap windowId={mailWindowId} />
+          : <App />}
     </ThemeProvider>
   </StrictMode>,
 );

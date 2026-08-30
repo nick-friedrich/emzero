@@ -16,7 +16,6 @@ import type {
   MailSyncStatus,
 } from '../shared/accounts';
 import { AccountSetup } from './features/account-setup';
-import { SettingsDialog } from './features/account-settings';
 import {
   BulkOperationBar,
   type BulkOperationView,
@@ -62,7 +61,6 @@ export function App() {
   const [accounts, setAccounts] = useState<AccountSummary[] | null>(demoMode ? [] : null);
   const [providers, setProviders] = useState<MailProvider[]>([]);
   const [showSetup, setShowSetup] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeRevision, setComposeRevision] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -146,6 +144,25 @@ export function App() {
     };
     return () => channel.close();
   }, []);
+
+  useEffect(() => {
+    if (demoMode) return;
+    const channel = new BroadcastChannel('emzero-settings-events');
+    channel.onmessage = (event) => {
+      if ((event.data as { type?: unknown } | null)?.type !== 'accounts-changed') return;
+      void window.emzero.accounts.list().then((nextAccounts) => {
+        setAccounts(nextAccounts);
+        setSelection((current) => {
+          if (current.kind !== 'folder') return current;
+          const account = nextAccounts.find((item) => item.id === current.account.id);
+          return account ? { ...current, account } : { kind: 'unified' };
+        });
+        if (nextAccounts.length === 0) setShowSetup(true);
+        setSyncRevision((current) => current + 1);
+      });
+    };
+    return () => channel.close();
+  }, [demoMode]);
 
   const startSidebarResize = (event: PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -308,7 +325,6 @@ export function App() {
     setDemoMode(enabled);
     setSelection({ kind: 'unified' });
     setShowSetup(enabled ? false : accounts.length === 0);
-    setSettingsOpen(false);
     setComposeOpen(false);
     setBulkOperation(null);
   };
@@ -346,7 +362,7 @@ export function App() {
               setShowSetup(false);
             }}
             onAdd={() => setShowSetup(true)}
-            onManage={() => setSettingsOpen(true)}
+            onManage={() => void window.emzero.openSettingsWindow()}
             onReorder={async (accountIds) => {
               if (demoMode) return true;
               const previous = accounts;
@@ -435,7 +451,7 @@ export function App() {
                 setShowSetup(false);
               }}
               onAdd={() => setShowSetup(true)}
-              onManage={() => setSettingsOpen(true)}
+              onManage={() => void window.emzero.openSettingsWindow()}
               onReorder={async (accountIds) => {
                 if (demoMode) return true;
                 const previous = accounts;
@@ -517,7 +533,7 @@ export function App() {
               setSidebarOpen(false);
             }}
             onManage={() => {
-              setSettingsOpen(true);
+              void window.emzero.openSettingsWindow();
               setSidebarOpen(false);
             }}
             onReorder={async (accountIds) => {
@@ -560,40 +576,6 @@ export function App() {
         onSent={() => {
           setComposeRevision((current) => current + 1);
           setSyncRevision((current) => current + 1);
-        }}
-      />}
-      {!demoMode && <SettingsDialog
-        open={settingsOpen}
-        accounts={accounts}
-        onOpenChange={setSettingsOpen}
-        onUpdated={(updatedAccount) => {
-          setAccounts((current) =>
-            current?.map((account) =>
-              account.id === updatedAccount.id ? updatedAccount : account,
-            ) ?? [],
-          );
-          setSelection((current) =>
-            current.kind === 'folder' && current.account.id === updatedAccount.id
-              ? { ...current, account: updatedAccount }
-              : current,
-          );
-        }}
-        onRemoved={(accountId) => {
-          const remainingAccounts = accounts.filter((account) => account.id !== accountId);
-          setAccounts(remainingAccounts);
-          setSelection((current) =>
-            current.kind === 'folder' && current.account.id === accountId
-              ? { kind: 'unified' }
-              : current,
-          );
-          if (remainingAccounts.length === 0) {
-            setSettingsOpen(false);
-            setShowSetup(true);
-          }
-        }}
-        onImported={(importedAccounts) => {
-          setAccounts(importedAccounts);
-          if (selection.kind === 'unified') setSyncRevision((current) => current + 1);
         }}
       />}
       {demoMode ? (

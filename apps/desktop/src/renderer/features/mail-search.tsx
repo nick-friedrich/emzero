@@ -42,6 +42,7 @@ import { MailSplitLayout } from './mail-split-layout';
 import { ConversationReader } from './conversation-reader';
 import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableAction } from './undoable-delete';
+import { useTheme } from '@/theme';
 
 type SearchLoadState =
   | { status: 'idle' }
@@ -64,6 +65,7 @@ export function MailSearch({
   sidebarPinned: boolean;
   onToggleSidebar: () => void;
 }) {
+  const { selectNextOnDelete } = useTheme();
   const [query, setQuery] = useState(initialQuery);
   const [searchRequest, setSearchRequest] = useState({
     query: initialQuery.trim(),
@@ -179,6 +181,12 @@ export function MailSearch({
         const previousState = state;
         const previousSelection = selected;
         const removeSelection = () => {
+          const selectedIndex = state.status === 'loaded'
+            ? state.items.findIndex((item) => item.accountId === selected.item.accountId && item.folder.path === selected.item.folder.path && item.message.uid === selected.item.message.uid)
+            : -1;
+          const nextItem = state.status === 'loaded' && selectedIndex >= 0
+            ? state.items[selectedIndex + 1] ?? state.items[selectedIndex - 1]
+            : undefined;
           setState((current) =>
             current.status === 'loaded'
               ? {
@@ -192,7 +200,10 @@ export function MailSearch({
                 }
               : current,
           );
-          setSelected(null);
+          const nextConversation = nextItem ? groupMessagesWithRelated([nextItem.message], [])[0] : undefined;
+          setSelected(action === 'delete' && selectNextOnDelete && nextItem && nextConversation
+            ? { item: nextItem, conversation: nextConversation }
+            : null);
         };
         const restoreSelection = () => {
           setState(previousState);

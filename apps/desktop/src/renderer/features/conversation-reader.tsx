@@ -76,6 +76,7 @@ import {
 import { AttachmentPicker } from './attachment-picker';
 import { useDraftAutosave } from './draft-autosave';
 import { ComposeDialog, type DraftSavedEvent } from './compose-dialog';
+import { signatureBody } from './signatures';
 
 function MessageBody({
   accountId,
@@ -347,7 +348,7 @@ function ReplyComposer({
   const recipients = replyRecipients(account, message);
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => signatureBody(account.id));
   const [attachments, setAttachments] = useState<MailOutgoingAttachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
@@ -416,6 +417,7 @@ function ReplyComposer({
           disabled={recipients.length === 0}
           title={recipients.length === 0 ? 'This message has no valid reply address.' : undefined}
           onClick={() => {
+            setText((current) => current || signatureBody(account.id));
             setOpen(true);
             setStatus(null);
           }}
@@ -949,6 +951,8 @@ export function ConversationReader({
   demoDetails?: ReadonlyMap<string, MailMessageDetail>;
 }) {
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
+  const { markReadOnOpen } = useTheme();
+  const markedReadConversation = useRef<string | null>(null);
   const nativeMacWindow = nativeWindow && window.emzero?.platform === 'darwin';
   const unread = conversation.messages.some(
     (message) => message.folderPath === selection.folder.path && message.unread,
@@ -960,6 +964,13 @@ export function ConversationReader({
     folders.filter((folder) => folder.specialUse === '\\Drafts').map((folder) => folder.path),
   );
   const [activeDraftKey, setActiveDraftKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    const key = `${selection.account.id}:${selection.folder.path}:${conversation.id}`;
+    if (!markReadOnOpen || !unread || busy || markedReadConversation.current === key) return;
+    markedReadConversation.current = key;
+    onSetUnread(false);
+  }, [busy, conversation.id, markReadOnOpen, onSetUnread, selection.account.id, selection.folder.path, unread]);
 
   useEffect(() => {
     const handleKeyboardShortcut = (event: KeyboardEvent) => {

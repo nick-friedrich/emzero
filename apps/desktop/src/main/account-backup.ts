@@ -9,7 +9,7 @@ import path from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { dialog, safeStorage } from 'electron';
-import type { AccountBackupResult } from '../shared/accounts.js';
+import type { AccountBackupResult, AppSettingsBackup } from '../shared/accounts.js';
 import { readAccounts, toAccountSummary, writeAccounts, type StoredAccount } from './account-storage.js';
 
 const scrypt = promisify(scryptCallback);
@@ -25,6 +25,7 @@ interface PortableAccount extends Omit<StoredAccount, 'encryptedSecret'> {
 interface BackupPayload {
   exportedAt: string;
   accounts: PortableAccount[];
+  appSettings?: AppSettingsBackup;
 }
 
 interface BackupEnvelope {
@@ -76,8 +77,27 @@ export async function decryptBackup(contents: string, password: string): Promise
     decipher.final(),
   ]).toString('utf8');
   const payload = JSON.parse(plaintext) as Partial<BackupPayload>;
-  if (!payload || !Array.isArray(payload.accounts)) throw new Error('The backup data is invalid.');
+  if (!payload || !Array.isArray(payload.accounts) ||
+    (payload.appSettings !== undefined && !validAppSettingsBackup(payload.appSettings))) {
+    throw new Error('The backup data is invalid.');
+  }
   return payload as BackupPayload;
+}
+
+export function validAppSettingsBackup(value: unknown): value is AppSettingsBackup {
+  if (!value || typeof value !== 'object') return false;
+  const settings = value as Partial<AppSettingsBackup>;
+  return ['light', 'dark', 'catppuccin', 'catppuccin-latte', 'nord', 'tokyo-night', 'solarized-dark'].includes(settings.theme ?? '') &&
+    ['inter', 'jetbrains-mono', 'source-serif'].includes(settings.interfaceFont ?? '') &&
+    typeof settings.alwaysLoadRemoteImages === 'boolean' &&
+    typeof settings.markReadOnOpen === 'boolean' &&
+    typeof settings.selectNextOnDelete === 'boolean' &&
+    Array.isArray(settings.signatures) && settings.signatures.length <= 100 &&
+    settings.signatures.every((signature) => signature && typeof signature === 'object' &&
+      typeof signature.id === 'string' && typeof signature.name === 'string' &&
+      typeof signature.body === 'string' && signature.body.length <= 100_000 &&
+      Array.isArray(signature.accountIds) &&
+      signature.accountIds.every((accountId) => typeof accountId === 'string'));
 }
 
 function secureStorageAvailable(): boolean {
@@ -88,6 +108,7 @@ function secureStorageAvailable(): boolean {
 export async function exportAccountBackup(
   password: string,
   includeCredentials: boolean,
+  appSettings?: AppSettingsBackup,
 ): Promise<AccountBackupResult> {
   if (password.length < 8) return { ok: false, message: 'Use a backup password with at least 8 characters.' };
   if (includeCredentials && (!secureStorageAvailable() || !(await safeStorage.isAsyncEncryptionAvailable()))) {
@@ -111,7 +132,11 @@ export async function exportAccountBackup(
     filters: [{ name: 'Emzero encrypted backup', extensions: ['emzero-backup'] }],
   });
   if (result.canceled || !result.filePath) return { ok: false, canceled: true, message: 'Export canceled.' };
-  await writeFile(result.filePath, await encryptBackup({ exportedAt: new Date().toISOString(), accounts: portable }, password), { mode: 0o600 });
+  await writeFile(result.filePath, await encryptBackup({
+    exportedAt: new Date().toISOString(),
+    accounts: portable,
+    ...(appSettings ? { appSettings } : {}),
+  }, password), { mode: 0o600 });
   return { ok: true, message: `Exported ${accounts.length} account${accounts.length === 1 ? '' : 's'}.` };
 }
 
@@ -138,9 +163,6 @@ export async function importAccountBackup(selectionId: string, password: string)
   if (!password) return { ok: false, message: 'Enter the backup password.' };
   const filePath = selectedBackups.get(selectionId);
   if (!filePath) return { ok: false, message: 'Choose the backup file again.' };
-  if (!secureStorageAvailable() || !(await safeStorage.isAsyncEncryptionAvailable())) {
-    return { ok: false, message: 'Secure credential storage is unavailable.' };
-  }
   let payload: BackupPayload;
   try {
     payload = await decryptBackup(await readFile(filePath, 'utf8'), password);
@@ -148,13 +170,23 @@ export async function importAccountBackup(selectionId: string, password: string)
     return { ok: false, message: 'The backup password is incorrect, or the backup is damaged.' };
   }
   selectedBackups.delete(selectionId);
+  const canStoreCredentials = secureStorageAvailable() &&
+    await safeStorage.isAsyncEncryptionAvailable();
   const existing = await readAccounts();
   const emails = new Set(existing.map((account) => account.email.toLowerCase()));
+  const accountIds = new Map(existing.map((account) => [account.email.toLowerCase(), account.id]));
+  const restoredAccountIds = new Map<string, string>();
   const imported: StoredAccount[] = [];
   let missingCredentials = 0;
   for (const account of payload.accounts) {
-    if (!account || typeof account.email !== 'string' || emails.has(account.email.toLowerCase())) continue;
-    if (typeof account.secret !== 'string' || !account.secret) {
+    if (!account || typeof account.email !== 'string') continue;
+    const email = account.email.toLowerCase();
+    const existingAccountId = accountIds.get(email);
+    if (existingAccountId) {
+      restoredAccountIds.set(account.id, existingAccountId);
+      continue;
+    }
+    if (typeof account.secret !== 'string' || !account.secret || !canStoreCredentials) {
       missingCredentials += 1;
       continue;
     }
@@ -163,7 +195,9 @@ export async function importAccountBackup(selectionId: string, password: string)
       ...settings,
       encryptedSecret: (await safeStorage.encryptStringAsync(secret)).toString('base64'),
     });
-    emails.add(account.email.toLowerCase());
+    emails.add(email);
+    accountIds.set(email, account.id);
+    restoredAccountIds.set(account.id, account.id);
   }
   const next = [...existing, ...imported];
   if (imported.length) await writeAccounts(next);
@@ -174,5 +208,16 @@ export async function importAccountBackup(selectionId: string, password: string)
     ok: true,
     message: `Imported ${imported.length} account${imported.length === 1 ? '' : 's'}.${suffix}`,
     accounts: next.map(toAccountSummary),
+    ...(payload.appSettings ? {
+      appSettings: {
+        ...payload.appSettings,
+        signatures: payload.appSettings.signatures.map((signature) => ({
+          ...signature,
+          accountIds: [...new Set(signature.accountIds.flatMap((accountId) =>
+            restoredAccountIds.get(accountId) ?? [],
+          ))],
+        })),
+      },
+    } : {}),
   };
 }

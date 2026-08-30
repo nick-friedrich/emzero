@@ -60,6 +60,7 @@ import { ConversationReader } from './conversation-reader';
 import type { DraftSavedEvent } from './compose-dialog';
 import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableAction } from './undoable-delete';
+import { useTheme } from '@/theme';
 
 export function MessageList({
   accounts,
@@ -81,6 +82,7 @@ export function MessageList({
   draftSavedEvent?: DraftSavedEvent | null;
 }) {
   const [state, setState] = useState<MessageLoadState>({ status: 'loading' });
+  const { selectNextOnDelete } = useTheme();
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedConversation, setSelectedConversation] = useState<MailConversation | null>(null);
   const pendingActions = useRef(new Set<string>());
@@ -449,11 +451,12 @@ export function MessageList({
     const previousState = state;
     const previousSelection = selectedConversation;
     const removeConversation = () => {
+      let nextConversation: MailConversation | undefined;
       if (action === 'delete') {
         const removedIndex = conversations.findIndex(
           (candidate) => candidate.id === conversation.id,
         );
-        const nextConversation = removedIndex >= 0
+        nextConversation = removedIndex >= 0
           ? conversations[removedIndex + 1] ?? conversations[removedIndex - 1]
           : undefined;
         const nextId = nextConversation?.id ?? null;
@@ -480,7 +483,7 @@ export function MessageList({
             }
           : current,
       );
-      setSelectedConversation(null);
+      setSelectedConversation(action === 'delete' && selectNextOnDelete ? (nextConversation ?? null) : null);
     };
     const restoreConversation = () => {
       setState(previousState);

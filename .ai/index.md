@@ -32,7 +32,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/assets/` — renderer and native package branding assets, including the macOS `.icns` application icon.
 - `apps/desktop/src/main/accounts.ts` — trusted IPC validation and handler registration; delegates privileged work to focused main-process services.
 - `apps/desktop/src/main/account-storage.ts` — persisted, user-ordered account records and conversion to renderer-safe account summaries.
-- `apps/desktop/src/main/account-backup.ts` — portable password-encrypted account backup export/import and destination-machine credential re-wrapping.
+- `apps/desktop/src/main/account-backup.ts` — backward-compatible password-encrypted backup export/import for accounts, optional app settings and signatures, destination-machine credential re-wrapping, and signature account-ID remapping.
 - `apps/desktop/src/main/account-connection.ts` — IMAP/SMTP account connectivity verification.
 - `apps/desktop/src/main/microsoft-oauth.ts` — personal Microsoft device-code authorization, token exchange, and refresh-token renewal.
 - `apps/desktop/src/main/account-folders.ts` — cached/server folder listing, validation, creation, rename, move, deletion, and ordering.
@@ -46,7 +46,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/bulk-message-jobs.ts` — bulk-action request validation, execution, cancellation, and progress publication.
 - `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache and search.
 - `apps/desktop/src/main/message-html.ts` — sanitization and quoted-content detection for message HTML.
-- `apps/desktop/src/main/mail-windows.ts` — validated creation of standalone message and composer windows.
+- `apps/desktop/src/main/mail-windows.ts` — validated creation of standalone message, composer, and single-instance settings windows.
 - `apps/desktop/src/main/provider-discovery.ts` — provider catalog lookup and domain/MX discovery.
 - `apps/desktop/src/main/folder-subscriptions.ts` — IMAP folder subscription and deletion helpers.
 - `apps/desktop/src/preload/index.ts` — typed `window.emzero` bridge exposed to the sandboxed renderer.
@@ -64,9 +64,9 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 
 - `apps/desktop/src/renderer/main.tsx` — React renderer entry point and providers.
 - `apps/desktop/src/renderer/mail-window.tsx` — standalone composer and conversation window loading and actions.
-- `apps/desktop/src/renderer/App.tsx` — application-level orchestration only: account loading, current mailbox selection, persisted sidebar/mail-layout preferences, dialog visibility, sync revision, and active bulk-operation state.
+- `apps/desktop/src/renderer/App.tsx` — application-level orchestration only: account loading and cross-window refresh, current mailbox selection, persisted sidebar/mail-layout preferences, dialog visibility, sync revision, and active bulk-operation state.
 - `apps/desktop/src/renderer/styles.css` — global Tailwind styles and visual tokens.
-- `apps/desktop/src/renderer/theme.tsx` — appearance and mail-behavior preference persistence/context, plus message color schemes.
+- `apps/desktop/src/renderer/theme.tsx` — synchronized appearance and mail-behavior preference persistence/context, plus message color schemes.
 - `apps/desktop/src/renderer/lib/utils.ts` — small renderer-wide helpers such as class merging and range selection.
 - `apps/desktop/src/renderer/components/ui/` — reusable low-level UI primitives.
 
@@ -75,7 +75,8 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/sidebar.tsx` — desktop/mobile navigation with a fixed brand header and action footer, scrollable mailbox/account navigation, drag-to-reorder accounts, folder CRUD, drag-and-drop folder moves, and sync status.
 - `features/demo-mode.tsx` — persistent, privacy-safe show-off dataset injected into the existing mailbox and conversation UI for screenshots.
 - `features/account-setup.tsx` — provider detection, password/app-password setup, and personal Microsoft device-code connection flow.
-- `features/account-settings.tsx` — unified settings dialog for appearance, mail behavior, account rename/removal, and encrypted backup/restore.
+- `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior, accounts, signatures, and encrypted backup/restore.
+- `features/signatures.ts` — persisted account-to-signature assignments and outgoing-message signature formatting.
 - `features/compose-dialog.tsx` — reusable docked, full-area, inline-draft, and standalone composer with recipient suggestions, attachments, validation, confirmation, and sending.
 - `features/mail-search.tsx` — search form/results and selected-result reader.
 - `features/message-list.tsx` — one account-folder conversation list, selection, and folder-scoped actions.

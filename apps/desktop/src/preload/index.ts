@@ -42,6 +42,7 @@ export interface EmzeroDesktopApi {
   platform: NodeJS.Platform;
   openExternalLink: (url: string) => Promise<boolean>;
   openMailWindow: (context: MailWindowContext) => Promise<boolean>;
+  openSettingsWindow: () => Promise<boolean>;
   getMailWindowContext: (windowId: string) => Promise<MailWindowContext | null>;
   accounts: {
     list: () => Promise<AccountSummary[]>;
@@ -148,6 +149,7 @@ contextBridge.exposeInMainWorld('emzero', {
   platform: process.platform,
   openExternalLink: (url) => ipcRenderer.invoke(ACCOUNT_CHANNELS.openExternalLink, url),
   openMailWindow: (context) => ipcRenderer.invoke(ACCOUNT_CHANNELS.openMailWindow, context),
+  openSettingsWindow: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.openSettingsWindow),
   getMailWindowContext: (windowId) =>
     ipcRenderer.invoke(ACCOUNT_CHANNELS.getMailWindowContext, windowId),
   accounts: {

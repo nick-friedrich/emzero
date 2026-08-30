@@ -48,6 +48,7 @@ import { Field } from './form-field';
 import { addressDetails } from './mail-common';
 import { AttachmentPicker } from './attachment-picker';
 import { useDraftAutosave } from './draft-autosave';
+import { signatureBody } from './signatures';
 
 export interface DraftSavedEvent {
   accountId: string;
@@ -234,7 +235,12 @@ export function ComposeDialog({
   const [cc, setCc] = useState(() => editableAddressList(initialDraft?.cc ?? []));
   const [bcc, setBcc] = useState(() => editableAddressList(initialDraft?.bcc ?? []));
   const [subject, setSubject] = useState(initialDraft?.subject ?? '');
-  const [body, setBody] = useState(initialDraft?.text ?? '');
+  const [body, setBody] = useState(() => {
+    const initialText = initialDraft?.text ?? '';
+    return initialText || composerKind === 'draft' ? initialText : signatureBody(
+      accounts.some((account) => account.id === defaultAccountId) ? defaultAccountId! : (accounts[0]?.id ?? ''),
+    );
+  });
   const [attachments, setAttachments] = useState<MailOutgoingAttachment[]>(initialDraft?.attachments ?? []);
   const [expanded, setExpanded] = useState(variant === 'window');
   const [busy, setBusy] = useState(false);
@@ -416,7 +422,10 @@ export function ComposeDialog({
                 value={accountId}
                 disabled={busy}
                 onChange={(event) => {
-                  setAccountId(event.target.value);
+                  const nextAccountId = event.target.value;
+                  const previousSignature = signatureBody(accountId);
+                  setBody((current) => current === previousSignature ? signatureBody(nextAccountId) : current);
+                  setAccountId(nextAccountId);
                   setStatus(null);
                 }}
               >

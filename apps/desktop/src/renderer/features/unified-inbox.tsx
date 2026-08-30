@@ -63,6 +63,7 @@ import type { DraftSavedEvent } from './compose-dialog';
 import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableAction } from './undoable-delete';
 import type { DemoMailboxSnapshot } from './demo-mode';
+import { useTheme } from '@/theme';
 
 function demoLoadState(demo: DemoMailboxSnapshot): UnifiedInboxLoadState {
   const messageCount = demo.items.reduce(
@@ -107,6 +108,7 @@ export function UnifiedInbox({
   draftSavedEvent?: DraftSavedEvent | null;
   demo?: DemoMailboxSnapshot;
 }) {
+  const { selectNextOnDelete } = useTheme();
   const title = demo?.title ?? {
     inbox: 'Inbox',
     starred: 'Starred',
@@ -644,11 +646,12 @@ export function UnifiedInbox({
     const previousState = state;
     const previousSelection = selectedItem;
     const removeItem = () => {
+      let nextItem: UnifiedConversationItem | undefined;
       if (action === 'delete') {
         const removedIndex = availableItems.findIndex(
           (candidate) => itemKey(candidate) === key,
         );
-        const nextItem = removedIndex >= 0
+        nextItem = removedIndex >= 0
           ? availableItems[removedIndex + 1] ?? availableItems[removedIndex - 1]
           : undefined;
         const nextKey = nextItem ? itemKey(nextItem) : null;
@@ -677,7 +680,7 @@ export function UnifiedInbox({
             }
           : current,
       );
-      setSelectedItem(null);
+      setSelectedItem(action === 'delete' && selectNextOnDelete ? (nextItem ?? null) : null);
     };
     const restoreItem = () => {
       setState(previousState);
