@@ -21,7 +21,7 @@ import {
   BulkOperationBar,
   type BulkOperationView,
 } from './features/bulk-operation';
-import { ComposeDialog } from './features/compose-dialog';
+import { ComposeDialog, type DraftSavedEvent } from './features/compose-dialog';
 import {
   demoAccounts,
   demoFolders,
@@ -81,6 +81,7 @@ export function App() {
     lastSyncedAt: null,
   });
   const [syncRevision, setSyncRevision] = useState(0);
+  const [draftSavedEvent, setDraftSavedEvent] = useState<DraftSavedEvent | null>(null);
   const [bulkOperation, setBulkOperation] = useState<BulkOperationView | null>(null);
 
   const keepSidebarOpen = () => {
@@ -133,7 +134,12 @@ export function App() {
   useEffect(() => {
     const channel = new BroadcastChannel(mailEventsChannel);
     channel.onmessage = (event) => {
-      if ((event.data as { type?: unknown } | null)?.type !== 'changed') return;
+      const data = event.data as { type?: unknown; event?: DraftSavedEvent } | null;
+      if (data?.type === 'draft-saved' && data.event) {
+        setDraftSavedEvent({ ...data.event });
+        return;
+      }
+      if (data?.type !== 'changed') return;
       setComposeOpen(false);
       setComposeRevision((current) => current + 1);
       setSyncRevision((current) => current + 1);
@@ -547,6 +553,10 @@ export function App() {
           selection.kind === 'folder' ? selection.account.id : (accounts[0]?.id ?? null)
         }
         onOpenChange={setComposeOpen}
+        onDraftSaved={(event) => {
+          setComposeRevision((current) => current + 1);
+          setDraftSavedEvent({ ...event });
+        }}
         onSent={() => {
           setComposeRevision((current) => current + 1);
           setSyncRevision((current) => current + 1);
@@ -618,6 +628,7 @@ export function App() {
           onMailLayoutChange={setMailLayout}
           sidebarPinned={sidebarPinned}
           onToggleSidebar={() => setSidebarPinned((current) => !current)}
+          draftSavedEvent={draftSavedEvent}
         />
       ) : selection.kind === 'search' ? (
         <MailSearch
@@ -638,6 +649,7 @@ export function App() {
           onMailLayoutChange={setMailLayout}
           sidebarPinned={sidebarPinned}
           onToggleSidebar={() => setSidebarPinned((current) => !current)}
+          draftSavedEvent={draftSavedEvent}
         />
       )}
       {bulkOperation && (

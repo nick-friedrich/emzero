@@ -75,7 +75,7 @@ import {
 } from './mail-common';
 import { AttachmentPicker } from './attachment-picker';
 import { useDraftAutosave } from './draft-autosave';
-import { ComposeDialog } from './compose-dialog';
+import { ComposeDialog, type DraftSavedEvent } from './compose-dialog';
 
 function MessageBody({
   accountId,
@@ -651,6 +651,7 @@ function ThreadMessageCard({
   onCloseDraft,
   defaultExpanded,
   onReplySent,
+  onDraftSaved,
   onDraftSent,
   demoDetail,
 }: {
@@ -663,6 +664,7 @@ function ThreadMessageCard({
   onCloseDraft: () => void;
   defaultExpanded: boolean;
   onReplySent: (message: MailMessageSummary) => void;
+  onDraftSaved?: (event: DraftSavedEvent) => void;
   onDraftSent?: () => void;
   demoDetail?: MailMessageDetail;
 }) {
@@ -813,6 +815,7 @@ function ThreadMessageCard({
                   }}
                   initialDraftReference={{ folderPath: summary.folderPath, uid: summary.uid }}
                   onOpenChange={(open) => { if (!open) onCloseDraft(); }}
+                  onDraftSaved={onDraftSaved}
                   onSent={(sentMessage) => {
                     if (sentMessage) onReplySent(sentMessage);
                     onDraftSent?.();
@@ -923,6 +926,7 @@ export function ConversationReader({
   onMove,
   onDelete,
   onReplySent,
+  onDraftSaved,
   onDraftSent,
   demoDetails,
 }: {
@@ -940,6 +944,7 @@ export function ConversationReader({
   onMove: (destination: MessageMoveDestination) => void;
   onDelete: () => void;
   onReplySent: (message: MailMessageSummary) => void;
+  onDraftSaved?: (event: DraftSavedEvent) => void;
   onDraftSent?: () => void;
   demoDetails?: ReadonlyMap<string, MailMessageDetail>;
 }) {
@@ -1080,6 +1085,7 @@ export function ConversationReader({
                     ))
                   }
                   onReplySent={onReplySent}
+                  onDraftSaved={onDraftSaved}
                   onDraftSent={onDraftSent}
                   demoDetail={demoDetails?.get(
                     `${selection.account.id}:${message.folderPath}:${message.uid}`,

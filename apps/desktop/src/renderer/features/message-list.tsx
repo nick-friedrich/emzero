@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useEffectEvent,
   useMemo,
@@ -56,6 +57,7 @@ import {
 } from './mail-common';
 import { MailSplitLayout } from './mail-split-layout';
 import { ConversationReader } from './conversation-reader';
+import type { DraftSavedEvent } from './compose-dialog';
 import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableAction } from './undoable-delete';
 
@@ -67,6 +69,7 @@ export function MessageList({
   onMailLayoutChange,
   sidebarPinned,
   onToggleSidebar,
+  draftSavedEvent,
 }: {
   accounts: AccountSummary[];
   selection: FolderSelection;
@@ -75,6 +78,7 @@ export function MessageList({
   onMailLayoutChange: (layout: MailLayout) => void;
   sidebarPinned: boolean;
   onToggleSidebar: () => void;
+  draftSavedEvent?: DraftSavedEvent | null;
 }) {
   const [state, setState] = useState<MessageLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
@@ -182,6 +186,53 @@ export function MessageList({
     setState({ status: 'loading' });
     setRefreshKey((current) => current + 1);
   };
+
+  const applyDraftSaved = useCallback(async (event: DraftSavedEvent) => {
+    if (event.accountId !== selection.account.id) return;
+    const result = await window.emzero.messages.list(
+      event.accountId,
+      event.reference.folderPath,
+      true,
+    );
+    if (!result.ok) {
+      setActionError(result.message ?? 'Could not refresh saved drafts.');
+      return;
+    }
+    const draftMessages = result.messages.map((message) => ({
+      ...message,
+      folderPath: event.reference.folderPath,
+    }));
+    setState((current) => {
+      if (current.status !== 'loaded') return current;
+      const inSelectedFolder = selection.folder.path === event.reference.folderPath;
+      const messages = inSelectedFolder ? draftMessages : current.messages;
+      const relatedMessages = inSelectedFolder
+        ? current.relatedMessages
+        : [
+            ...draftMessages,
+            ...current.relatedMessages.filter(
+              (message) => message.folderPath !== event.reference.folderPath,
+            ),
+          ];
+      const nextConversations = groupMessagesWithRelated(messages, relatedMessages);
+      setSelectedConversation((selected) => selected
+        ? nextConversations.find((conversation) => conversation.id === selected.id) ?? selected
+        : selected);
+      return {
+        ...current,
+        messages,
+        relatedMessages,
+        total: inSelectedFolder ? result.total : current.total,
+        notice: result.message ?? current.notice,
+      };
+    });
+  }, [selection.account.id, selection.folder.path]);
+
+  useEffect(() => {
+    if (!draftSavedEvent) return;
+    const timer = window.setTimeout(() => void applyDraftSaved(draftSavedEvent), 0);
+    return () => window.clearTimeout(timer);
+  }, [applyDraftSaved, draftSavedEvent]);
 
   const showRecipients = selection.folder.specialUse === '\\Sent';
   const conversations = useMemo(
@@ -617,6 +668,7 @@ export function MessageList({
             };
           });
         }}
+        onDraftSaved={applyDraftSaved}
         onDraftSent={refresh}
       />
     ) : null;

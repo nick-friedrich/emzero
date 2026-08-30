@@ -49,6 +49,11 @@ import { addressDetails } from './mail-common';
 import { AttachmentPicker } from './attachment-picker';
 import { useDraftAutosave } from './draft-autosave';
 
+export interface DraftSavedEvent {
+  accountId: string;
+  reference: MailDraftReference;
+}
+
 function recipientQuery(value: string): string {
   return value.slice(Math.max(value.lastIndexOf(','), value.lastIndexOf(';')) + 1).trim();
 }
@@ -205,6 +210,7 @@ export function ComposeDialog({
   initialDraftReference,
   composerKind = 'new',
   variant = 'floating',
+  onDraftSaved,
   onDeleted,
 }: {
   open: boolean;
@@ -216,6 +222,7 @@ export function ComposeDialog({
   initialDraftReference?: MailDraftReference;
   composerKind?: MailComposerKind;
   variant?: 'floating' | 'inline' | 'window';
+  onDraftSaved?: (event: DraftSavedEvent) => void;
   onDeleted?: () => void;
 }) {
   const [accountId, setAccountId] = useState(() =>
@@ -312,7 +319,10 @@ export function ComposeDialog({
 
   const closeComposer = () => {
     if (busy) return;
-    void handoffSavedDraft().then(() => onOpenChange(false));
+    void handoffSavedDraft().then((reference) => {
+      if (reference) onDraftSaved?.({ accountId, reference });
+      onOpenChange(false);
+    });
   };
 
   return (
@@ -366,13 +376,17 @@ export function ComposeDialog({
               aria-label="Open in new window"
               title="Open in new window"
               onClick={() => {
-                void handoffSavedDraft().then((reference) => window.emzero.openMailWindow({
-                  kind: 'composer',
-                  composerKind,
-                  accountId,
-                  draft: currentDraft,
-                  ...(reference ? { draftReference: reference } : {}),
-                })).then((opened) => { if (opened) onOpenChange(false); });
+                void handoffSavedDraft().then(async (reference) => {
+                  if (reference) onDraftSaved?.({ accountId, reference });
+                  const opened = await window.emzero.openMailWindow({
+                    kind: 'composer',
+                    composerKind,
+                    accountId,
+                    draft: currentDraft,
+                    ...(reference ? { draftReference: reference } : {}),
+                  });
+                  if (opened) onOpenChange(false);
+                });
               }}
             >
               <ExternalLink className="size-4" />

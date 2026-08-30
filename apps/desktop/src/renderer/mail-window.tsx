@@ -8,7 +8,7 @@ import type {
   MessageMoveDestination,
 } from '../shared/accounts';
 import { groupMessagesWithRelated, type MailConversation } from '../shared/conversations';
-import { ComposeDialog } from './features/compose-dialog';
+import { ComposeDialog, type DraftSavedEvent } from './features/compose-dialog';
 import { ConversationReader } from './features/conversation-reader';
 import {
   conversationWithFlaggedValues,
@@ -24,6 +24,12 @@ export const mailEventsChannel = 'emzero-mail-events';
 function notifyMailChanged(): void {
   const channel = new BroadcastChannel(mailEventsChannel);
   channel.postMessage({ type: 'changed' });
+  channel.close();
+}
+
+function notifyDraftSaved(event: DraftSavedEvent): void {
+  const channel = new BroadcastChannel(mailEventsChannel);
+  channel.postMessage({ type: 'draft-saved', event });
   channel.close();
 }
 
@@ -61,6 +67,7 @@ function ComposerWindow({ context }: { context: Extract<MailWindowContext, { kin
       initialDraft={context.draft}
       initialDraftReference={context.draftReference}
       onOpenChange={(open) => { if (!open) window.close(); }}
+      onDraftSaved={notifyDraftSaved}
       onSent={notifyMailChanged}
       onDeleted={notifyMailChanged}
     />

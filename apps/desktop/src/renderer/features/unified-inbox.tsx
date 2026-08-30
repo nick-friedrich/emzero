@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useEffectEvent,
   useMemo,
@@ -58,6 +59,7 @@ import {
 } from './mail-common';
 import { MailSplitLayout } from './mail-split-layout';
 import { ConversationReader } from './conversation-reader';
+import type { DraftSavedEvent } from './compose-dialog';
 import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableAction } from './undoable-delete';
 import type { DemoMailboxSnapshot } from './demo-mode';
@@ -92,6 +94,7 @@ export function UnifiedInbox({
   onMailLayoutChange,
   sidebarPinned,
   onToggleSidebar,
+  draftSavedEvent,
   demo,
 }: {
   accounts: AccountSummary[];
@@ -101,6 +104,7 @@ export function UnifiedInbox({
   onMailLayoutChange: (layout: MailLayout) => void;
   sidebarPinned: boolean;
   onToggleSidebar: () => void;
+  draftSavedEvent?: DraftSavedEvent | null;
   demo?: DemoMailboxSnapshot;
 }) {
   const title = demo?.title ?? {
@@ -282,6 +286,95 @@ export function UnifiedInbox({
     setState(demo ? demoLoadState(demo) : { status: 'loading' });
     setRefreshKey((current) => current + 1);
   };
+
+  const applyDraftSaved = useCallback(async (event: DraftSavedEvent) => {
+    if (demo || !['inbox', 'drafts'].includes(mailbox)) return;
+    const account = accounts.find((candidate) => candidate.id === event.accountId);
+    if (!account) return;
+    const [folderResult, draftResult] = await Promise.all([
+      window.emzero.folders.list(account.id),
+      window.emzero.messages.list(account.id, event.reference.folderPath, true),
+    ]);
+    if (!folderResult.ok || !draftResult.ok) {
+      setActionError(
+        draftResult.message ?? folderResult.message ?? 'Could not refresh saved drafts.',
+      );
+      return;
+    }
+    const draftFolder = folderResult.folders.find(
+      (folder) => folder.path === event.reference.folderPath,
+    );
+    const sourceFolder = mailbox === 'drafts'
+      ? draftFolder
+      : findInboxFolder(folderResult.folders);
+    if (!sourceFolder) return;
+    const draftMessages = draftResult.messages.map((message) => ({
+      ...message,
+      folderPath: event.reference.folderPath,
+    }));
+    setState((current) => {
+      if (current.status !== 'loaded') return current;
+      const accountItems = current.items.filter(
+        (item) => item.selection.account.id === account.id,
+      );
+      const existingByKey = new Map(
+        accountItems.flatMap((item) => item.conversation.messages).map(
+          (message) => [`${message.folderPath}:${message.uid}`, message] as const,
+        ),
+      );
+      const existingMessages = [...existingByKey.values()];
+      const primaryMessages = mailbox === 'drafts'
+        ? draftMessages
+        : existingMessages.filter((message) => message.folderPath === sourceFolder.path);
+      const relatedMessages = [
+        ...(mailbox === 'inbox' ? draftMessages : []),
+        ...existingMessages.filter(
+          (message) =>
+            message.folderPath !== sourceFolder.path &&
+            message.folderPath !== event.reference.folderPath,
+        ),
+      ];
+      const selection: FolderSelection = { kind: 'folder', account, folder: sourceFolder };
+      const replacementItems = groupMessagesWithRelated(primaryMessages, relatedMessages).map(
+        (conversation) => ({
+          selection,
+          folders: folderResult.folders,
+          conversation,
+        }),
+      );
+      const items = [
+        ...current.items.filter((item) => item.selection.account.id !== account.id),
+        ...replacementItems,
+      ].sort(
+        (left, right) => conversationTime(right.conversation) - conversationTime(left.conversation),
+      );
+      setSelectedItem((selected) => {
+        if (!selected || selected.selection.account.id !== account.id) return selected;
+        return replacementItems.find(
+          (item) => item.conversation.id === selected.conversation.id,
+        ) ?? selected;
+      });
+      const previousPrimaryCount = existingMessages.filter(
+        (message) => message.folderPath === sourceFolder.path,
+      ).length;
+      return {
+        ...current,
+        items,
+        loadedMessages: mailbox === 'drafts'
+          ? current.loadedMessages - previousPrimaryCount + draftMessages.length
+          : current.loadedMessages,
+        totalMessages: mailbox === 'drafts'
+          ? current.totalMessages - previousPrimaryCount + draftResult.total
+          : current.totalMessages,
+      };
+    });
+  }, [accounts, demo, mailbox]);
+
+  useEffect(() => {
+    if (!draftSavedEvent) return;
+    const timer = window.setTimeout(() => void applyDraftSaved(draftSavedEvent), 0);
+    return () => window.clearTimeout(timer);
+  }, [applyDraftSaved, draftSavedEvent]);
 
   const itemKey = (item: UnifiedConversationItem) =>
     `${item.selection.account.id}:${item.conversation.id}`;
@@ -773,6 +866,7 @@ export function UnifiedInbox({
               : current,
           );
         }}
+        onDraftSaved={applyDraftSaved}
         onDraftSent={refresh}
         demoDetails={demo?.details}
       />
