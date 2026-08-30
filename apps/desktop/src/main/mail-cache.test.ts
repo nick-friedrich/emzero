@@ -14,6 +14,7 @@ const inbox: MailFolderSummary = {
   specialUse: '\\Inbox',
   selectable: true,
   unreadCount: 2,
+  totalCount: 0,
 };
 
 function message(uid: number, subject = `Message ${uid}`): MailMessageSummary {

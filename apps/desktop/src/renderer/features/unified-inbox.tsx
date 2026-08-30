@@ -414,7 +414,6 @@ export function UnifiedInbox({
   const bulkMoveSourcePath = selectedItems[0]?.selection.folder.path ?? '';
 
   useEffect(() => {
-    if (selectedItem) return;
     const handleSelectionShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isEditableTarget(event.target)) return;
       if (event.key === 'Escape' && selectedItemKeys.size > 0) {
@@ -477,7 +476,7 @@ export function UnifiedInbox({
     };
     window.addEventListener('keydown', handleSelectionShortcut);
     return () => window.removeEventListener('keydown', handleSelectionShortcut);
-  }, [availableItems, selectedItem, selectedItemKeys, selectionAnchorKey, selectionCursorKey]);
+  }, [availableItems, selectedItemKeys, selectionAnchorKey, selectionCursorKey]);
 
   useEffect(
     () => {
@@ -1242,7 +1241,10 @@ export function UnifiedInbox({
     <MailSplitLayout
       list={list}
       reader={reader ?? (
-          <div className="grid h-full place-items-center p-8 text-center text-muted-foreground">
+          <div className={cn(
+            'grid h-full place-items-center p-8 text-center text-muted-foreground',
+            window.emzero?.platform === 'darwin' && 'macos-titlebar-drag',
+          )}>
             <div>
               <Inbox className="mx-auto size-8" />
               <p className="mt-3 text-sm">Select a conversation to read it here.</p>

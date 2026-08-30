@@ -19,7 +19,7 @@ import {
 } from './mail-runtime.js';
 
 async function refreshedFolders(imap: ImapFlow, accountId: string): Promise<MailFolderSummary[]> {
-  const listedFolders = await imap.list({ statusQuery: { unseen: true } });
+  const listedFolders = await imap.list({ statusQuery: { unseen: true, messages: true } });
   await subscribeListedFolders(imap, listedFolders);
   const folders: MailFolderSummary[] = listedFolders.map((folder) => ({
     path: folder.path,
@@ -29,6 +29,7 @@ async function refreshedFolders(imap: ImapFlow, accountId: string): Promise<Mail
     specialUse: folder.specialUse ?? null,
     selectable: !folder.flags.has('\\Noselect'),
     unreadCount: folder.status?.unseen ?? 0,
+    totalCount: folder.status?.messages ?? 0,
   }));
   mailCache().replaceFolders(accountId, folders);
   return mailCache().listFolders(accountId);

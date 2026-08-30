@@ -279,7 +279,7 @@ export function ComposeDialog({
   const { status: draftStatus, handoffSavedDraft, discardSavedDraft } = useDraftAutosave(
     accountId,
     currentDraft,
-    hasDraftContent,
+    open && hasDraftContent,
     initialDraftReference,
   );
 

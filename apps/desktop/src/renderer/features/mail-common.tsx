@@ -162,6 +162,17 @@ export function UnreadBadge({ count }: { count: number }) {
   );
 }
 
+export function CountBadge({ count, label }: { count: number; label: string }) {
+  return (
+    <span
+      className="ml-auto min-w-5 shrink-0 rounded-full bg-secondary px-1.5 py-0.5 text-center text-[0.62rem] font-semibold tabular-nums leading-none text-secondary-foreground"
+      aria-label={`${count} ${label}`}
+    >
+      {count > 999 ? '999+' : count}
+    </span>
+  );
+}
+
 export function addressLabel(addresses: MailMessageSummary['from']): string {
   if (addresses.length === 0) return 'Unknown sender';
   return [...new Map(addresses.map((address) => [address.address ?? address.name, address])).values()]

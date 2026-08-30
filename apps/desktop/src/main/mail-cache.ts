@@ -332,19 +332,22 @@ export class MailCache {
   replaceFolders(accountId: string, folders: MailFolderSummary[]): void {
     const upsert = this.#database.prepare(`
       INSERT INTO folders (
-        account_id, path, name, parent_path, delimiter, special_use, selectable, unread_count, position
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        account_id, path, name, parent_path, delimiter, special_use, selectable, unread_count,
+        message_count, position
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (account_id, path) DO UPDATE SET
         name = excluded.name,
         parent_path = excluded.parent_path,
         delimiter = excluded.delimiter,
         special_use = excluded.special_use,
         selectable = excluded.selectable,
-        unread_count = excluded.unread_count
+        unread_count = excluded.unread_count,
+        message_count = excluded.message_count
     `);
     const existing = this.#database
-      .prepare('SELECT path, position FROM folders WHERE account_id = ?')
-      .all(accountId) as Array<{ path: string; position: number }>;
+      .prepare('SELECT path, position, message_count FROM folders WHERE account_id = ?')
+      .all(accountId) as Array<{ path: string; position: number; message_count: number }>;
+    const existingByPath = new Map(existing.map((folder) => [folder.path, folder]));
     const existingPaths = new Set(existing.map((folder) => folder.path));
     let nextPosition = existing.reduce(
       (maximum, folder) => Math.max(maximum, folder.position + 1),
@@ -367,6 +370,7 @@ export class MailCache {
           folder.specialUse,
           folder.selectable ? 1 : 0,
           folder.unreadCount,
+          folder.totalCount ?? existingByPath.get(folder.path)?.message_count ?? 0,
           existingPaths.has(folder.path) ? serverPosition : nextPosition++,
         );
       });
@@ -398,6 +402,7 @@ export class MailCache {
       specialUse: row.special_use,
       selectable: Boolean(row.selectable),
       unreadCount: row.unread_count,
+      totalCount: row.message_count,
     }));
   }
 

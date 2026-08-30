@@ -528,7 +528,10 @@ export function MailSearch({
     <MailSplitLayout
       list={list}
       reader={reader ?? (
-          <div className="grid h-full place-items-center p-8 text-center text-muted-foreground">
+          <div className={cn(
+            'grid h-full place-items-center p-8 text-center text-muted-foreground',
+            window.emzero?.platform === 'darwin' && 'macos-titlebar-drag',
+          )}>
             <div>
               <Search className="mx-auto size-8" />
               <p className="mt-3 text-sm">Select a message to read it here.</p>

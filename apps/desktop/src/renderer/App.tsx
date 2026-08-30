@@ -572,7 +572,9 @@ export function App() {
         onDraftSaved={(event) => {
           setComposeRevision((current) => current + 1);
           setDraftSavedEvent({ ...event });
+          setSyncRevision((current) => current + 1);
         }}
+        onDeleted={() => setSyncRevision((current) => current + 1)}
         onSent={() => {
           setComposeRevision((current) => current + 1);
           setSyncRevision((current) => current + 1);

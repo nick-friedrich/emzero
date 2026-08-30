@@ -271,7 +271,6 @@ export function MessageList({
   );
 
   useEffect(() => {
-    if (selectedConversation) return;
     const handleSelectionShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isEditableTarget(event.target)) return;
       if (event.key === 'Escape' && selectedConversationIds.size > 0) {
@@ -334,7 +333,7 @@ export function MessageList({
     };
     window.addEventListener('keydown', handleSelectionShortcut);
     return () => window.removeEventListener('keydown', handleSelectionShortcut);
-  }, [conversations, selectedConversation, selectedConversationIds, selectionAnchorId, selectionCursorId]);
+  }, [conversations, selectedConversationIds, selectionAnchorId, selectionCursorId]);
 
   useEffect(
     () =>
@@ -1002,7 +1001,10 @@ export function MessageList({
     <MailSplitLayout
       list={list}
       reader={reader ?? (
-          <div className="grid h-full place-items-center p-8 text-center text-muted-foreground">
+          <div className={cn(
+            'grid h-full place-items-center p-8 text-center text-muted-foreground',
+            window.emzero?.platform === 'darwin' && 'macos-titlebar-drag',
+          )}>
             <div>
               <Mail className="mx-auto size-8" />
               <p className="mt-3 text-sm">Select a conversation to read it here.</p>

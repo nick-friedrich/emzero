@@ -67,6 +67,7 @@ import emzeroLogoUrl from '../../../assets/emzero-logo-header.webp';
 import { Field } from './form-field';
 import {
   FolderIcon,
+  CountBadge,
   UnreadBadge,
   joinedFolderPath,
   messageDate,
@@ -231,6 +232,13 @@ export function Sidebar({
   const unifiedInboxUnread = accounts.reduce((total, account) => {
     const folderState = displayedFolderStates[account.id];
     return total + (folderState?.status === 'loaded' ? inboxUnreadCount(folderState.folders) : 0);
+  }, 0);
+  const unifiedDraftCount = accounts.reduce((total, account) => {
+    const folderState = displayedFolderStates[account.id];
+    if (folderState?.status !== 'loaded') return total;
+    return total + (folderState.folders.find(
+      (folder) => folder.selectable && folder.specialUse === '\\Drafts',
+    )?.totalCount ?? 0);
   }, 0);
 
   const dropAccount = async (targetId: string, position: 'before' | 'after') => {
@@ -606,6 +614,7 @@ export function Sidebar({
         >
           <FileText className="size-4" />
           Drafts
+          <CountBadge count={unifiedDraftCount} label={unifiedDraftCount === 1 ? 'draft' : 'drafts'} />
         </Button>
         <Button
           variant={selection.kind === 'unified' && selection.mailbox === 'trash' ? 'secondary' : 'ghost'}
@@ -812,7 +821,9 @@ export function Sidebar({
                                 <span className="min-w-0 flex-1 truncate text-left text-xs leading-4">
                                   {displayFolderName(folder)}
                                 </span>
-                                <UnreadBadge count={folder.unreadCount ?? 0} />
+                                {folder.specialUse === '\\Drafts'
+                                  ? <CountBadge count={folder.totalCount ?? 0} label={(folder.totalCount ?? 0) === 1 ? 'draft' : 'drafts'} />
+                                  : <UnreadBadge count={folder.unreadCount ?? 0} />}
                               </Button>
                               {canManage && (
                                 <div className="absolute right-1 top-0.5 flex bg-sidebar opacity-0 group-hover/folder:opacity-100 focus-within:opacity-100">
