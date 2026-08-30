@@ -31,6 +31,7 @@ const fontStorageKey = 'emzero-interface-font';
 const alwaysLoadRemoteImagesStorageKey = 'emzero-always-load-remote-images';
 const markReadOnOpenStorageKey = 'emzero-mark-read-on-open';
 const selectNextOnDeleteStorageKey = 'emzero-select-next-on-delete';
+const desktopNotificationsStorageKey = 'emzero-desktop-notifications';
 const themeValues = new Set<Theme>(themes.map(({ value }) => value));
 const fontValues = new Set<InterfaceFont>(interfaceFonts.map(({ value }) => value));
 
@@ -87,6 +88,7 @@ function storedBoolean(key: string, fallback: boolean): boolean {
 
 export const storedMarkReadOnOpen = () => storedBoolean(markReadOnOpenStorageKey, true);
 export const storedSelectNextOnDelete = () => storedBoolean(selectNextOnDeleteStorageKey, true);
+export const storedDesktopNotifications = () => storedBoolean(desktopNotificationsStorageKey, true);
 
 interface ThemeContextValue {
   theme: Theme;
@@ -99,6 +101,8 @@ interface ThemeContextValue {
   setMarkReadOnOpen: (enabled: boolean) => void;
   selectNextOnDelete: boolean;
   setSelectNextOnDelete: (enabled: boolean) => void;
+  desktopNotifications: boolean;
+  setDesktopNotifications: (enabled: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -111,6 +115,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   );
   const [markReadOnOpen, setMarkReadOnOpen] = useState(storedMarkReadOnOpen);
   const [selectNextOnDelete, setSelectNextOnDelete] = useState(storedSelectNextOnDelete);
+  const [desktopNotifications, setDesktopNotifications] = useState(storedDesktopNotifications);
 
   useEffect(() => {
     applyTheme(theme);
@@ -150,12 +155,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [selectNextOnDelete]);
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem(desktopNotificationsStorageKey, String(desktopNotifications));
+    } catch {
+      // A read-only storage context should not prevent preference changes for this session.
+    }
+    void window.emzero.notifications.setEnabled(desktopNotifications);
+  }, [desktopNotifications]);
+
+  useEffect(() => {
     const syncPreferences = (event: StorageEvent) => {
       if (event.key === themeStorageKey) setTheme(storedTheme());
       if (event.key === fontStorageKey) setInterfaceFont(storedInterfaceFont());
       if (event.key === alwaysLoadRemoteImagesStorageKey) setAlwaysLoadRemoteImages(storedAlwaysLoadRemoteImages());
       if (event.key === markReadOnOpenStorageKey) setMarkReadOnOpen(storedMarkReadOnOpen());
       if (event.key === selectNextOnDeleteStorageKey) setSelectNextOnDelete(storedSelectNextOnDelete());
+      if (event.key === desktopNotificationsStorageKey) setDesktopNotifications(storedDesktopNotifications());
     };
     window.addEventListener('storage', syncPreferences);
     return () => window.removeEventListener('storage', syncPreferences);
@@ -173,6 +188,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setMarkReadOnOpen,
       selectNextOnDelete,
       setSelectNextOnDelete,
+      desktopNotifications,
+      setDesktopNotifications,
     }}>
       {children}
     </ThemeContext>

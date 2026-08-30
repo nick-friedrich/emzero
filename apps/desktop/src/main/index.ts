@@ -4,6 +4,7 @@ import { registerAccountHandlers } from './accounts.js';
 import { startBackgroundSync, stopBackgroundSync } from './background-sync.js';
 import { closeMailCache, disconnectPooledImapConnections } from './mail-runtime.js';
 import { registerMailWindowHandlers } from './mail-windows.js';
+import { setMailNotificationActivationHandler } from './mail-notifications.js';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -67,6 +68,12 @@ void app.whenReady().then(() => {
   }
   registerAccountHandlers();
   registerMailWindowHandlers();
+  setMailNotificationActivationHandler(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+    if (mainWindow?.isMinimized()) mainWindow.restore();
+    mainWindow?.show();
+    mainWindow?.focus();
+  });
   createWindow();
   startBackgroundSync();
   powerMonitor.on('suspend', disconnectPooledImapConnections);

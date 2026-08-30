@@ -58,6 +58,7 @@ import { errorMessage, mailCache } from './mail-runtime.js';
 import { getFolderMessage, listFolderMessages } from './message-reader.js';
 import { deleteMailDraft, saveMailDraft } from './mail-drafts.js';
 import { sendMessage } from './message-sender.js';
+import { setMailNotificationsEnabled } from './mail-notifications.js';
 import {
   beginMicrosoftAuth,
   cancelMicrosoftAuth,
@@ -189,6 +190,13 @@ export function registerAccountHandlers(): void {
   ipcMain.handle(ACCOUNT_CHANNELS.syncNow, async (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return runBackgroundSync();
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.setNotificationsEnabled, (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (typeof value !== 'boolean') return false;
+    setMailNotificationsEnabled(value);
+    return true;
   });
 
   ipcMain.handle(ACCOUNT_CHANNELS.providers, (event) => {

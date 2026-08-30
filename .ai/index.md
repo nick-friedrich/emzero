@@ -37,6 +37,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/microsoft-oauth.ts` — personal Microsoft device-code authorization, token exchange, and refresh-token renewal.
 - `apps/desktop/src/main/account-folders.ts` — cached/server folder listing, validation, creation, rename, move, deletion, and ordering.
 - `apps/desktop/src/main/background-sync.ts` — foreground-safe scheduled and on-demand Inbox/Sent synchronization state and execution.
+- `apps/desktop/src/main/mail-notifications.ts` — new-mail detection, notification preference state, native desktop alerts, and notification activation behavior.
 - `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential caching, safe error formatting, and sleep-safe isolated interactive/background per-account IMAP connections.
 - `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization with periodic full reconciliation, message parsing, and cached/server message reading.
 - `apps/desktop/src/main/message-sender.ts` — SMTP delivery, IMAP Sent-copy persistence, and sent-message cache updates.

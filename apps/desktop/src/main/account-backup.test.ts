@@ -14,6 +14,7 @@ const settings = {
   alwaysLoadRemoteImages: false,
   markReadOnOpen: true,
   selectNextOnDelete: true,
+  desktopNotifications: true,
   signatures: [{
     id: 'signature-1',
     name: 'Work',
@@ -42,6 +43,14 @@ describe('account backup app settings', () => {
     const encrypted = await encryptBackup(legacyPayload, 'correct horse battery staple');
     await expect(decryptBackup(encrypted, 'correct horse battery staple')).resolves.toEqual(legacyPayload);
     expect(validAppSettingsBackup(settings)).toBe(true);
+    expect(validAppSettingsBackup({
+      theme: settings.theme,
+      interfaceFont: settings.interfaceFont,
+      alwaysLoadRemoteImages: settings.alwaysLoadRemoteImages,
+      markReadOnOpen: settings.markReadOnOpen,
+      selectNextOnDelete: settings.selectNextOnDelete,
+      signatures: settings.signatures,
+    })).toBe(true);
     expect(validAppSettingsBackup({ ...settings, theme: 'unknown-theme' })).toBe(false);
     expect(validAppSettingsBackup({ ...settings, signatures: [{ body: 42 }] })).toBe(false);
   });

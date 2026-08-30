@@ -139,6 +139,9 @@ export interface EmzeroDesktopApi {
     now: () => Promise<MailSyncStatus>;
     onStatus: (listener: (status: MailSyncStatus) => void) => () => void;
   };
+  notifications: {
+    setEnabled: (enabled: boolean) => Promise<boolean>;
+  };
   providers: {
     list: () => Promise<MailProvider[]>;
     discover: (email: string) => Promise<ProviderDiscoveryResult>;
@@ -250,6 +253,10 @@ contextBridge.exposeInMainWorld('emzero', {
       ipcRenderer.on(ACCOUNT_CHANNELS.syncChanged, handler);
       return () => ipcRenderer.removeListener(ACCOUNT_CHANNELS.syncChanged, handler);
     },
+  },
+  notifications: {
+    setEnabled: (enabled) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.setNotificationsEnabled, enabled),
   },
   providers: {
     list: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.providers),

@@ -465,6 +465,7 @@ export interface AppSettingsBackup {
   alwaysLoadRemoteImages: boolean;
   markReadOnOpen: boolean;
   selectNextOnDelete: boolean;
+  desktopNotifications: boolean;
   signatures: BackupSignature[];
 }
 
@@ -574,6 +575,7 @@ export const ACCOUNT_CHANNELS = {
   syncStatus: 'sync:status',
   syncNow: 'sync:now',
   syncChanged: 'sync:changed',
+  setNotificationsEnabled: 'notifications:set-enabled',
 } as const;
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

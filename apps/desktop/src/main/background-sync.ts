@@ -2,8 +2,12 @@ import { BrowserWindow } from 'electron';
 import { ACCOUNT_CHANNELS, type MailSyncStatus } from '../shared/accounts.js';
 import { listAccountFolders } from './account-folders.js';
 import { readAccounts, type StoredAccount } from './account-storage.js';
-import { errorMessage } from './mail-runtime.js';
+import { errorMessage, mailCache } from './mail-runtime.js';
 import { listFolderMessages } from './message-reader.js';
+import {
+  newlyArrivedUnreadMessages,
+  showNewMailNotification,
+} from './mail-notifications.js';
 
 let backgroundSyncTimer: NodeJS.Timeout | null = null;
 let activeSync: Promise<MailSyncStatus> | null = null;
@@ -28,9 +32,25 @@ async function syncAccount(account: StoredAccount): Promise<void> {
   ];
 
   for (const folder of prioritized) {
+    const beforeSync = folder.specialUse === '\\Inbox'
+      ? mailCache().getFolderSyncState(account.id, folder.path)
+      : null;
     const result = await listFolderMessages(account, folder.path, true);
     if (!result.ok || result.source === 'cache') {
       throw new Error(result.message ?? `Could not sync ${folder.name}.`);
+    }
+    if (beforeSync) {
+      const afterSync = mailCache().getFolderSyncState(account.id, folder.path);
+      showNewMailNotification(
+        account.name,
+        newlyArrivedUnreadMessages(
+          beforeSync.messages,
+          beforeSync.syncedAt,
+          beforeSync.uidValidity,
+          result.messages,
+          afterSync.uidValidity,
+        ),
+      );
     }
   }
 }

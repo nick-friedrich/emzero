@@ -92,6 +92,7 @@ export function validAppSettingsBackup(value: unknown): value is AppSettingsBack
     typeof settings.alwaysLoadRemoteImages === 'boolean' &&
     typeof settings.markReadOnOpen === 'boolean' &&
     typeof settings.selectNextOnDelete === 'boolean' &&
+    (settings.desktopNotifications === undefined || typeof settings.desktopNotifications === 'boolean') &&
     Array.isArray(settings.signatures) && settings.signatures.length <= 100 &&
     settings.signatures.every((signature) => signature && typeof signature === 'object' &&
       typeof signature.id === 'string' && typeof signature.name === 'string' &&
@@ -211,6 +212,7 @@ export async function importAccountBackup(selectionId: string, password: string)
     ...(payload.appSettings ? {
       appSettings: {
         ...payload.appSettings,
+        desktopNotifications: payload.appSettings.desktopNotifications ?? true,
         signatures: payload.appSettings.signatures.map((signature) => ({
           ...signature,
           accountIds: [...new Set(signature.accountIds.flatMap((accountId) =>
