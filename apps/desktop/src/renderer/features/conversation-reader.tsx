@@ -76,7 +76,8 @@ import {
 import { AttachmentPicker } from './attachment-picker';
 import { useDraftAutosave } from './draft-autosave';
 import { ComposeDialog, type DraftSavedEvent } from './compose-dialog';
-import { signatureBody } from './signatures';
+import { SignaturePicker } from './signature-picker';
+import { replaceSignature, signatureBody, signatureIdForAccount } from './signatures';
 
 function MessageBody({
   accountId,
@@ -349,6 +350,7 @@ function ReplyComposer({
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [text, setText] = useState(() => signatureBody(account.id));
+  const [signatureId, setSignatureId] = useState(() => signatureIdForAccount(account.id));
   const [attachments, setAttachments] = useState<MailOutgoingAttachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
@@ -496,6 +498,17 @@ function ReplyComposer({
             setStatus(null);
           }}
         />
+        <div className="mt-2">
+          <SignaturePicker
+            value={signatureId}
+            disabled={busy}
+            onChange={(nextSignatureId) => {
+              setText((current) => replaceSignature(current, signatureId, nextSignatureId));
+              setSignatureId(nextSignatureId);
+              setStatus(null);
+            }}
+          />
+        </div>
         <div className="mt-2">
           <AttachmentPicker
             attachments={attachments}

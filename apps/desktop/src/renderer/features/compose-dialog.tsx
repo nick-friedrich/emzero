@@ -48,7 +48,8 @@ import { Field } from './form-field';
 import { addressDetails } from './mail-common';
 import { AttachmentPicker } from './attachment-picker';
 import { useDraftAutosave } from './draft-autosave';
-import { signatureBody } from './signatures';
+import { SignaturePicker } from './signature-picker';
+import { replaceSignature, signatureBody, signatureIdForAccount } from './signatures';
 
 export interface DraftSavedEvent {
   accountId: string;
@@ -241,6 +242,15 @@ export function ComposeDialog({
       accounts.some((account) => account.id === defaultAccountId) ? defaultAccountId! : (accounts[0]?.id ?? ''),
     );
   });
+  const [signatureId, setSignatureId] = useState(() => {
+    const initialAccountId = accounts.some((account) => account.id === defaultAccountId)
+      ? defaultAccountId!
+      : (accounts[0]?.id ?? '');
+    const assignedSignatureId = signatureIdForAccount(initialAccountId);
+    return (!initialDraft && composerKind !== 'draft') || initialDraft?.text.endsWith(signatureBody(initialAccountId))
+      ? assignedSignatureId
+      : '';
+  });
   const [attachments, setAttachments] = useState<MailOutgoingAttachment[]>(initialDraft?.attachments ?? []);
   const [expanded, setExpanded] = useState(variant === 'window');
   const [busy, setBusy] = useState(false);
@@ -423,8 +433,9 @@ export function ComposeDialog({
                 disabled={busy}
                 onChange={(event) => {
                   const nextAccountId = event.target.value;
-                  const previousSignature = signatureBody(accountId);
-                  setBody((current) => current === previousSignature ? signatureBody(nextAccountId) : current);
+                  const nextSignatureId = signatureIdForAccount(nextAccountId);
+                  setBody((current) => replaceSignature(current, signatureId, nextSignatureId));
+                  setSignatureId(nextSignatureId);
                   setAccountId(nextAccountId);
                   setStatus(null);
                 }}
@@ -496,6 +507,15 @@ export function ComposeDialog({
               }}
             />
           </Field>
+          <SignaturePicker
+            value={signatureId}
+            disabled={busy}
+            onChange={(nextSignatureId) => {
+              setBody((current) => replaceSignature(current, signatureId, nextSignatureId));
+              setSignatureId(nextSignatureId);
+              setStatus(null);
+            }}
+          />
           <AttachmentPicker
             attachments={attachments}
             disabled={busy}

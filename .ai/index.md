@@ -77,6 +77,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/account-setup.tsx` — provider detection, password/app-password setup, and personal Microsoft device-code connection flow.
 - `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior, accounts, signatures, and encrypted backup/restore.
 - `features/signatures.ts` — persisted account-to-signature assignments and outgoing-message signature formatting.
+- `features/signature-picker.tsx` — compose-time signature selection shared by new-message and reply composers.
 - `features/compose-dialog.tsx` — reusable docked, full-area, inline-draft, and standalone composer with recipient suggestions, attachments, validation, confirmation, and sending.
 - `features/mail-search.tsx` — search form/results and selected-result reader.
 - `features/message-list.tsx` — one account-folder conversation list, selection, and folder-scoped actions.
