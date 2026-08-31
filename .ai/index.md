@@ -32,6 +32,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/assets/` — renderer and native package branding assets, including the macOS `.icns` application icon.
 - `apps/desktop/src/main/accounts.ts` — trusted IPC validation and handler registration; delegates privileged work to focused main-process services.
 - `apps/desktop/src/main/account-storage.ts` — persisted, user-ordered account records and conversion to renderer-safe account summaries.
+- `apps/desktop/src/main/ai-assistant.ts` — encrypted OpenAI-compatible provider settings and prompt-driven email reply generation.
 - `apps/desktop/src/main/account-backup.ts` — backward-compatible password-encrypted backup export/import for accounts, optional app settings and signatures, destination-machine credential re-wrapping, and signature account-ID remapping.
 - `apps/desktop/src/main/account-connection.ts` — IMAP/SMTP account connectivity verification.
 - `apps/desktop/src/main/microsoft-oauth.ts` — personal Microsoft device-code authorization, token exchange, and refresh-token renewal.
@@ -56,6 +57,7 @@ This index records where application responsibilities live. Read it before makin
 ## Shared contracts and domain logic
 
 - `apps/desktop/src/shared/accounts.ts` — IPC contracts, account/folder/message types, folder-tree operations, bulk-job types, and account validation.
+- `apps/desktop/src/shared/ai.ts` — AI provider/draft IPC contracts, defaults, and renderer-to-main input validation.
 - `apps/desktop/src/shared/conversations.ts` — conversation grouping and quoted-text splitting.
 - `apps/desktop/src/shared/replies.ts` — reply construction, address parsing, and outgoing-draft validation.
 

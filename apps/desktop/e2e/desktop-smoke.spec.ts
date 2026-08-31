@@ -44,6 +44,17 @@ test('navigates the desktop app and reads sample mail', async () => {
     await expect(page.getByRole('heading', { name: 'Inbox', exact: true })).toBeVisible();
     await expect(page.getByRole('list', { name: 'Messages' }).getByRole('listitem')).toHaveCount(5);
 
+    await application.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(800, 700);
+    });
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    await expect(page.getByRole('navigation', { name: 'Mailboxes' })).toBeVisible();
+    await page.getByRole('button', { name: 'Close navigation' }).click();
+    await expect(page.getByRole('button', { name: 'Open navigation' })).toBeVisible();
+    await application.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(1280, 800);
+    });
+
     await page.keyboard.press('ArrowDown');
     const launchConversation = page.getByRole('button', {
       name: /The launch page is ready for review/,

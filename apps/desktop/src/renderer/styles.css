@@ -231,6 +231,11 @@ body {
   -webkit-app-region: no-drag;
 }
 
+/* Floating controls can overlap a drag region without being its descendants. */
+.macos-titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}
+
 .header-tooltip {
   position: relative;
 }

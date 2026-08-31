@@ -20,6 +20,7 @@ import {
   Reply,
   RefreshCw,
   Send,
+  Sparkles,
   Trash2,
   X,
 } from 'lucide-react';
@@ -79,7 +80,7 @@ import { AttachmentPicker } from './attachment-picker';
 import { useDraftAutosave } from './draft-autosave';
 import { ComposeDialog, type DraftSavedEvent } from './compose-dialog';
 import { SignaturePicker } from './signature-picker';
-import { replaceSignature, signatureBody, signatureIdForAccount } from './signatures';
+import { formatSignature, replaceSignature, signatureBody, signatureBodyForId, signatureIdForAccount } from './signatures';
 
 function MessageBody({
   accountId,
@@ -126,12 +127,16 @@ function MessageBody({
 
   return (
     <>
-      {(message.cc.length > 0 || message.replyTo.length > 0) && (
-        <div className="mb-4 text-xs leading-5 text-muted-foreground">
-          {message.cc.length > 0 && <p>Cc: {addressDetails(message.cc)}</p>}
-          {message.replyTo.length > 0 && <p>Reply-To: {addressDetails(message.replyTo)}</p>}
-        </div>
-      )}
+      <div className="mb-4 text-xs leading-5 text-muted-foreground">
+        <p className="break-words">
+          From: <span className="font-medium text-foreground">{addressDetails(message.from)}</span>
+        </p>
+        <p className="break-words">To: {addressDetails(message.to)}</p>
+        {message.cc.length > 0 && <p className="break-words">Cc: {addressDetails(message.cc)}</p>}
+        {message.replyTo.length > 0 && (
+          <p className="break-words">Reply-To: {addressDetails(message.replyTo)}</p>
+        )}
+      </div>
       {message.html && (
         <div className="flex justify-end gap-1" aria-label="Message format">
           <Button
@@ -355,6 +360,9 @@ function ReplyComposer({
   const [signatureId, setSignatureId] = useState(() => signatureIdForAccount(account.id));
   const [attachments, setAttachments] = useState<MailOutgoingAttachment[]>([]);
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiConfigured, setAiConfigured] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
   const [status, setStatus] = useState<Status | null>(null);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
@@ -366,6 +374,48 @@ function ReplyComposer({
     currentDraft,
     open && Boolean(text.trim() || attachments.length),
   );
+
+  const refreshAiSettings = useCallback(() => {
+    void window.emzero.ai.getSettings()
+      .then((settings) => setAiConfigured(settings.configured))
+      .catch(() => setAiConfigured(false));
+  }, []);
+
+  useEffect(() => {
+    refreshAiSettings();
+    const channel = new BroadcastChannel('emzero-settings-events');
+    channel.addEventListener('message', (event) => {
+      if (event.data?.type === 'ai-settings-changed') refreshAiSettings();
+    });
+    return () => channel.close();
+  }, [refreshAiSettings]);
+
+  const draftWithAi = async () => {
+    if (!aiPrompt.trim()) return;
+    setAiBusy(true);
+    setStatus(null);
+    try {
+      const result = await window.emzero.ai.draftReply({
+        prompt: aiPrompt,
+        accountEmail: account.email,
+        subject: message.subject,
+        from: message.from,
+        to: message.to,
+        messageText: message.text,
+      });
+      if (!result.ok || !result.text) {
+        setStatus({ kind: 'error', message: result.message ?? 'Could not draft a reply.' });
+        return;
+      }
+      const signature = formatSignature(signatureBodyForId(signatureId));
+      setText(`${result.text.trim()}${signature}`);
+      setStatus({ kind: 'success', message: 'AI draft added. Review it before sending.' });
+    } catch {
+      setStatus({ kind: 'error', message: 'Could not draft a reply.' });
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   const deliver = async (draft: MailSendDraft) => {
     setBusy(true);
@@ -406,7 +456,7 @@ function ReplyComposer({
     setConfirmationOpen(true);
   };
 
-  useSendShortcut(open && !busy && !confirmationOpen, requestSend);
+  useSendShortcut(open && !busy && !aiBusy && !confirmationOpen, requestSend);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -494,16 +544,42 @@ function ReplyComposer({
           placeholder="Write a reply…"
           aria-label="Reply message"
           autoFocus
-          disabled={busy}
+          disabled={busy || aiBusy}
           onChange={(event) => {
             setText(event.target.value);
             setStatus(null);
           }}
         />
+        {aiConfigured && (
+          <section className="mt-3 rounded-lg border border-border bg-secondary/50 p-3" aria-label="AI reply drafting">
+            <div className="mb-2 flex items-center gap-2 text-xs font-medium">
+              <Sparkles className="size-4 text-primary" />
+              Draft with AI
+            </div>
+            <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
+              <label className="min-w-0 flex-1">
+                <span className="sr-only">Instructions for AI draft</span>
+                <textarea
+                  className="field min-h-20 resize-y text-sm leading-5"
+                  value={aiPrompt}
+                  maxLength={4_000}
+                  placeholder="For example: Politely accept and ask whether Tuesday at 2 works."
+                  disabled={busy || aiBusy}
+                  onChange={(event) => { setAiPrompt(event.target.value); setStatus(null); }}
+                />
+              </label>
+              <Button type="button" variant="secondary" disabled={busy || aiBusy || !aiPrompt.trim()} onClick={() => void draftWithAi()}>
+                {aiBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                Draft reply
+              </Button>
+            </div>
+            <p className="mt-2 text-[0.68rem] text-muted-foreground">The message and your instruction will be sent to your configured AI provider.</p>
+          </section>
+        )}
         <div className="mt-2">
           <SignaturePicker
             value={signatureId}
-            disabled={busy}
+            disabled={busy || aiBusy}
             onChange={(nextSignatureId) => {
               setText((current) => replaceSignature(current, signatureId, nextSignatureId));
               setSignatureId(nextSignatureId);
@@ -514,7 +590,7 @@ function ReplyComposer({
         <div className="mt-2">
           <AttachmentPicker
             attachments={attachments}
-            disabled={busy}
+            disabled={busy || aiBusy}
             onChange={(nextAttachments) => {
               setAttachments(nextAttachments);
               setStatus(null);
@@ -530,8 +606,8 @@ function ReplyComposer({
             {draftStatus.state === 'saving' ? 'Saving draft…' : draftStatus.message}
           </p>
         )}
-        {status?.kind === 'error' && (
-          <p className="mt-2 text-xs text-danger" role="status">
+        {status && (
+          <p className={cn('mt-2 text-xs', status.kind === 'success' ? 'text-success' : 'text-danger')} role="status">
             {status.message}
           </p>
         )}
@@ -539,7 +615,7 @@ function ReplyComposer({
           <Button
             type="button"
             variant="ghost"
-            disabled={busy}
+            disabled={busy || aiBusy}
             onClick={() => {
               void discardSavedDraft().then((deleted) => {
                 if (!deleted) return;
@@ -555,7 +631,7 @@ function ReplyComposer({
           </Button>
           <Button
             type="submit"
-            disabled={busy || !text.trim()}
+            disabled={busy || aiBusy || !text.trim()}
             title="Send reply (Ctrl+Enter)"
             aria-keyshortcuts="Control+Enter Meta+Enter"
           >
@@ -698,6 +774,10 @@ function ThreadMessageCard({
   const [draftAttachmentError, setDraftAttachmentError] = useState<string | null>(null);
   const [deleteDraftConfirmationOpen, setDeleteDraftConfirmationOpen] = useState(false);
   const [deletingDraft, setDeletingDraft] = useState(false);
+  const senderAddresses = summary.from
+    .map(({ address }) => address)
+    .filter((address): address is string => Boolean(address))
+    .join(', ') || 'Unknown sender address';
 
   useEffect(() => {
     if (demoDetail) return;
@@ -773,6 +853,12 @@ function ThreadMessageCard({
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{addressLabel(summary.from)}</p>
+            <p
+              className="truncate text-xs font-medium text-foreground/80"
+              title={`Sender address: ${senderAddresses}`}
+            >
+              From: {senderAddresses}
+            </p>
             <p className="truncate text-xs text-muted-foreground">To: {addressLabel(summary.to)}</p>
           </div>
         </div>

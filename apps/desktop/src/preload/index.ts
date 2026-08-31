@@ -1,5 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
+  AI_CHANNELS,
+  type AiDraftReplyRequest,
+  type AiDraftReplyResult,
+  type AiOperationResult,
+  type AiSettingsSummary,
+  type AiSettingsUpdate,
+} from '../shared/ai.js';
+import {
   ACCOUNT_CHANNELS,
   type AccountDraft,
   type AccountBackupExportRequest,
@@ -44,6 +52,12 @@ export interface EmzeroDesktopApi {
   openMailWindow: (context: MailWindowContext) => Promise<boolean>;
   openSettingsWindow: () => Promise<boolean>;
   getMailWindowContext: (windowId: string) => Promise<MailWindowContext | null>;
+  ai: {
+    getSettings: () => Promise<AiSettingsSummary>;
+    saveSettings: (settings: AiSettingsUpdate) => Promise<AiOperationResult>;
+    removeSettings: () => Promise<AiOperationResult>;
+    draftReply: (request: AiDraftReplyRequest) => Promise<AiDraftReplyResult>;
+  };
   accounts: {
     list: () => Promise<AccountSummary[]>;
     test: (draft: AccountDraft) => Promise<AccountOperationResult>;
@@ -155,6 +169,12 @@ contextBridge.exposeInMainWorld('emzero', {
   openSettingsWindow: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.openSettingsWindow),
   getMailWindowContext: (windowId) =>
     ipcRenderer.invoke(ACCOUNT_CHANNELS.getMailWindowContext, windowId),
+  ai: {
+    getSettings: () => ipcRenderer.invoke(AI_CHANNELS.getSettings),
+    saveSettings: (settings) => ipcRenderer.invoke(AI_CHANNELS.saveSettings, settings),
+    removeSettings: () => ipcRenderer.invoke(AI_CHANNELS.removeSettings),
+    draftReply: (request) => ipcRenderer.invoke(AI_CHANNELS.draftReply, request),
+  },
   accounts: {
     list: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.list),
     test: (draft) => ipcRenderer.invoke(ACCOUNT_CHANNELS.test, draft),

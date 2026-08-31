@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, CircleAlert, Download, LoaderCircle, Palette, Plus, Trash2, Type, Upload } from 'lucide-react';
+import { Bot, CheckCircle2, CircleAlert, Download, Eye, EyeOff, KeyRound, LoaderCircle, Palette, Plus, Trash2, Type, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import type { AccountSummary } from '../../shared/accounts';
+import { DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL, type AiSettingsSummary } from '../../shared/ai';
 import { interfaceFonts, themes, useTheme, type InterfaceFont, type Theme } from '@/theme';
 import type { Status } from './app-shared';
 import { saveSignatures, storedSignatures, type MailSignature } from './signatures';
 
-type SettingsTab = 'general' | 'accounts' | 'signatures' | 'backup';
+type SettingsTab = 'general' | 'accounts' | 'ai' | 'signatures' | 'backup';
 const tabs: { id: SettingsTab; label: string }[] = [
   { id: 'general', label: 'General' }, { id: 'accounts', label: 'Accounts' },
+  { id: 'ai', label: 'AI assistant' },
   { id: 'signatures', label: 'Signatures' }, { id: 'backup', label: 'Backup' },
 ];
 
@@ -34,10 +36,110 @@ export function SettingsWindow() {
     <div className="min-w-0 flex-1 overflow-y-auto p-8"><div className="mx-auto max-w-2xl">
       {tab === 'general' && <GeneralSettings />}
       {tab === 'accounts' && <AccountsSettings accounts={accounts} onChange={setAccounts} />}
+      {tab === 'ai' && <AiSettings />}
       {tab === 'signatures' && <SignatureSettings accounts={accounts} />}
       {tab === 'backup' && <BackupSettings onImported={setAccounts} />}
     </div></div>
   </main>;
+}
+
+function notifyAiSettingsChanged() {
+  const channel = new BroadcastChannel('emzero-settings-events');
+  channel.postMessage({ type: 'ai-settings-changed' });
+  channel.close();
+}
+
+function AiSettings() {
+  const [settings, setSettings] = useState<AiSettingsSummary | null>(null);
+  const [baseUrl, setBaseUrl] = useState(DEFAULT_AI_BASE_URL);
+  const [model, setModel] = useState(DEFAULT_AI_MODEL);
+  const [apiKey, setApiKey] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<Status | null>(null);
+
+  useEffect(() => {
+    void window.emzero.ai.getSettings().then((current) => {
+      setSettings(current);
+      setBaseUrl(current.baseUrl);
+      setModel(current.model);
+    }).catch(() => setStatus({ kind: 'error', message: 'Could not load AI provider settings.' }));
+  }, []);
+
+  const save = async () => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const result = await window.emzero.ai.saveSettings({ apiKey, baseUrl, model });
+      setStatus({ kind: result.ok ? 'success' : 'error', message: result.message });
+      if (result.ok && result.settings) {
+        setSettings(result.settings);
+        setBaseUrl(result.settings.baseUrl);
+        setModel(result.settings.model);
+        setApiKey('');
+        notifyAiSettingsChanged();
+      }
+    } catch {
+      setStatus({ kind: 'error', message: 'Could not save AI provider settings.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const result = await window.emzero.ai.removeSettings();
+      setStatus({ kind: result.ok ? 'success' : 'error', message: result.message });
+      if (result.ok && result.settings) {
+        setSettings(result.settings);
+        setBaseUrl(result.settings.baseUrl);
+        setModel(result.settings.model);
+        setApiKey('');
+        notifyAiSettingsChanged();
+      }
+    } catch {
+      setStatus({ kind: 'error', message: 'Could not remove AI provider settings.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <>
+    <Heading title="AI assistant" description="Connect OpenRouter or another OpenAI-compatible provider to draft email replies." />
+    <form className="space-y-5 rounded-lg border border-border bg-card p-5" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+      <div className="flex items-start gap-3">
+        <Bot className="mt-0.5 size-5 text-muted-foreground" />
+        <div>
+          <h3 className="text-sm font-medium">Provider connection</h3>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">Your API key is encrypted with this device&apos;s secure credential storage. Email text is sent to the configured provider only when you ask it to draft a reply.</p>
+        </div>
+      </div>
+      <label className="block space-y-1.5 text-xs font-medium">
+        <span>API base URL</span>
+        <input className="field" type="url" required value={baseUrl} placeholder={DEFAULT_AI_BASE_URL} disabled={busy} onChange={(event) => { setBaseUrl(event.target.value); setStatus(null); }} />
+        <span className="block font-normal text-muted-foreground">Emzero appends <code>/chat/completions</code> unless the URL already includes it.</span>
+      </label>
+      <label className="block space-y-1.5 text-xs font-medium">
+        <span>Model</span>
+        <input className="field" required value={model} placeholder={DEFAULT_AI_MODEL} disabled={busy} onChange={(event) => { setModel(event.target.value); setStatus(null); }} />
+      </label>
+      <label className="block space-y-1.5 text-xs font-medium">
+        <span>API key</span>
+        <span className="relative block">
+          <KeyRound className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+          <input className="field pl-9 pr-10" type={showApiKey ? 'text' : 'password'} required={!settings?.configured} autoComplete="off" value={apiKey} placeholder={settings?.configured ? 'Stored securely — leave blank to keep it' : 'sk-or-v1-…'} disabled={busy} onChange={(event) => { setApiKey(event.target.value); setStatus(null); }} />
+          <button type="button" className="absolute right-2 top-1.5 grid size-7 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground" aria-label={showApiKey ? 'Hide API key' : 'Show API key'} onClick={() => setShowApiKey((current) => !current)}>{showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
+        </span>
+      </label>
+      <div className="flex items-center gap-2">
+        <Button type="submit" disabled={busy || !baseUrl.trim() || !model.trim() || (!settings?.configured && !apiKey.trim())}>{busy && <LoaderCircle className="size-4 animate-spin" />}{settings?.configured ? 'Save changes' : 'Connect provider'}</Button>
+        {settings?.configured && <AlertDialog><AlertDialogTrigger asChild><Button type="button" variant="ghost" className="text-danger hover:text-danger" disabled={busy}>Remove</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove the AI provider?</AlertDialogTitle><AlertDialogDescription>This deletes the stored API key and disables AI drafting. Your email and drafts are not affected.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => void remove()}>Remove provider</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>}
+      </div>
+    </form>
+    <StatusMessage status={status} />
+  </>;
 }
 
 function Heading({ title, description }: { title: string; description: string }) {

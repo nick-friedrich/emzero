@@ -509,7 +509,7 @@ export function App() {
           <Button
             variant="secondary"
             className={cn(
-              'fixed left-3 z-40 size-10 border border-border bg-card px-0 shadow-sm lg:hidden',
+              'macos-titlebar-no-drag fixed left-3 z-40 size-10 border border-border bg-card px-0 shadow-sm lg:hidden',
               isMac ? 'top-12' : 'top-3',
             )}
             aria-label="Open navigation"

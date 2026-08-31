@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { ipcMain, safeStorage, shell } from 'electron';
 import {
+  AI_CHANNELS,
+  validAiDraftReplyRequest,
+  type AiOperationResult,
+  type AiSettingsUpdate,
+} from '../shared/ai.js';
+import {
   ACCOUNT_CHANNELS,
   MICROSOFT_CLIENT_ID,
   type AccountDraft,
@@ -24,6 +30,12 @@ import {
   type MessageOperationResult,
 } from '../shared/accounts.js';
 import { verifyConnections, verifyMicrosoftConnections } from './account-connection.js';
+import {
+  draftAiReply,
+  getAiSettings,
+  removeAiSettings,
+  saveAiSettings,
+} from './ai-assistant.js';
 import { exportAccountBackup, importAccountBackup, selectAccountBackup, validAppSettingsBackup } from './account-backup.js';
 import {
   openMessageAttachment,
@@ -169,6 +181,38 @@ function validDraftReference(value: unknown): value is MailDraftReference {
 }
 
 export function registerAccountHandlers(): void {
+  ipcMain.handle(AI_CHANNELS.getSettings, async (event) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    return getAiSettings();
+  });
+
+  ipcMain.handle(AI_CHANNELS.saveSettings, async (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      typeof (value as Partial<AiSettingsUpdate>).apiKey !== 'string' ||
+      typeof (value as Partial<AiSettingsUpdate>).baseUrl !== 'string' ||
+      typeof (value as Partial<AiSettingsUpdate>).model !== 'string'
+    ) {
+      return { ok: false, message: 'Invalid AI provider settings.' } satisfies AiOperationResult;
+    }
+    return saveAiSettings(value as AiSettingsUpdate);
+  });
+
+  ipcMain.handle(AI_CHANNELS.removeSettings, async (event) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    return removeAiSettings();
+  });
+
+  ipcMain.handle(AI_CHANNELS.draftReply, async (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (!validAiDraftReplyRequest(value)) {
+      return { ok: false, message: 'Invalid AI draft request.' };
+    }
+    return draftAiReply(value);
+  });
+
   ipcMain.handle(ACCOUNT_CHANNELS.openExternalLink, async (event, value: unknown) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     if (typeof value !== 'string') return false;
