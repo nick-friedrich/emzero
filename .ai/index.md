@@ -84,6 +84,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/message-list.tsx` — one account-folder conversation list, selection, and folder-scoped actions.
 - `features/unified-inbox.tsx` — multi-account Inbox, Starred, and Trash aggregation, selection, and actions.
 - `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: action controls, selection toolbar, and mail-view types/helpers.
+- `features/inbox-view-options.tsx` — persisted icon filters and Starred/Unread inbox grouping shared by account and unified inboxes.
 - `features/mail-split-layout.tsx` — persisted, pointer- and keyboard-resizable list/reader layout shared by three-column mail views.
 - `features/mail-common.test.ts` — renderer tests for isolated HTML-email document generation and remote-image privacy controls.
 - `features/message-move.tsx` — account-and-folder destination picker for single and bulk message moves.

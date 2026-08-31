@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -61,6 +62,13 @@ import type { DraftSavedEvent } from './compose-dialog';
 import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableAction } from './undoable-delete';
 import { useTheme } from '@/theme';
+import {
+  applyInboxView,
+  inboxGroup,
+  InboxGroupHeader,
+  InboxViewOptions,
+  useInboxViewOptions,
+} from './inbox-view-options';
 
 export function MessageList({
   accounts,
@@ -100,6 +108,8 @@ export function MessageList({
   const { ref: listSurfaceRef, compact: compactList } = useCompactMailList(
     mailLayout === 'split',
   );
+  const inboxView = useInboxViewOptions();
+  const isInbox = displayFolderName(selection.folder) === 'Inbox';
 
   useEffect(() => {
     let active = true;
@@ -237,12 +247,22 @@ export function MessageList({
   }, [applyDraftSaved, draftSavedEvent]);
 
   const showRecipients = selection.folder.specialUse === '\\Sent';
-  const conversations = useMemo(
+  const allConversations = useMemo(
     () =>
       state.status === 'loaded'
         ? groupMessagesWithRelated(state.messages, state.relatedMessages)
         : [],
     [state],
+  );
+  const conversations = useMemo(
+    () => isInbox
+      ? applyInboxView(
+          allConversations,
+          selection.folder.path,
+          inboxView.filter,
+        )
+      : allConversations,
+    [allConversations, inboxView.filter, isInbox, selection.folder.path],
   );
   useEffect(() => {
     const pendingId = pendingConversationFocusId.current;
@@ -700,6 +720,17 @@ export function MessageList({
         <div className="flex items-center gap-3">
           <SidebarHeaderToggle pinned={sidebarPinned} onToggle={onToggleSidebar} />
           <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
+          {isInbox && (
+            <InboxViewOptions
+              filter={inboxView.filter}
+              onFilterChange={(filter) => {
+                inboxView.setFilter(filter);
+                setSelectedConversationIds(new Set());
+                setSelectionAnchorId(null);
+                setSelectionCursorId(null);
+              }}
+            />
+          )}
           {!compactList && state.status === 'loaded' && (
             <span className="hidden whitespace-nowrap text-xs text-muted-foreground lg:inline">
               {conversations.length} {conversations.length === 1 ? 'conversation' : 'conversations'}
@@ -755,6 +786,18 @@ export function MessageList({
         </div>
       )}
 
+      {state.status === 'loaded' && state.messages.length > 0 && conversations.length === 0 && (
+        <div className="grid flex-1 place-items-center p-8 text-center">
+          <div>
+            <Mail className="mx-auto size-8 text-muted-foreground" />
+            <h2 className="mt-3 font-semibold">No matching conversations</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Try showing all mail or choosing another filter.
+            </p>
+          </div>
+        </div>
+      )}
+
       {state.status === 'loaded' && state.notice && (
         <div className="border-b border-border bg-secondary px-4 py-3 text-xs text-muted-foreground lg:px-6">
           <div className="flex items-start gap-2">
@@ -802,9 +845,9 @@ export function MessageList({
         />
       )}
 
-      {state.status === 'loaded' && state.messages.length > 0 && (
+      {state.status === 'loaded' && conversations.length > 0 && (
         <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Messages">
-          {conversations.map((conversation) => {
+          {conversations.map((conversation, index) => {
             const latest = conversation.messages[0];
             const prefetchTarget = {
               accountId: selection.account.id,
@@ -817,9 +860,14 @@ export function MessageList({
               (message) => message.folderPath === selection.folder.path && message.unread,
             );
             const flagged = conversation.messages.some((message) => message.flagged);
+            const group = isInbox ? inboxGroup(conversation, selection.folder.path) : null;
+            const previousGroup = isInbox && index > 0
+              ? inboxGroup(conversations[index - 1], selection.folder.path)
+              : null;
             return (
+              <Fragment key={conversation.id}>
+              {group && group !== previousGroup && <InboxGroupHeader group={group} />}
               <div
-                key={conversation.id}
                 className={cn(
                   'group relative flex min-w-0 items-center border-b border-border hover:bg-accent/60',
                   selectedConversationIds.has(conversation.id) && 'bg-accent/60',
@@ -987,6 +1035,7 @@ export function MessageList({
                   />
                 </div>
               </div>
+              </Fragment>
             );
           })}
         </div>

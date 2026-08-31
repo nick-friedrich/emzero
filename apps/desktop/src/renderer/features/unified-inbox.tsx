@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -64,6 +65,13 @@ import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableAction } from './undoable-delete';
 import type { DemoMailboxSnapshot } from './demo-mode';
 import { useTheme } from '@/theme';
+import {
+  applyUnifiedInboxView,
+  inboxGroup,
+  InboxGroupHeader,
+  InboxViewOptions,
+  useInboxViewOptions,
+} from './inbox-view-options';
 
 function demoLoadState(demo: DemoMailboxSnapshot): UnifiedInboxLoadState {
   const messageCount = demo.items.reduce(
@@ -134,6 +142,7 @@ export function UnifiedInbox({
   const { ref: listSurfaceRef, compact: compactList } = useCompactMailList(
     mailLayout === 'split',
   );
+  const inboxView = useInboxViewOptions();
 
   useEffect(() => {
     if (demo) return;
@@ -381,8 +390,13 @@ export function UnifiedInbox({
   const itemKey = (item: UnifiedConversationItem) =>
     `${item.selection.account.id}:${item.conversation.id}`;
   const availableItems = useMemo(
-    () => (state.status === 'loaded' ? state.items : []),
-    [state],
+    () => {
+      const items = state.status === 'loaded' ? state.items : [];
+      return mailbox === 'inbox'
+        ? applyUnifiedInboxView(items, inboxView.filter)
+        : items;
+    },
+    [inboxView.filter, mailbox, state],
   );
   useEffect(() => {
     const pendingKey = pendingUnifiedFocusKey.current;
@@ -897,9 +911,20 @@ export function UnifiedInbox({
         <div className="flex items-center gap-3">
           <SidebarHeaderToggle pinned={sidebarPinned} onToggle={onToggleSidebar} />
           <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
+          {mailbox === 'inbox' && (
+            <InboxViewOptions
+              filter={inboxView.filter}
+              onFilterChange={(filter) => {
+                inboxView.setFilter(filter);
+                setSelectedItemKeys(new Set());
+                setSelectionAnchorKey(null);
+                setSelectionCursorKey(null);
+              }}
+            />
+          )}
           {!compactList && state.status === 'loaded' && (
             <span className="hidden whitespace-nowrap text-xs text-muted-foreground lg:inline">
-              {state.items.length} {state.items.length === 1 ? 'conversation' : 'conversations'}
+              {availableItems.length} {availableItems.length === 1 ? 'conversation' : 'conversations'}
               {' · '}
               {state.loadedMessages < state.totalMessages
                 ? `newest ${state.loadedMessages} of ${state.totalMessages} messages`
@@ -980,12 +1005,12 @@ export function UnifiedInbox({
           })}
           selectedRows={selectedItemKeys.size}
           selectedEmails={selectedEmailCount}
-          totalRows={state.items.length}
+          totalRows={availableItems.length}
           busy={bulkBusy}
           permanentDelete={mailbox === 'trash'}
           onToggleAll={() => {
-            const keys = state.items.map((item) => itemKey(item));
-            if (selectedItemKeys.size === state.items.length) {
+            const keys = availableItems.map((item) => itemKey(item));
+            if (selectedItemKeys.size === availableItems.length) {
               setSelectedItemKeys(new Set());
               setSelectionAnchorKey(null);
               setSelectionCursorKey(null);
@@ -1035,9 +1060,21 @@ export function UnifiedInbox({
         </div>
       )}
 
-      {state.status === 'loaded' && state.items.length > 0 && (
+      {state.status === 'loaded' && state.items.length > 0 && availableItems.length === 0 && (
+        <div className="grid flex-1 place-items-center p-8 text-center">
+          <div>
+            <Inbox className="mx-auto size-8 text-muted-foreground" />
+            <h2 className="mt-3 font-semibold">No matching conversations</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Try showing all mail or choosing another filter.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {state.status === 'loaded' && availableItems.length > 0 && (
         <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Messages">
-          {state.items.map((item) => {
+          {availableItems.map((item, index) => {
             const { conversation, selection } = item;
             const latest = conversation.messages[0];
             const prefetchTarget = {
@@ -1051,9 +1088,17 @@ export function UnifiedInbox({
               (message) => message.folderPath === selection.folder.path && message.unread,
             );
             const flagged = conversation.messages.some((message) => message.flagged);
+            const group = mailbox === 'inbox'
+              ? inboxGroup(conversation, selection.folder.path)
+              : null;
+            const previousItem = availableItems[index - 1];
+            const previousGroup = mailbox === 'inbox' && previousItem
+              ? inboxGroup(previousItem.conversation, previousItem.selection.folder.path)
+              : null;
             return (
+              <Fragment key={`${selection.account.id}:${conversation.id}`}>
+              {group && group !== previousGroup && <InboxGroupHeader group={group} />}
               <div
-                key={`${selection.account.id}:${conversation.id}`}
                 className={cn(
                   'group relative flex min-w-0 items-center border-b border-border hover:bg-accent/60',
                   selectedItemKeys.has(itemKey(item)) && 'bg-accent/60',
@@ -1087,7 +1132,7 @@ export function UnifiedInbox({
                     )}
                     label={`Select conversation: ${conversation.subject}`}
                     onChange={(shiftKey) => {
-                      const keys = state.items.map((candidate) => itemKey(candidate));
+                      const keys = availableItems.map((candidate) => itemKey(candidate));
                       const key = itemKey(item);
                       const targetIndex = keys.indexOf(key);
                       const anchorIndex = selectionAnchorKey ? keys.indexOf(selectionAnchorKey) : -1;
@@ -1132,7 +1177,7 @@ export function UnifiedInbox({
                   onClick={(event) => {
                     cancelPrefetch(prefetchTarget);
                     if (event.shiftKey) {
-                      const keys = state.items.map((candidate) => itemKey(candidate));
+                      const keys = availableItems.map((candidate) => itemKey(candidate));
                       const key = itemKey(item);
                       const targetIndex = keys.indexOf(key);
                       const anchorIndex = selectionAnchorKey ? keys.indexOf(selectionAnchorKey) : targetIndex;
@@ -1227,6 +1272,7 @@ export function UnifiedInbox({
                   />
                 </div>
               </div>
+              </Fragment>
             );
           })}
         </div>
