@@ -648,6 +648,7 @@ export function MessageList({
         conversation={selectedConversation}
         onBack={() => setSelectedConversation(null)}
         navigationVariant={mailLayout === 'split' ? 'close' : 'back'}
+        deferMarkReadUntilLeave={mailLayout === 'split'}
         busy={busyConversations.has(selectedConversation.id)}
         actionError={actionError}
         onSetUnread={(unread) =>

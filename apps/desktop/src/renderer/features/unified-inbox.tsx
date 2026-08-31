@@ -850,6 +850,7 @@ export function UnifiedInbox({
         conversation={selectedItem.conversation}
         onBack={() => setSelectedItem(null)}
         navigationVariant={mailLayout === 'split' ? 'close' : 'back'}
+        deferMarkReadUntilLeave={mailLayout === 'split'}
         busy={busyConversations.has(itemKey(selectedItem))}
         actionError={actionError}
         onSetUnread={(unread) =>

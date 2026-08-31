@@ -1,5 +1,7 @@
 import {
+  useCallback,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   type FormEvent,
@@ -933,6 +935,7 @@ export function ConversationReader({
   conversation,
   onBack,
   navigationVariant = 'back',
+  deferMarkReadUntilLeave = false,
   nativeWindow = false,
   busy,
   actionError,
@@ -951,6 +954,7 @@ export function ConversationReader({
   conversation: MailConversation;
   onBack: () => void;
   navigationVariant?: 'back' | 'close';
+  deferMarkReadUntilLeave?: boolean;
   nativeWindow?: boolean;
   busy: boolean;
   actionError: string | null;
@@ -966,10 +970,13 @@ export function ConversationReader({
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
   const { markReadOnOpen } = useTheme();
   const markedReadConversation = useRef<string | null>(null);
+  const markReadOnLeave = useRef(false);
+  const pendingLeaveTimer = useRef<number | null>(null);
   const nativeMacWindow = nativeWindow && window.emzero?.platform === 'darwin';
   const unread = conversation.messages.some(
     (message) => message.folderPath === selection.folder.path && message.unread,
   );
+  const [unreadWhenOpened] = useState(unread);
   const flagged = conversation.messages.some(
     (message) => message.folderPath === selection.folder.path && message.flagged,
   );
@@ -977,20 +984,57 @@ export function ConversationReader({
     folders.filter((folder) => folder.specialUse === '\\Drafts').map((folder) => folder.path),
   );
   const [activeDraftKey, setActiveDraftKey] = useState<string | null>(null);
+  const markRead = useEffectEvent(() => onSetUnread(false));
+
+  useEffect(() => {
+    if (pendingLeaveTimer.current !== null) {
+      window.clearTimeout(pendingLeaveTimer.current);
+      pendingLeaveTimer.current = null;
+    }
+    markReadOnLeave.current = deferMarkReadUntilLeave && markReadOnOpen && unreadWhenOpened;
+    return () => {
+      if (!markReadOnLeave.current) return;
+      pendingLeaveTimer.current = window.setTimeout(() => {
+        pendingLeaveTimer.current = null;
+        if (!markReadOnLeave.current) return;
+        markReadOnLeave.current = false;
+        markRead();
+      }, 0);
+    };
+  }, [conversation.id, deferMarkReadUntilLeave, markReadOnOpen, selection.account.id, selection.folder.path, unreadWhenOpened]);
 
   useEffect(() => {
     const key = `${selection.account.id}:${selection.folder.path}:${conversation.id}`;
-    if (!markReadOnOpen || !unread || busy || markedReadConversation.current === key) return;
+    if (
+      deferMarkReadUntilLeave ||
+      !markReadOnOpen ||
+      !unread ||
+      busy ||
+      markedReadConversation.current === key
+    ) return;
     markedReadConversation.current = key;
     onSetUnread(false);
-  }, [busy, conversation.id, markReadOnOpen, onSetUnread, selection.account.id, selection.folder.path, unread]);
+  }, [busy, conversation.id, deferMarkReadUntilLeave, markReadOnOpen, onSetUnread, selection.account.id, selection.folder.path, unread]);
+
+  const leaveConversation = useCallback(() => {
+    if (markReadOnLeave.current) {
+      markReadOnLeave.current = false;
+      onSetUnread(false);
+    }
+    onBack();
+  }, [onBack, onSetUnread]);
+
+  const setUnreadExplicitly = useCallback((nextUnread: boolean) => {
+    markReadOnLeave.current = false;
+    onSetUnread(nextUnread);
+  }, [onSetUnread]);
 
   useEffect(() => {
     const handleKeyboardShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isEditableTarget(event.target)) return;
       if (event.key === 'Escape') {
         event.preventDefault();
-        onBack();
+        leaveConversation();
         return;
       }
       if (event.key === 'Delete') {
@@ -1000,12 +1044,12 @@ export function ConversationReader({
       }
       if (event.key.toLowerCase() === 'q' && event.ctrlKey && !event.altKey && !event.shiftKey) {
         event.preventDefault();
-        if (!busy) onSetUnread(!unread);
+        if (!busy) setUnreadExplicitly(!unread);
       }
     };
     window.addEventListener('keydown', handleKeyboardShortcut);
     return () => window.removeEventListener('keydown', handleKeyboardShortcut);
-  }, [busy, onBack, onSetUnread, unread]);
+  }, [busy, leaveConversation, setUnreadExplicitly, unread]);
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
@@ -1020,12 +1064,12 @@ export function ConversationReader({
             className="size-9 px-0"
             aria-label="Close message"
             title="Close message"
-            onClick={onBack}
+            onClick={leaveConversation}
           >
             <X className="size-4" />
           </Button>
         ) : navigationVariant === 'back' ? (
-          <Button variant="ghost" className="px-3" onClick={onBack}>
+          <Button variant="ghost" className="px-3" onClick={leaveConversation}>
             <ArrowLeft className="size-4" />
             Back
           </Button>
@@ -1063,10 +1107,16 @@ export function ConversationReader({
             flagged={flagged}
             busy={busy}
             confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
-            onSetUnread={onSetUnread}
+            onSetUnread={setUnreadExplicitly}
             onSetFlagged={onSetFlagged}
-            onMove={onMove}
-            onDelete={onDelete}
+            onMove={(destination) => {
+              markReadOnLeave.current = false;
+              onMove(destination);
+            }}
+            onDelete={() => {
+              markReadOnLeave.current = false;
+              onDelete();
+            }}
             deleteButtonRef={deleteButtonRef}
           />
         </div>
