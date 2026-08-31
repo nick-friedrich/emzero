@@ -79,6 +79,7 @@ export function App() {
     lastSyncedAt: null,
   });
   const [syncRevision, setSyncRevision] = useState(0);
+  const [folderRevision, setFolderRevision] = useState(0);
   const [draftSavedEvent, setDraftSavedEvent] = useState<DraftSavedEvent | null>(null);
   const [bulkOperation, setBulkOperation] = useState<BulkOperationView | null>(null);
 
@@ -141,6 +142,7 @@ export function App() {
       setComposeOpen(false);
       setComposeRevision((current) => current + 1);
       setSyncRevision((current) => current + 1);
+      setFolderRevision((current) => current + 1);
     };
     return () => channel.close();
   }, []);
@@ -213,6 +215,7 @@ export function App() {
         });
         if (['completed', 'stopped', 'error'].includes(progress.state)) {
           setSyncRevision((current) => current + 1);
+          setFolderRevision((current) => current + 1);
         }
       });
     },
@@ -263,12 +266,19 @@ export function App() {
     }
   }, [bulkOperation?.progress.state]);
 
+  const refreshFolders = useCallback(() => {
+    setFolderRevision((current) => current + 1);
+  }, []);
+
   useEffect(() => {
     if (demoMode) return;
     void window.emzero.sync.status().then(setSyncStatus).catch(() => undefined);
     return window.emzero.sync.onStatus((status) => {
       setSyncStatus(status);
-      if (status.state !== 'syncing') setSyncRevision((current) => current + 1);
+      if (status.state !== 'syncing') {
+        setSyncRevision((current) => current + 1);
+        setFolderRevision((current) => current + 1);
+      }
     });
   }, [demoMode]);
 
@@ -348,7 +358,7 @@ export function App() {
             accounts={visibleAccounts}
             selection={selection}
             syncStatus={syncStatus}
-            syncRevision={syncRevision}
+            syncRevision={folderRevision}
             demoMode={demoMode}
             demoFolderMap={demoMode ? demoFolders : undefined}
             onDemoModeChange={changeDemoMode}
@@ -437,7 +447,7 @@ export function App() {
               accounts={visibleAccounts}
               selection={selection}
               syncStatus={syncStatus}
-              syncRevision={syncRevision}
+              syncRevision={folderRevision}
               demoMode={demoMode}
               demoFolderMap={demoMode ? demoFolders : undefined}
               onDemoModeChange={changeDemoMode}
@@ -519,7 +529,7 @@ export function App() {
             accounts={visibleAccounts}
             selection={selection}
             syncStatus={syncStatus}
-            syncRevision={syncRevision}
+            syncRevision={folderRevision}
             demoMode={demoMode}
             demoFolderMap={demoMode ? demoFolders : undefined}
             onDemoModeChange={changeDemoMode}
@@ -590,6 +600,7 @@ export function App() {
           onMailLayoutChange={setMailLayout}
           sidebarPinned={sidebarPinned}
           onToggleSidebar={() => setSidebarPinned((current) => !current)}
+          onFoldersChanged={refreshFolders}
           demo={demoSnapshot}
         />
       ) : showSetup ? (
@@ -612,6 +623,7 @@ export function App() {
           onMailLayoutChange={setMailLayout}
           sidebarPinned={sidebarPinned}
           onToggleSidebar={() => setSidebarPinned((current) => !current)}
+          onFoldersChanged={refreshFolders}
           draftSavedEvent={draftSavedEvent}
         />
       ) : selection.kind === 'search' ? (
@@ -622,6 +634,7 @@ export function App() {
           onMailLayoutChange={setMailLayout}
           sidebarPinned={sidebarPinned}
           onToggleSidebar={() => setSidebarPinned((current) => !current)}
+          onFoldersChanged={refreshFolders}
         />
       ) : (
         <UnifiedInbox
@@ -633,6 +646,7 @@ export function App() {
           onMailLayoutChange={setMailLayout}
           sidebarPinned={sidebarPinned}
           onToggleSidebar={() => setSidebarPinned((current) => !current)}
+          onFoldersChanged={refreshFolders}
           draftSavedEvent={draftSavedEvent}
         />
       )}

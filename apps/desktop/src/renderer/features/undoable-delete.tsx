@@ -10,6 +10,7 @@ interface PendingAction {
   commit: () => Promise<string | null>;
   restore: () => void;
   onError: (message: string) => void;
+  onCommitted?: () => void;
 }
 
 export function useUndoableAction() {
@@ -24,6 +25,8 @@ export function useUndoableAction() {
     if (error) {
       item.restore();
       item.onError(error);
+    } else {
+      item.onCommitted?.();
     }
   };
 
@@ -32,6 +35,7 @@ export function useUndoableAction() {
     commitAction: () => Promise<string | null>,
     restore: () => void,
     onError: (message: string) => void,
+    onCommitted?: () => void,
   ) => {
     const previous = pending.current;
     if (previous) {
@@ -45,6 +49,7 @@ export function useUndoableAction() {
       commit: commitAction,
       restore,
       onError,
+      onCommitted,
       timer: window.setTimeout(() => void commit(item), undoDelay),
     };
     pending.current = item;

@@ -103,6 +103,7 @@ export function UnifiedInbox({
   onMailLayoutChange,
   sidebarPinned,
   onToggleSidebar,
+  onFoldersChanged,
   draftSavedEvent,
   demo,
 }: {
@@ -113,6 +114,7 @@ export function UnifiedInbox({
   onMailLayoutChange: (layout: MailLayout) => void;
   sidebarPinned: boolean;
   onToggleSidebar: () => void;
+  onFoldersChanged?: () => void;
   draftSavedEvent?: DraftSavedEvent | null;
   demo?: DemoMailboxSnapshot;
 }) {
@@ -722,6 +724,7 @@ export function UnifiedInbox({
         ),
         restoreItem,
         setActionError,
+        onFoldersChanged,
       );
       return true;
     }
@@ -740,6 +743,7 @@ export function UnifiedInbox({
         if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
         return false;
       }
+      onFoldersChanged?.();
       if (mailbox === 'starred' && action === 'unstar') removeItem();
       return true;
     } catch {

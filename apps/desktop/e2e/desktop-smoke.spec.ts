@@ -14,12 +14,13 @@ function packagedExecutable(): string | undefined {
 
 test('navigates the desktop app and reads sample mail', async () => {
   const testInfo = test.info();
+  const profilePath = testInfo.outputPath('electron-profile');
   const executablePath = packagedExecutable();
   const launchArgs = executablePath
-    ? [`--user-data-dir=${testInfo.outputPath('electron-profile')}`]
+    ? [`--user-data-dir=${profilePath}`]
     : [
         path.resolve('.vite/build/main.cjs'),
-        `--user-data-dir=${testInfo.outputPath('electron-profile')}`,
+        `--user-data-dir=${profilePath}`,
       ];
   if (process.platform === 'linux') launchArgs.push('--no-sandbox');
   const launchEnv = { ...process.env };
@@ -35,6 +36,8 @@ test('navigates the desktop app and reads sample mail', async () => {
   });
 
   try {
+    const userDataPath = await application.evaluate(({ app }) => app.getPath('userData'));
+    expect(path.resolve(userDataPath)).toBe(path.resolve(profilePath));
     const page = await application.firstWindow();
     await page.getByLabel('Emzero').click({ clickCount: 5 });
 

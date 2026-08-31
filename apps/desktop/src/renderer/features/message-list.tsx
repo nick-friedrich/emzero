@@ -78,6 +78,7 @@ export function MessageList({
   onMailLayoutChange,
   sidebarPinned,
   onToggleSidebar,
+  onFoldersChanged,
   draftSavedEvent,
 }: {
   accounts: AccountSummary[];
@@ -87,6 +88,7 @@ export function MessageList({
   onMailLayoutChange: (layout: MailLayout) => void;
   sidebarPinned: boolean;
   onToggleSidebar: () => void;
+  onFoldersChanged: () => void;
   draftSavedEvent?: DraftSavedEvent | null;
 }) {
   const [state, setState] = useState<MessageLoadState>({ status: 'loading' });
@@ -531,6 +533,7 @@ export function MessageList({
         ),
         restoreConversation,
         setActionError,
+        onFoldersChanged,
       );
       return true;
     }
@@ -549,6 +552,7 @@ export function MessageList({
         if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
         return false;
       }
+      onFoldersChanged();
       return true;
     } catch {
       setActionError('The action could not be completed.');

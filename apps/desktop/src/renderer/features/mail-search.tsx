@@ -57,6 +57,7 @@ export function MailSearch({
   onMailLayoutChange,
   sidebarPinned,
   onToggleSidebar,
+  onFoldersChanged,
 }: {
   accounts: AccountSummary[];
   initialQuery: string;
@@ -64,6 +65,7 @@ export function MailSearch({
   onMailLayoutChange: (layout: MailLayout) => void;
   sidebarPinned: boolean;
   onToggleSidebar: () => void;
+  onFoldersChanged: () => void;
 }) {
   const { selectNextOnDelete } = useTheme();
   const [query, setQuery] = useState(initialQuery);
@@ -227,6 +229,7 @@ export function MailSearch({
             ),
             restoreSelection,
             setActionError,
+            onFoldersChanged,
           );
           return;
         }
@@ -242,6 +245,7 @@ export function MailSearch({
             setActionError(error);
             return;
           }
+          onFoldersChanged();
           const isFlagAction = action === 'star' || action === 'unstar';
           const nextValue = action === 'unread' || action === 'star';
           setSelected((current) =>
