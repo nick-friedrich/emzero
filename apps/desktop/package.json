@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "test": "vitest run",
+    "test:e2e": "electron-forge package && playwright test",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -41,6 +42,7 @@
     "@electron-forge/plugin-vite": "^7.11.2",
     "@electron-forge/shared-types": "^7.11.2",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/mailparser": "^3.4.6",
     "@types/node": "^24.10.13",

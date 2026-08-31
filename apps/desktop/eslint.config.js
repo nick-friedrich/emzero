@@ -18,7 +18,7 @@ export default tseslint.config(
     rules: reactHooks.configs.flat.recommended.rules,
   },
   {
-    files: ['*.config.ts', 'forge.config.ts', 'src/{main,preload}/**/*.ts'],
+    files: ['*.config.ts', 'forge.config.ts', 'e2e/**/*.ts', 'src/{main,preload}/**/*.ts'],
     languageOptions: {
       globals: globals.node,
     },

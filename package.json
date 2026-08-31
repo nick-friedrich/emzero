@@ -10,7 +10,8 @@
     "lint": "pnpm --filter @emzero/desktop lint",
     "typecheck": "pnpm --filter @emzero/desktop typecheck",
     "test": "pnpm --filter @emzero/desktop test",
+    "test:e2e": "pnpm --filter @emzero/desktop test:e2e",
     "build": "pnpm --filter @emzero/desktop package",
-    "check": "pnpm lint && pnpm typecheck && pnpm test"
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e"
   }
 }

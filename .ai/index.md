@@ -105,4 +105,6 @@ All paths in this section are relative to `apps/desktop/src/renderer/`.
 - `apps/desktop/src/main/` tests cover cache, HTML sanitization, provider discovery, folder subscriptions, folder input rules, message parsing helpers, message-action rules, draft-folder discovery, and bulk-job validation/progress.
 - `apps/desktop/src/shared/` tests cover domain helpers and contracts.
 - `apps/desktop/src/renderer/` tests cover renderer utilities and theming.
+- `apps/desktop/e2e/` — Playwright smoke coverage for production Electron builds using the privacy-safe demo dataset.
+- `apps/desktop/playwright.config.ts` — production Electron smoke-test configuration.
 - Run the complete suite with `pnpm check` from the repository root.

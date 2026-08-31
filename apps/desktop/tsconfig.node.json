@@ -12,8 +12,10 @@
   },
   "include": [
     "forge.config.ts",
+    "playwright.config.ts",
     "vite.*.config.ts",
     "vitest.config.ts",
+    "e2e/**/*.ts",
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",

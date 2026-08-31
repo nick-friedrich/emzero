@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, Menu, powerMonitor } from 'electron';
 import { registerAccountHandlers } from './accounts.js';
@@ -7,6 +8,12 @@ import { registerMailWindowHandlers } from './mail-windows.js';
 import { setMailNotificationActivationHandler } from './mail-notifications.js';
 
 let mainWindow: BrowserWindow | null = null;
+
+const bundledAssets = path.join(app.getAppPath(), 'assets');
+const assetsDirectory = existsSync(bundledAssets)
+  ? bundledAssets
+  : path.resolve(__dirname, '../../assets');
+const appAsset = (fileName: string) => path.join(assetsDirectory, fileName);
 
 app.setName('Emzero');
 
@@ -28,7 +35,7 @@ const createWindow = (): void => {
     minWidth: 400,
     minHeight: 600,
     backgroundColor: '#f5f5f4',
-    icon: path.join(app.getAppPath(), 'assets', 'emzero-logo.png'),
+    icon: appAsset('emzero-logo.png'),
     show: false,
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
     webPreferences: {
@@ -59,7 +66,7 @@ const createWindow = (): void => {
 
 void app.whenReady().then(() => {
   if (process.platform === 'darwin') {
-    app.dock?.setIcon(path.join(app.getAppPath(), 'assets', 'emzero-logo.png'));
+    app.dock?.setIcon(appAsset('emzero-logo.png'));
     const applicationMenu = Menu.getApplicationMenu();
     if (applicationMenu?.items[0]) {
       applicationMenu.items[0].label = app.name;
