@@ -32,7 +32,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/assets/` — renderer and native package branding assets, including the macOS `.icns` application icon.
 - `apps/desktop/src/main/accounts.ts` — trusted IPC validation and handler registration; delegates privileged work to focused main-process services.
 - `apps/desktop/src/main/account-storage.ts` — persisted, user-ordered account records and conversion to renderer-safe account summaries.
-- `apps/desktop/src/main/ai-assistant.ts` — encrypted OpenAI-compatible provider settings and prompt-driven email reply generation.
+- `apps/desktop/src/main/ai-assistant.ts` — encrypted OpenAI-compatible provider settings and prompt-driven reply, new-message, and saved-draft generation.
 - `apps/desktop/src/main/account-backup.ts` — backward-compatible password-encrypted backup export/import for accounts, optional app settings and signatures, destination-machine credential re-wrapping, and signature account-ID remapping.
 - `apps/desktop/src/main/account-connection.ts` — IMAP/SMTP account connectivity verification.
 - `apps/desktop/src/main/microsoft-oauth.ts` — personal Microsoft device-code authorization, token exchange, and refresh-token renewal.
@@ -82,6 +82,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/signatures.ts` — persisted account-to-signature assignments and outgoing-message signature formatting.
 - `features/signature-picker.tsx` — compose-time signature selection shared by new-message and reply composers.
 - `features/compose-dialog.tsx` — reusable docked, full-area, inline-draft, and standalone composer with recipient suggestions, attachments, validation, confirmation, and sending.
+- `features/ai-draft-assistant.tsx` — reusable configured-provider prompt panel for AI drafting in reply, new-message, and saved-draft composers.
 - `features/mail-search.tsx` — search form/results and selected-result reader.
 - `features/message-list.tsx` — one account-folder conversation list, selection, and folder-scoped actions.
 - `features/unified-inbox.tsx` — multi-account Inbox, Starred, and Trash aggregation, selection, and actions.

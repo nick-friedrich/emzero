@@ -1,4 +1,4 @@
-import type { MailAddressSummary } from './accounts.js';
+import type { MailAddressSummary, MailComposerKind } from './accounts.js';
 import { splitQuotedText } from './conversations.js';
 
 export const DEFAULT_AI_BASE_URL = 'https://openrouter.ai/api/v1';
@@ -48,10 +48,14 @@ export interface AiOperationResult {
   settings?: AiSettingsSummary;
 }
 
-export interface AiDraftReplyRequest {
+export interface AiDraftMessageRequest {
+  kind: MailComposerKind;
   prompt: string;
   accountEmail: string;
   subject: string;
+  to: MailAddressSummary[];
+  cc: MailAddressSummary[];
+  existingDraft: string;
   conversation: AiConversationMessage[];
 }
 
@@ -62,7 +66,7 @@ export interface AiConversationMessage {
   text: string;
 }
 
-export interface AiDraftReplyResult {
+export interface AiDraftMessageResult {
   ok: boolean;
   message?: string;
   text?: string;
@@ -123,7 +127,7 @@ export const AI_CHANNELS = {
   saveSettings: 'ai:save-settings',
   removeSettings: 'ai:remove-settings',
   listModels: 'ai:list-models',
-  draftReply: 'ai:draft-reply',
+  draftMessage: 'ai:draft-message',
 } as const;
 
 export function isAiProvider(value: unknown): value is AiProvider {
@@ -171,9 +175,9 @@ export function validAiModelListRequest(value: unknown): value is AiModelListReq
   );
 }
 
-export function validAiDraftReplyRequest(value: unknown): value is AiDraftReplyRequest {
+export function validAiDraftMessageRequest(value: unknown): value is AiDraftMessageRequest {
   if (!value || typeof value !== 'object') return false;
-  const request = value as Partial<AiDraftReplyRequest>;
+  const request = value as Partial<AiDraftMessageRequest>;
   const validAddresses = (addresses: unknown) =>
     Array.isArray(addresses) &&
     addresses.length <= 100 &&
@@ -198,6 +202,7 @@ export function validAiDraftReplyRequest(value: unknown): value is AiDraftReplyR
     );
   };
   return (
+    (request.kind === 'new' || request.kind === 'reply' || request.kind === 'draft') &&
     typeof request.prompt === 'string' &&
     request.prompt.trim().length > 0 &&
     request.prompt.length <= 4_000 &&
@@ -205,8 +210,11 @@ export function validAiDraftReplyRequest(value: unknown): value is AiDraftReplyR
     request.accountEmail.length <= 320 &&
     typeof request.subject === 'string' &&
     request.subject.length <= 2_000 &&
+    validAddresses(request.to) &&
+    validAddresses(request.cc) &&
+    typeof request.existingDraft === 'string' &&
+    request.existingDraft.length <= 200_000 &&
     Array.isArray(request.conversation) &&
-    request.conversation.length > 0 &&
     request.conversation.length <= 100 &&
     request.conversation.every(validConversationMessage) &&
     request.conversation.reduce((total, message) => total + message.text.length, 0) <= 1_000_000

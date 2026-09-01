@@ -47,9 +47,10 @@ import { sendShortcutLabel, skipSendConfirmationStorageKey, storedSkipSendConfir
 import { Field } from './form-field';
 import { addressDetails } from './mail-common';
 import { AttachmentPicker } from './attachment-picker';
+import { AiDraftAssistant } from './ai-draft-assistant';
 import { useDraftAutosave } from './draft-autosave';
 import { SignaturePicker } from './signature-picker';
-import { replaceSignature, signatureBody, signatureIdForAccount } from './signatures';
+import { formatSignature, replaceSignature, signatureBody, signatureBodyForId, signatureIdForAccount } from './signatures';
 
 export interface DraftSavedEvent {
   accountId: string;
@@ -254,6 +255,7 @@ export function ComposeDialog({
   const [attachments, setAttachments] = useState<MailOutgoingAttachment[]>(initialDraft?.attachments ?? []);
   const [expanded, setExpanded] = useState(variant === 'window');
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
   const [skipSendConfirmation, setSkipSendConfirmation] = useState(
     storedSkipSendConfirmation,
@@ -282,6 +284,27 @@ export function ComposeDialog({
     open && hasDraftContent,
     initialDraftReference,
   );
+
+  const signatureStart = body.lastIndexOf('\n\n-- \n');
+  const bodyWithoutSignature = signatureStart >= 0 ? body.slice(0, signatureStart) : body;
+  const preservedSignature = signatureStart >= 0
+    ? body.slice(signatureStart)
+    : formatSignature(signatureBodyForId(signatureId));
+
+  const generateAiDraft = (instruction: string) => {
+    const account = accounts.find((candidate) => candidate.id === accountId);
+    if (!account) throw new Error('Choose a sending account first.');
+    return window.emzero.ai.draftMessage({
+      kind: composerKind,
+      prompt: instruction,
+      accountEmail: account.email,
+      subject,
+      to: currentDraft.to,
+      cc: currentDraft.cc,
+      existingDraft: bodyWithoutSignature.trim(),
+      conversation: [],
+    });
+  };
 
   const deliver = async (draft: MailSendDraft) => {
     setBusy(true);
@@ -326,7 +349,7 @@ export function ComposeDialog({
     setConfirmationOpen(true);
   };
 
-  useSendShortcut(open && !busy && !confirmationOpen, requestSend);
+  useSendShortcut(open && !busy && !aiBusy && !confirmationOpen, requestSend);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -334,7 +357,7 @@ export function ComposeDialog({
   };
 
   const closeComposer = () => {
-    if (busy) return;
+    if (busy || aiBusy) return;
     void handoffSavedDraft().then((reference) => {
       if (reference) onDraftSaved?.({ accountId, reference });
       onOpenChange(false);
@@ -346,6 +369,7 @@ export function ComposeDialog({
       {open && <section
         className={cn(
           'z-40 flex flex-col overflow-hidden border border-border bg-card shadow-2xl',
+          variant !== 'window' && 'macos-titlebar-no-drag',
           variant === 'inline' && !expanded && 'relative mt-5 rounded-lg',
           variant === 'floating' && !expanded && 'fixed bottom-4 right-4 max-h-[min(44rem,calc(100vh-2rem))] w-[min(42rem,calc(100vw-2rem))] rounded-xl',
           expanded && variant !== 'window' && 'fixed inset-y-0 right-0 lg:left-[var(--sidebar-width)]',
@@ -368,7 +392,7 @@ export function ComposeDialog({
               type="button"
               variant="ghost"
               className="size-8 px-0 text-danger hover:text-danger"
-              disabled={busy}
+              disabled={busy || aiBusy}
               aria-label="Delete draft"
               title="Delete draft"
               onClick={() => setDeleteConfirmationOpen(true)}
@@ -379,6 +403,7 @@ export function ComposeDialog({
               type="button"
               variant="ghost"
               className="size-8 px-0"
+              disabled={aiBusy}
               aria-label={expanded ? 'Return to compact composer' : 'Expand to message area'}
               title={expanded ? 'Return to compact composer' : 'Expand to message area'}
               onClick={() => setExpanded((current) => !current)}
@@ -389,6 +414,7 @@ export function ComposeDialog({
               type="button"
               variant="ghost"
               className="size-8 px-0"
+              disabled={aiBusy}
               aria-label="Open in new window"
               title="Open in new window"
               onClick={() => {
@@ -411,7 +437,7 @@ export function ComposeDialog({
               type="button"
               variant="ghost"
               className="size-8 px-0"
-              disabled={busy}
+              disabled={busy || aiBusy}
               aria-label="Close composer"
               title="Close composer"
               onClick={closeComposer}
@@ -430,7 +456,7 @@ export function ComposeDialog({
               <select
                 className="field appearance-none pr-9"
                 value={accountId}
-                disabled={busy}
+                disabled={busy || aiBusy}
                 onChange={(event) => {
                   const nextAccountId = event.target.value;
                   const nextSignatureId = signatureIdForAccount(nextAccountId);
@@ -455,7 +481,7 @@ export function ComposeDialog({
             value={to}
             placeholder="Start typing a name or email address"
             autoFocus
-            disabled={busy}
+            disabled={busy || aiBusy}
             onChange={(value) => {
               setTo(value);
               setStatus(null);
@@ -467,7 +493,7 @@ export function ComposeDialog({
               accountId={accountId}
               value={cc}
               placeholder="Optional"
-              disabled={busy}
+              disabled={busy || aiBusy}
               onChange={(value) => {
                 setCc(value);
                 setStatus(null);
@@ -478,7 +504,7 @@ export function ComposeDialog({
               accountId={accountId}
               value={bcc}
               placeholder="Optional"
-              disabled={busy}
+              disabled={busy || aiBusy}
               onChange={(value) => {
                 setBcc(value);
                 setStatus(null);
@@ -489,7 +515,7 @@ export function ComposeDialog({
             <input
               className="field"
               value={subject}
-              disabled={busy}
+              disabled={busy || aiBusy}
               onChange={(event) => {
                 setSubject(event.target.value);
                 setStatus(null);
@@ -500,16 +526,30 @@ export function ComposeDialog({
             <textarea
               className="field min-h-52 resize-y leading-6"
               value={body}
-              disabled={busy}
+              disabled={busy || aiBusy}
               onChange={(event) => {
                 setBody(event.target.value);
                 setStatus(null);
               }}
             />
           </Field>
+          <AiDraftAssistant
+            disabled={busy || !accountId}
+            actionLabel={composerKind === 'draft' ? 'Rewrite draft' : 'Draft message'}
+            placeholder={composerKind === 'draft'
+              ? 'For example: Make this warmer and more concise.'
+              : 'For example: Ask for a project update and suggest a call next week.'}
+            privacyDescription="Your recipients, subject, existing draft, and instruction will be sent to your configured AI provider."
+            onGenerate={generateAiDraft}
+            onApply={(draft) => {
+              setBody(`${draft}${preservedSignature}`);
+              setStatus(null);
+            }}
+            onBusyChange={setAiBusy}
+          />
           <SignaturePicker
             value={signatureId}
-            disabled={busy}
+            disabled={busy || aiBusy}
             onChange={(nextSignatureId) => {
               setBody((current) => replaceSignature(current, signatureId, nextSignatureId));
               setSignatureId(nextSignatureId);
@@ -518,7 +558,7 @@ export function ComposeDialog({
           />
           <AttachmentPicker
             attachments={attachments}
-            disabled={busy}
+            disabled={busy || aiBusy}
             onChange={(nextAttachments) => {
               setAttachments(nextAttachments);
               setStatus(null);
@@ -545,14 +585,14 @@ export function ComposeDialog({
             <Button
               type="button"
               variant="ghost"
-              disabled={busy}
+              disabled={busy || aiBusy}
               onClick={closeComposer}
             >
               Close
             </Button>
             <Button
               type="submit"
-              disabled={busy || !accountId}
+              disabled={busy || aiBusy || !accountId}
               title="Send (Ctrl+Enter)"
               aria-keyshortcuts="Control+Enter Meta+Enter"
             >

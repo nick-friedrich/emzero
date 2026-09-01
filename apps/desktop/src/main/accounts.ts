@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ipcMain, safeStorage, shell } from 'electron';
 import {
   AI_CHANNELS,
-  validAiDraftReplyRequest,
+  validAiDraftMessageRequest,
   validAiModelListRequest,
   type AiOperationResult,
   type AiSettingsUpdate,
@@ -32,7 +32,7 @@ import {
 } from '../shared/accounts.js';
 import { verifyConnections, verifyMicrosoftConnections } from './account-connection.js';
 import {
-  draftAiReply,
+  draftAiMessage,
   getAiSettings,
   listAiModels,
   removeAiSettings,
@@ -215,12 +215,12 @@ export function registerAccountHandlers(): void {
     return listAiModels(value);
   });
 
-  ipcMain.handle(AI_CHANNELS.draftReply, async (event, value: unknown) => {
+  ipcMain.handle(AI_CHANNELS.draftMessage, async (event, value: unknown) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-    if (!validAiDraftReplyRequest(value)) {
+    if (!validAiDraftMessageRequest(value)) {
       return { ok: false, message: 'Invalid AI draft request.' };
     }
-    return draftAiReply(value);
+    return draftAiMessage(value);
   });
 
   ipcMain.handle(ACCOUNT_CHANNELS.openExternalLink, async (event, value: unknown) => {

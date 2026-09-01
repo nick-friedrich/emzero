@@ -232,7 +232,8 @@ body {
 }
 
 /* Floating controls can overlap a drag region without being its descendants. */
-.macos-titlebar-no-drag {
+.macos-titlebar-no-drag,
+.macos-titlebar-no-drag * {
   -webkit-app-region: no-drag;
 }
 

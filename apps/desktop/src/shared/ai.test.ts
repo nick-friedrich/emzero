@@ -3,7 +3,7 @@ import {
   DEFAULT_AI_BASE_URL,
   DEFAULT_AI_MODEL,
   formatAiConversationContext,
-  validAiDraftReplyRequest,
+  validAiDraftMessageRequest,
   validateAiSettingsUpdate,
 } from './ai.js';
 
@@ -51,9 +51,13 @@ describe('AI settings validation', () => {
 describe('AI draft validation', () => {
   it('requires a bounded, non-empty prompt', () => {
     const request = {
+      kind: 'reply' as const,
       prompt: 'Reply warmly and accept.',
       accountEmail: 'me@example.com',
       subject: 'Dinner',
+      to: [{ name: 'Ada', address: 'ada@example.com' }],
+      cc: [],
+      existingDraft: '',
       conversation: [{
         sentAt: '2026-08-31T12:00:00.000Z',
         from: [{ name: 'Ada', address: 'ada@example.com' }],
@@ -61,9 +65,21 @@ describe('AI draft validation', () => {
         text: 'Would you like to join us?',
       }],
     };
-    expect(validAiDraftReplyRequest(request)).toBe(true);
-    expect(validAiDraftReplyRequest({ ...request, prompt: '  ' })).toBe(false);
-    expect(validAiDraftReplyRequest({ ...request, conversation: [] })).toBe(false);
+    expect(validAiDraftMessageRequest(request)).toBe(true);
+    expect(validAiDraftMessageRequest({ ...request, prompt: '  ' })).toBe(false);
+  });
+
+  it('allows new-message drafting without a conversation', () => {
+    expect(validAiDraftMessageRequest({
+      kind: 'new',
+      prompt: 'Ask for a project update.',
+      accountEmail: 'me@example.com',
+      subject: 'Project update',
+      to: [{ name: 'Ada', address: 'ada@example.com' }],
+      cc: [],
+      existingDraft: '',
+      conversation: [],
+    })).toBe(true);
   });
 
   it('formats the full thread chronologically without duplicated quoted replies', () => {

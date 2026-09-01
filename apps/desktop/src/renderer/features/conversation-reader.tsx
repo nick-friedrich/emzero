@@ -19,7 +19,6 @@ import {
   Reply,
   RefreshCw,
   Send,
-  Sparkles,
   Trash2,
   X,
 } from 'lucide-react';
@@ -77,6 +76,7 @@ import {
   type MessageDetailLoadState,
 } from './mail-common';
 import { AttachmentPicker } from './attachment-picker';
+import { AiDraftAssistant } from './ai-draft-assistant';
 import { useDraftAutosave } from './draft-autosave';
 import { ComposeDialog, type DraftSavedEvent } from './compose-dialog';
 import { SignaturePicker } from './signature-picker';
@@ -363,8 +363,6 @@ function ReplyComposer({
   const [attachments, setAttachments] = useState<MailOutgoingAttachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
-  const [aiConfigured, setAiConfigured] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState('');
   const [status, setStatus] = useState<Status | null>(null);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
@@ -377,24 +375,7 @@ function ReplyComposer({
     open && Boolean(text.trim() || attachments.length),
   );
 
-  const refreshAiSettings = useCallback(() => {
-    void window.emzero.ai.getSettings()
-      .then((settings) => setAiConfigured(settings.configured))
-      .catch(() => setAiConfigured(false));
-  }, []);
-
-  useEffect(() => {
-    refreshAiSettings();
-    const channel = new BroadcastChannel('emzero-settings-events');
-    channel.addEventListener('message', (event) => {
-      if (event.data?.type === 'ai-settings-changed') refreshAiSettings();
-    });
-    return () => channel.close();
-  }, [refreshAiSettings]);
-
-  const draftWithAi = async () => {
-    if (!aiPrompt.trim()) return;
-    setAiBusy(true);
+  const generateAiReply = async (instruction: string) => {
     setStatus(null);
     try {
       const loadedConversation = await Promise.all(
@@ -428,26 +409,18 @@ function ReplyComposer({
         conversation.unshift({ ...item, text });
         remainingTextLength -= text.length;
       }
-      const result = await window.emzero.ai.draftReply({
-        prompt: aiPrompt,
+      return await window.emzero.ai.draftMessage({
+        kind: 'reply',
+        prompt: instruction,
         accountEmail: account.email,
         subject: message.subject,
+        to: currentDraft.to,
+        cc: currentDraft.cc,
+        existingDraft: text.replace(formatSignature(signatureBodyForId(signatureId)), '').trim(),
         conversation,
       });
-      if (!result.ok || !result.text) {
-        setStatus({ kind: 'error', message: result.message ?? 'Could not draft a reply.' });
-        return;
-      }
-      const signature = formatSignature(signatureBodyForId(signatureId));
-      setText(`${result.text.trim()}${signature}`);
-      setStatus({ kind: 'success', message: 'AI draft added. Review it before sending.' });
     } catch {
-      setStatus({
-        kind: 'error',
-        message: 'Could not load the full conversation or draft a reply. Try again.',
-      });
-    } finally {
-      setAiBusy(false);
+      throw new Error('Could not load the full conversation. Try again.');
     }
   };
 
@@ -584,32 +557,20 @@ function ReplyComposer({
             setStatus(null);
           }}
         />
-        {aiConfigured && (
-          <section className="mt-3 rounded-lg border border-border bg-secondary/50 p-3" aria-label="AI reply drafting">
-            <div className="mb-2 flex items-center gap-2 text-xs font-medium">
-              <Sparkles className="size-4 text-primary" />
-              Draft with AI
-            </div>
-            <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
-              <label className="min-w-0 flex-1">
-                <span className="sr-only">Instructions for AI draft</span>
-                <textarea
-                  className="field min-h-20 resize-y text-sm leading-5"
-                  value={aiPrompt}
-                  maxLength={4_000}
-                  placeholder="For example: Politely accept and ask whether Tuesday at 2 works."
-                  disabled={busy || aiBusy}
-                  onChange={(event) => { setAiPrompt(event.target.value); setStatus(null); }}
-                />
-              </label>
-              <Button type="button" variant="secondary" disabled={busy || aiBusy || !aiPrompt.trim()} onClick={() => void draftWithAi()}>
-                {aiBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                Draft reply
-              </Button>
-            </div>
-            <p className="mt-2 text-[0.68rem] text-muted-foreground">The message and your instruction will be sent to your configured AI provider.</p>
-          </section>
-        )}
+        <AiDraftAssistant
+          className="mt-3"
+          disabled={busy}
+          actionLabel="Draft reply"
+          placeholder="For example: Kein Interesse — freundlich und professionell absagen."
+          privacyDescription="The conversation, your existing text, and your instruction will be sent to your configured AI provider."
+          onGenerate={generateAiReply}
+          onApply={(draft) => {
+            const signature = formatSignature(signatureBodyForId(signatureId));
+            setText(`${draft}${signature}`);
+            setStatus(null);
+          }}
+          onBusyChange={setAiBusy}
+        />
         <div className="mt-2">
           <SignaturePicker
             value={signatureId}

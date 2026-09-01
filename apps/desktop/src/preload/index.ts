@@ -1,8 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   AI_CHANNELS,
-  type AiDraftReplyRequest,
-  type AiDraftReplyResult,
+  type AiDraftMessageRequest,
+  type AiDraftMessageResult,
   type AiModelListRequest,
   type AiModelListResult,
   type AiOperationResult,
@@ -59,7 +59,7 @@ export interface EmzeroDesktopApi {
     saveSettings: (settings: AiSettingsUpdate) => Promise<AiOperationResult>;
     removeSettings: () => Promise<AiOperationResult>;
     listModels: (request: AiModelListRequest) => Promise<AiModelListResult>;
-    draftReply: (request: AiDraftReplyRequest) => Promise<AiDraftReplyResult>;
+    draftMessage: (request: AiDraftMessageRequest) => Promise<AiDraftMessageResult>;
   };
   accounts: {
     list: () => Promise<AccountSummary[]>;
@@ -177,7 +177,7 @@ contextBridge.exposeInMainWorld('emzero', {
     saveSettings: (settings) => ipcRenderer.invoke(AI_CHANNELS.saveSettings, settings),
     removeSettings: () => ipcRenderer.invoke(AI_CHANNELS.removeSettings),
     listModels: (request) => ipcRenderer.invoke(AI_CHANNELS.listModels, request),
-    draftReply: (request) => ipcRenderer.invoke(AI_CHANNELS.draftReply, request),
+    draftMessage: (request) => ipcRenderer.invoke(AI_CHANNELS.draftMessage, request),
   },
   accounts: {
     list: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.list),

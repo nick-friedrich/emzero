@@ -1342,10 +1342,10 @@ export function UnifiedInbox({
     <MailSplitLayout
       list={list}
       reader={reader ?? (
-          <div className={cn(
-            'grid h-full place-items-center p-8 text-center text-muted-foreground',
-            window.emzero?.platform === 'darwin' && 'macos-titlebar-drag',
-          )}>
+          <div className="relative grid h-full place-items-center p-8 text-center text-muted-foreground">
+            {window.emzero?.platform === 'darwin' && (
+              <div className="macos-titlebar-drag absolute inset-x-0 top-0 h-12" aria-hidden="true" />
+            )}
             <div>
               <Inbox className="mx-auto size-8" />
               <p className="mt-3 text-sm">Select a conversation to read it here.</p>
