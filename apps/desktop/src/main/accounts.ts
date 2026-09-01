@@ -215,12 +215,19 @@ export function registerAccountHandlers(): void {
     return listAiModels(value);
   });
 
-  ipcMain.handle(AI_CHANNELS.draftMessage, async (event, value: unknown) => {
+  ipcMain.handle(AI_CHANNELS.draftMessage, async (event, requestId: unknown, value: unknown) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (typeof requestId !== 'string' || !requestId || requestId.length > 100) {
+      return { ok: false, message: 'Invalid AI draft request.' };
+    }
     if (!validAiDraftMessageRequest(value)) {
       return { ok: false, message: 'Invalid AI draft request.' };
     }
-    return draftAiMessage(value);
+    return draftAiMessage(value, (text) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send(AI_CHANNELS.draftMessageProgress, { requestId, text });
+      }
+    });
   });
 
   ipcMain.handle(ACCOUNT_CHANNELS.openExternalLink, async (event, value: unknown) => {

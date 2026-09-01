@@ -291,7 +291,7 @@ export function ComposeDialog({
     ? body.slice(signatureStart)
     : formatSignature(signatureBodyForId(signatureId));
 
-  const generateAiDraft = (instruction: string) => {
+  const generateAiDraft = (instruction: string, onProgress: (text: string) => void) => {
     const account = accounts.find((candidate) => candidate.id === accountId);
     if (!account) throw new Error('Choose a sending account first.');
     return window.emzero.ai.draftMessage({
@@ -303,7 +303,7 @@ export function ComposeDialog({
       cc: currentDraft.cc,
       existingDraft: bodyWithoutSignature.trim(),
       conversation: [],
-    });
+    }, onProgress);
   };
 
   const deliver = async (draft: MailSendDraft) => {
@@ -535,6 +535,7 @@ export function ComposeDialog({
           </Field>
           <AiDraftAssistant
             disabled={busy || !accountId}
+            currentText={bodyWithoutSignature}
             actionLabel={composerKind === 'draft' ? 'Rewrite draft' : 'Draft message'}
             placeholder={composerKind === 'draft'
               ? 'For example: Make this warmer and more concise.'

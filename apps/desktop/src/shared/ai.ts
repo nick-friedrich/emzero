@@ -2,7 +2,7 @@ import type { MailAddressSummary, MailComposerKind } from './accounts.js';
 import { splitQuotedText } from './conversations.js';
 
 export const DEFAULT_AI_BASE_URL = 'https://openrouter.ai/api/v1';
-export const DEFAULT_AI_MODEL = 'openrouter/auto';
+export const DEFAULT_AI_MODEL = 'google/gemini-2.5-flash-lite';
 export const OPENAI_BASE_URL = 'https://api.openai.com/v1';
 export const DEFAULT_OPENAI_MODEL = 'gpt-5-mini';
 export const MAX_AI_CONVERSATION_CONTEXT_LENGTH = 120_000;
@@ -72,6 +72,11 @@ export interface AiDraftMessageResult {
   text?: string;
 }
 
+export interface AiDraftMessageProgress {
+  requestId: string;
+  text: string;
+}
+
 function formatAddresses(addresses: MailAddressSummary[]): string {
   return addresses
     .map(({ name, address }) => name && address ? `${name} <${address}>` : address ?? name ?? '')
@@ -128,6 +133,7 @@ export const AI_CHANNELS = {
   removeSettings: 'ai:remove-settings',
   listModels: 'ai:list-models',
   draftMessage: 'ai:draft-message',
+  draftMessageProgress: 'ai:draft-message-progress',
 } as const;
 
 export function isAiProvider(value: unknown): value is AiProvider {

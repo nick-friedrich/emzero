@@ -375,7 +375,7 @@ function ReplyComposer({
     open && Boolean(text.trim() || attachments.length),
   );
 
-  const generateAiReply = async (instruction: string) => {
+  const generateAiReply = async (instruction: string, onProgress: (text: string) => void) => {
     setStatus(null);
     try {
       const loadedConversation = await Promise.all(
@@ -418,7 +418,7 @@ function ReplyComposer({
         cc: currentDraft.cc,
         existingDraft: text.replace(formatSignature(signatureBodyForId(signatureId)), '').trim(),
         conversation,
-      });
+      }, onProgress);
     } catch {
       throw new Error('Could not load the full conversation. Try again.');
     }
@@ -560,6 +560,7 @@ function ReplyComposer({
         <AiDraftAssistant
           className="mt-3"
           disabled={busy}
+          currentText={text.replace(formatSignature(signatureBodyForId(signatureId)), '')}
           actionLabel="Draft reply"
           placeholder="For example: Kein Interesse — freundlich und professionell absagen."
           privacyDescription="The conversation, your existing text, and your instruction will be sent to your configured AI provider."

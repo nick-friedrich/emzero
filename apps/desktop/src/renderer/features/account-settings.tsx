@@ -199,6 +199,13 @@ function AiSettings() {
         <span>Model</span>
         <input className="field" required value={model} placeholder="provider/model-name" disabled={busy} onChange={(event) => { setModel(event.target.value); setStatus(null); }} />
       </label> : <div className="space-y-2">
+        {provider === 'openrouter' && <div className="flex items-center justify-between gap-3 rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
+          <div>
+            <p className="text-xs font-medium">Recommended for email: Gemini 2.5 Flash Lite</p>
+            <p className="mt-0.5 text-[0.68rem] text-muted-foreground">Fast first response, high output speed, and low per-message cost.</p>
+          </div>
+          {model === DEFAULT_AI_MODEL ? <span className="shrink-0 text-xs font-medium text-primary">Selected</span> : <Button type="button" variant="secondary" className="shrink-0" disabled={busy} onClick={() => { setModel(DEFAULT_AI_MODEL); setModelSearch(''); setModelPickerOpen(false); setStatus(null); }}>Use model</Button>}
+        </div>}
         <div className="flex items-center justify-between gap-3 text-xs"><span className="font-medium">Model</span><span className="truncate text-muted-foreground" title={model}>Selected: {model}</span></div>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />

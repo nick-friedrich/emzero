@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import {
   AI_CHANNELS,
   type AiDraftMessageRequest,
+  type AiDraftMessageProgress,
   type AiDraftMessageResult,
   type AiModelListRequest,
   type AiModelListResult,
@@ -59,7 +60,10 @@ export interface EmzeroDesktopApi {
     saveSettings: (settings: AiSettingsUpdate) => Promise<AiOperationResult>;
     removeSettings: () => Promise<AiOperationResult>;
     listModels: (request: AiModelListRequest) => Promise<AiModelListResult>;
-    draftMessage: (request: AiDraftMessageRequest) => Promise<AiDraftMessageResult>;
+    draftMessage: (
+      request: AiDraftMessageRequest,
+      onProgress?: (text: string) => void,
+    ) => Promise<AiDraftMessageResult>;
   };
   accounts: {
     list: () => Promise<AccountSummary[]>;
@@ -177,7 +181,24 @@ contextBridge.exposeInMainWorld('emzero', {
     saveSettings: (settings) => ipcRenderer.invoke(AI_CHANNELS.saveSettings, settings),
     removeSettings: () => ipcRenderer.invoke(AI_CHANNELS.removeSettings),
     listModels: (request) => ipcRenderer.invoke(AI_CHANNELS.listModels, request),
-    draftMessage: (request) => ipcRenderer.invoke(AI_CHANNELS.draftMessage, request),
+    draftMessage: async (request, onProgress) => {
+      const requestId = crypto.randomUUID();
+      const handler = (_event: Electron.IpcRendererEvent, progress: AiDraftMessageProgress) => {
+        if (
+          progress &&
+          progress.requestId === requestId &&
+          typeof progress.text === 'string'
+        ) {
+          onProgress?.(progress.text);
+        }
+      };
+      ipcRenderer.on(AI_CHANNELS.draftMessageProgress, handler);
+      try {
+        return await ipcRenderer.invoke(AI_CHANNELS.draftMessage, requestId, request);
+      } finally {
+        ipcRenderer.removeListener(AI_CHANNELS.draftMessageProgress, handler);
+      }
+    },
   },
   accounts: {
     list: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.list),
