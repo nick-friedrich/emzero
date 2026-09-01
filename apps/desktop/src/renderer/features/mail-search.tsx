@@ -282,7 +282,6 @@ export function MailSearch({
           conversation={selected.conversation}
           onBack={() => setSelected(null)}
           navigationVariant={mailLayout === 'split' ? 'close' : 'back'}
-          deferMarkReadUntilLeave={mailLayout === 'split'}
           busy={actionBusy}
           actionError={actionError}
           onSetUnread={(unread) => void runAction(unread ? 'unread' : 'read')}

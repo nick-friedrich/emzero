@@ -65,6 +65,7 @@ import { useTheme } from '@/theme';
 import {
   applyInboxView,
   inboxGroup,
+  type InboxGroup,
   InboxGroupHeader,
   InboxViewOptions,
   useInboxViewOptions,
@@ -95,6 +96,9 @@ export function MessageList({
   const { selectNextOnDelete } = useTheme();
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedConversation, setSelectedConversation] = useState<MailConversation | null>(null);
+  const [readingOrderIds, setReadingOrderIds] = useState<readonly string[] | null>(null);
+  const [readingGroups, setReadingGroups] = useState<ReadonlyMap<string, InboxGroup> | null>(null);
+  const unreadReadingQueue = useRef<readonly string[] | null>(null);
   const pendingActions = useRef(new Set<string>());
   const [busyConversations, setBusyConversations] = useState<ReadonlySet<string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
@@ -256,7 +260,7 @@ export function MessageList({
         : [],
     [state],
   );
-  const conversations = useMemo(
+  const visibleConversations = useMemo(
     () => isInbox
       ? applyInboxView(
           allConversations,
@@ -266,6 +270,18 @@ export function MessageList({
       : allConversations,
     [allConversations, inboxView.filter, isInbox, selection.folder.path],
   );
+  const conversations = useMemo(() => {
+    if (!selectedConversation || !readingOrderIds) return visibleConversations;
+    const byId = new Map(allConversations.map((conversation) => [conversation.id, conversation]));
+    const pinnedIds = new Set(readingOrderIds);
+    return [
+      ...readingOrderIds.flatMap((id) => {
+        const conversation = byId.get(id);
+        return conversation ? [conversation] : [];
+      }),
+      ...visibleConversations.filter((conversation) => !pinnedIds.has(conversation.id)),
+    ];
+  }, [allConversations, readingOrderIds, selectedConversation, visibleConversations]);
   useEffect(() => {
     const pendingId = pendingConversationFocusId.current;
     if (!pendingId) return;
@@ -474,12 +490,25 @@ export function MessageList({
     const removeConversation = () => {
       let nextConversation: MailConversation | undefined;
       if (action === 'delete') {
-        const removedIndex = conversations.findIndex(
-          (candidate) => candidate.id === conversation.id,
-        );
-        nextConversation = removedIndex >= 0
-          ? conversations[removedIndex + 1] ?? conversations[removedIndex - 1]
-          : undefined;
+        const queue = selectedConversation?.id === conversation.id
+          ? unreadReadingQueue.current
+          : null;
+        if (queue) {
+          const availableById = new Map(allConversations.map((candidate) => [candidate.id, candidate]));
+          const removedIndex = queue.indexOf(conversation.id);
+          const nextId = removedIndex >= 0
+            ? queue.slice(removedIndex + 1).find((id) => availableById.has(id))
+              ?? queue.slice(0, removedIndex).findLast((id) => availableById.has(id))
+            : undefined;
+          nextConversation = nextId ? availableById.get(nextId) : undefined;
+        } else {
+          const removedIndex = conversations.findIndex(
+            (candidate) => candidate.id === conversation.id,
+          );
+          nextConversation = removedIndex >= 0
+            ? conversations[removedIndex + 1] ?? conversations[removedIndex - 1]
+            : undefined;
+        }
         const nextId = nextConversation?.id ?? null;
         pendingConversationFocusId.current = nextId;
         setSelectionCursorId(nextId);
@@ -650,9 +679,13 @@ export function MessageList({
         selection={selection}
         folders={folders}
         conversation={selectedConversation}
-        onBack={() => setSelectedConversation(null)}
+        onBack={() => {
+          unreadReadingQueue.current = null;
+          setReadingGroups(null);
+          setReadingOrderIds(null);
+          setSelectedConversation(null);
+        }}
         navigationVariant={mailLayout === 'split' ? 'close' : 'back'}
-        deferMarkReadUntilLeave={mailLayout === 'split'}
         busy={busyConversations.has(selectedConversation.id)}
         actionError={actionError}
         onSetUnread={(unread) =>
@@ -865,9 +898,12 @@ export function MessageList({
               (message) => message.folderPath === selection.folder.path && message.unread,
             );
             const flagged = conversation.messages.some((message) => message.flagged);
-            const group = isInbox ? inboxGroup(conversation, selection.folder.path) : null;
-            const previousGroup = isInbox && index > 0
-              ? inboxGroup(conversations[index - 1], selection.folder.path)
+            const group = isInbox
+              ? (selectedConversation ? readingGroups?.get(conversation.id) : undefined) ?? inboxGroup(conversation, selection.folder.path)
+              : null;
+            const previousConversation = conversations[index - 1];
+            const previousGroup = isInbox && previousConversation
+              ? (selectedConversation ? readingGroups?.get(previousConversation.id) : undefined) ?? inboxGroup(previousConversation, selection.folder.path)
               : null;
             return (
               <Fragment key={conversation.id}>
@@ -968,6 +1004,23 @@ export function MessageList({
                       return;
                     }
                     setActionError(null);
+                    const openedUnread = conversation.messages.some(
+                      (message) => message.folderPath === selection.folder.path && message.unread,
+                    );
+                    unreadReadingQueue.current = openedUnread
+                      ? conversations
+                          .filter((candidate) => candidate.messages.some(
+                            (message) => message.folderPath === selection.folder.path && message.unread,
+                          ))
+                          .map((candidate) => candidate.id)
+                      : null;
+                    setReadingOrderIds(conversations.map((candidate) => candidate.id));
+                    setReadingGroups(isInbox
+                      ? new Map(conversations.map((candidate) => [
+                          candidate.id,
+                          inboxGroup(candidate, selection.folder.path),
+                        ]))
+                      : null);
                     setSelectedConversation(conversation);
                   }}
                 >

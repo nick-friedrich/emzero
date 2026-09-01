@@ -3,6 +3,7 @@ import { ipcMain, safeStorage, shell } from 'electron';
 import {
   AI_CHANNELS,
   validAiDraftReplyRequest,
+  validAiModelListRequest,
   type AiOperationResult,
   type AiSettingsUpdate,
 } from '../shared/ai.js';
@@ -33,6 +34,7 @@ import { verifyConnections, verifyMicrosoftConnections } from './account-connect
 import {
   draftAiReply,
   getAiSettings,
+  listAiModels,
   removeAiSettings,
   saveAiSettings,
 } from './ai-assistant.js';
@@ -203,6 +205,14 @@ export function registerAccountHandlers(): void {
   ipcMain.handle(AI_CHANNELS.removeSettings, async (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return removeAiSettings();
+  });
+
+  ipcMain.handle(AI_CHANNELS.listModels, async (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (!validAiModelListRequest(value)) {
+      return { ok: false, models: [], message: 'Invalid model search.' };
+    }
+    return listAiModels(value);
   });
 
   ipcMain.handle(AI_CHANNELS.draftReply, async (event, value: unknown) => {

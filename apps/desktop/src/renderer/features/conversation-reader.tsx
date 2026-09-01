@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useEffectEvent,
   useRef,
   useState,
   type FormEvent,
@@ -47,6 +46,7 @@ import type {
   MessageMoveDestination,
 } from '../../shared/accounts';
 import { displayFolderName } from '../../shared/accounts';
+import type { AiConversationMessage } from '../../shared/ai';
 import {
   splitQuotedText,
   type MailConversation,
@@ -346,11 +346,13 @@ function ReplyComposer({
   account,
   summary,
   message,
+  threadMessages,
   onSent,
 }: {
   account: AccountSummary;
   summary: MailMessageSummary;
   message: MailMessageDetail;
+  threadMessages: MailMessageSummary[];
   onSent: (message: MailMessageSummary) => void;
 }) {
   const recipients = replyRecipients(account, message);
@@ -395,13 +397,42 @@ function ReplyComposer({
     setAiBusy(true);
     setStatus(null);
     try {
+      const loadedConversation = await Promise.all(
+        threadMessages.slice(0, 100).reverse().map(async (threadSummary) => {
+          const current =
+            threadSummary.folderPath === summary.folderPath && threadSummary.uid === summary.uid;
+          const detail = current
+            ? message
+            : await window.emzero.messages
+                .get(account.id, threadSummary.folderPath, threadSummary.uid)
+                .then((result) => {
+                  if (!result.ok || !result.messageDetail) {
+                    throw new Error(result.message ?? 'Could not load a message in this conversation.');
+                  }
+                  return result.messageDetail;
+                });
+          return {
+            sentAt: detail.sentAt ?? threadSummary.sentAt ?? threadSummary.receivedAt,
+            from: detail.from,
+            to: detail.to,
+            text: detail.text,
+          };
+        }),
+      );
+      const conversation: AiConversationMessage[] = [];
+      let remainingTextLength = 1_000_000;
+      for (let index = loadedConversation.length - 1; index >= 0; index -= 1) {
+        if (remainingTextLength <= 0) break;
+        const item = loadedConversation[index];
+        const text = item.text.slice(0, Math.min(200_000, remainingTextLength));
+        conversation.unshift({ ...item, text });
+        remainingTextLength -= text.length;
+      }
       const result = await window.emzero.ai.draftReply({
         prompt: aiPrompt,
         accountEmail: account.email,
         subject: message.subject,
-        from: message.from,
-        to: message.to,
-        messageText: message.text,
+        conversation,
       });
       if (!result.ok || !result.text) {
         setStatus({ kind: 'error', message: result.message ?? 'Could not draft a reply.' });
@@ -411,7 +442,10 @@ function ReplyComposer({
       setText(`${result.text.trim()}${signature}`);
       setStatus({ kind: 'success', message: 'AI draft added. Review it before sending.' });
     } catch {
-      setStatus({ kind: 'error', message: 'Could not draft a reply.' });
+      setStatus({
+        kind: 'error',
+        message: 'Could not load the full conversation or draft a reply. Try again.',
+      });
     } finally {
       setAiBusy(false);
     }
@@ -737,6 +771,7 @@ function ReplyComposer({
 function ThreadMessageCard({
   selection,
   summary,
+  threadMessages,
   isSavedDraft,
   draftEditorOpen,
   draftEditBlocked,
@@ -750,6 +785,7 @@ function ThreadMessageCard({
 }: {
   selection: FolderSelection;
   summary: MailMessageSummary;
+  threadMessages: MailMessageSummary[];
   isSavedDraft: boolean;
   draftEditorOpen: boolean;
   draftEditBlocked: boolean;
@@ -962,6 +998,7 @@ function ThreadMessageCard({
                 account={selection.account}
                 summary={summary}
                 message={state.message}
+                threadMessages={threadMessages}
                 onSent={onReplySent}
               /> : null}
               {draftAttachmentError && (
@@ -1021,7 +1058,6 @@ export function ConversationReader({
   conversation,
   onBack,
   navigationVariant = 'back',
-  deferMarkReadUntilLeave = false,
   nativeWindow = false,
   busy,
   actionError,
@@ -1040,7 +1076,6 @@ export function ConversationReader({
   conversation: MailConversation;
   onBack: () => void;
   navigationVariant?: 'back' | 'close';
-  deferMarkReadUntilLeave?: boolean;
   nativeWindow?: boolean;
   busy: boolean;
   actionError: string | null;
@@ -1056,13 +1091,10 @@ export function ConversationReader({
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
   const { markReadOnOpen } = useTheme();
   const markedReadConversation = useRef<string | null>(null);
-  const markReadOnLeave = useRef(false);
-  const pendingLeaveTimer = useRef<number | null>(null);
   const nativeMacWindow = nativeWindow && window.emzero?.platform === 'darwin';
   const unread = conversation.messages.some(
     (message) => message.folderPath === selection.folder.path && message.unread,
   );
-  const [unreadWhenOpened] = useState(unread);
   const flagged = conversation.messages.some(
     (message) => message.folderPath === selection.folder.path && message.flagged,
   );
@@ -1070,29 +1102,9 @@ export function ConversationReader({
     folders.filter((folder) => folder.specialUse === '\\Drafts').map((folder) => folder.path),
   );
   const [activeDraftKey, setActiveDraftKey] = useState<string | null>(null);
-  const markRead = useEffectEvent(() => onSetUnread(false));
-
-  useEffect(() => {
-    if (pendingLeaveTimer.current !== null) {
-      window.clearTimeout(pendingLeaveTimer.current);
-      pendingLeaveTimer.current = null;
-    }
-    markReadOnLeave.current = deferMarkReadUntilLeave && markReadOnOpen && unreadWhenOpened;
-    return () => {
-      if (!markReadOnLeave.current) return;
-      pendingLeaveTimer.current = window.setTimeout(() => {
-        pendingLeaveTimer.current = null;
-        if (!markReadOnLeave.current) return;
-        markReadOnLeave.current = false;
-        markRead();
-      }, 0);
-    };
-  }, [conversation.id, deferMarkReadUntilLeave, markReadOnOpen, selection.account.id, selection.folder.path, unreadWhenOpened]);
-
   useEffect(() => {
     const key = `${selection.account.id}:${selection.folder.path}:${conversation.id}`;
     if (
-      deferMarkReadUntilLeave ||
       !markReadOnOpen ||
       !unread ||
       busy ||
@@ -1100,18 +1112,13 @@ export function ConversationReader({
     ) return;
     markedReadConversation.current = key;
     onSetUnread(false);
-  }, [busy, conversation.id, deferMarkReadUntilLeave, markReadOnOpen, onSetUnread, selection.account.id, selection.folder.path, unread]);
+  }, [busy, conversation.id, markReadOnOpen, onSetUnread, selection.account.id, selection.folder.path, unread]);
 
   const leaveConversation = useCallback(() => {
-    if (markReadOnLeave.current) {
-      markReadOnLeave.current = false;
-      onSetUnread(false);
-    }
     onBack();
-  }, [onBack, onSetUnread]);
+  }, [onBack]);
 
   const setUnreadExplicitly = useCallback((nextUnread: boolean) => {
-    markReadOnLeave.current = false;
     onSetUnread(nextUnread);
   }, [onSetUnread]);
 
@@ -1195,14 +1202,8 @@ export function ConversationReader({
             confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
             onSetUnread={setUnreadExplicitly}
             onSetFlagged={onSetFlagged}
-            onMove={(destination) => {
-              markReadOnLeave.current = false;
-              onMove(destination);
-            }}
-            onDelete={() => {
-              markReadOnLeave.current = false;
-              onDelete();
-            }}
+            onMove={onMove}
+            onDelete={onDelete}
             deleteButtonRef={deleteButtonRef}
           />
         </div>
@@ -1232,6 +1233,7 @@ export function ConversationReader({
                   key={messageKey}
                   selection={selection}
                   summary={message}
+                  threadMessages={conversation.messages}
                   isSavedDraft={isSavedDraft}
                   draftEditorOpen={isSavedDraft && activeDraftKey === messageKey}
                   draftEditBlocked={activeDraftKey !== null && activeDraftKey !== messageKey}

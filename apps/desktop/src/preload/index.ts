@@ -3,6 +3,8 @@ import {
   AI_CHANNELS,
   type AiDraftReplyRequest,
   type AiDraftReplyResult,
+  type AiModelListRequest,
+  type AiModelListResult,
   type AiOperationResult,
   type AiSettingsSummary,
   type AiSettingsUpdate,
@@ -56,6 +58,7 @@ export interface EmzeroDesktopApi {
     getSettings: () => Promise<AiSettingsSummary>;
     saveSettings: (settings: AiSettingsUpdate) => Promise<AiOperationResult>;
     removeSettings: () => Promise<AiOperationResult>;
+    listModels: (request: AiModelListRequest) => Promise<AiModelListResult>;
     draftReply: (request: AiDraftReplyRequest) => Promise<AiDraftReplyResult>;
   };
   accounts: {
@@ -173,6 +176,7 @@ contextBridge.exposeInMainWorld('emzero', {
     getSettings: () => ipcRenderer.invoke(AI_CHANNELS.getSettings),
     saveSettings: (settings) => ipcRenderer.invoke(AI_CHANNELS.saveSettings, settings),
     removeSettings: () => ipcRenderer.invoke(AI_CHANNELS.removeSettings),
+    listModels: (request) => ipcRenderer.invoke(AI_CHANNELS.listModels, request),
     draftReply: (request) => ipcRenderer.invoke(AI_CHANNELS.draftReply, request),
   },
   accounts: {

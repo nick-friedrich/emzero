@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Bot, CheckCircle2, CircleAlert, Download, Eye, EyeOff, KeyRound, LoaderCircle, Palette, Plus, Trash2, Type, Upload } from 'lucide-react';
+import { Bot, CheckCircle2, CircleAlert, Download, Eye, EyeOff, KeyRound, LoaderCircle, Palette, Plus, Search, Trash2, Type, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import type { AccountSummary } from '../../shared/accounts';
-import { DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL, type AiSettingsSummary } from '../../shared/ai';
+import { DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL, DEFAULT_OPENAI_MODEL, OPENAI_BASE_URL, type AiModelSummary, type AiProvider, type AiSettingsSummary } from '../../shared/ai';
 import { interfaceFonts, themes, useTheme, type InterfaceFont, type Theme } from '@/theme';
 import type { Status } from './app-shared';
 import { saveSignatures, storedSignatures, type MailSignature } from './signatures';
@@ -51,8 +51,14 @@ function notifyAiSettingsChanged() {
 
 function AiSettings() {
   const [settings, setSettings] = useState<AiSettingsSummary | null>(null);
+  const [provider, setProvider] = useState<AiProvider>('openrouter');
   const [baseUrl, setBaseUrl] = useState(DEFAULT_AI_BASE_URL);
   const [model, setModel] = useState(DEFAULT_AI_MODEL);
+  const [modelSearch, setModelSearch] = useState('');
+  const [models, setModels] = useState<AiModelSummary[]>([]);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -61,19 +67,70 @@ function AiSettings() {
   useEffect(() => {
     void window.emzero.ai.getSettings().then((current) => {
       setSettings(current);
+      setProvider(current.provider);
       setBaseUrl(current.baseUrl);
       setModel(current.model);
     }).catch(() => setStatus({ kind: 'error', message: 'Could not load AI provider settings.' }));
   }, []);
 
+  const canReuseStoredKey = Boolean(
+    settings?.configured && settings.provider === provider && settings.baseUrl === baseUrl,
+  );
+  const canSearchModels = provider !== 'custom' && Boolean(apiKey.trim() || canReuseStoredKey);
+
+  useEffect(() => {
+    if (!modelPickerOpen || provider === 'custom' || !canSearchModels) {
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setModelsLoading(true);
+      setModelError(null);
+      void window.emzero.ai.listModels({ provider, baseUrl, apiKey, query: modelSearch })
+        .then((result) => {
+          if (!active) return;
+          setModels(result.models);
+          setModelError(result.ok ? null : (result.message ?? 'Could not load models.'));
+        })
+        .catch(() => {
+          if (active) setModelError('Could not load models.');
+        })
+        .finally(() => {
+          if (active) setModelsLoading(false);
+        });
+    }, 250);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [apiKey, baseUrl, canSearchModels, modelPickerOpen, modelSearch, provider]);
+
+  const chooseProvider = (nextProvider: AiProvider) => {
+    setProvider(nextProvider);
+    setApiKey('');
+    setModelSearch('');
+    setModels([]);
+    setModelPickerOpen(false);
+    setModelError(null);
+    setStatus(null);
+    if (nextProvider === 'openrouter') {
+      setBaseUrl(DEFAULT_AI_BASE_URL);
+      setModel(DEFAULT_AI_MODEL);
+    } else if (nextProvider === 'openai') {
+      setBaseUrl(OPENAI_BASE_URL);
+      setModel(DEFAULT_OPENAI_MODEL);
+    } else {
+      setBaseUrl(settings?.provider === 'custom' ? settings.baseUrl : '');
+      setModel(settings?.provider === 'custom' ? settings.model : '');
+    }
+  };
+
   const save = async () => {
     setBusy(true);
     setStatus(null);
     try {
-      const result = await window.emzero.ai.saveSettings({ apiKey, baseUrl, model });
+      const result = await window.emzero.ai.saveSettings({ apiKey, provider, baseUrl, model });
       setStatus({ kind: result.ok ? 'success' : 'error', message: result.message });
       if (result.ok && result.settings) {
         setSettings(result.settings);
+        setProvider(result.settings.provider);
         setBaseUrl(result.settings.baseUrl);
         setModel(result.settings.model);
         setApiKey('');
@@ -94,6 +151,7 @@ function AiSettings() {
       setStatus({ kind: result.ok ? 'success' : 'error', message: result.message });
       if (result.ok && result.settings) {
         setSettings(result.settings);
+        setProvider(result.settings.provider);
         setBaseUrl(result.settings.baseUrl);
         setModel(result.settings.model);
         setApiKey('');
@@ -117,24 +175,42 @@ function AiSettings() {
         </div>
       </div>
       <label className="block space-y-1.5 text-xs font-medium">
+        <span>Provider</span>
+        <select className="preference-select preference-select-no-icon" value={provider} disabled={busy} onChange={(event) => chooseProvider(event.target.value as AiProvider)}>
+          <option value="openrouter">OpenRouter</option>
+          <option value="openai">OpenAI</option>
+          <option value="custom">Custom OpenAI-compatible</option>
+        </select>
+      </label>
+      {provider === 'custom' ? <label className="block space-y-1.5 text-xs font-medium">
         <span>API base URL</span>
-        <input className="field" type="url" required value={baseUrl} placeholder={DEFAULT_AI_BASE_URL} disabled={busy} onChange={(event) => { setBaseUrl(event.target.value); setStatus(null); }} />
+        <input className="field" type="url" required value={baseUrl} placeholder="https://provider.example/v1" disabled={busy} onChange={(event) => { setBaseUrl(event.target.value); setStatus(null); }} />
         <span className="block font-normal text-muted-foreground">Emzero appends <code>/chat/completions</code> unless the URL already includes it.</span>
-      </label>
-      <label className="block space-y-1.5 text-xs font-medium">
-        <span>Model</span>
-        <input className="field" required value={model} placeholder={DEFAULT_AI_MODEL} disabled={busy} onChange={(event) => { setModel(event.target.value); setStatus(null); }} />
-      </label>
+      </label> : <p className="rounded-md bg-secondary px-3 py-2 text-xs text-muted-foreground">API endpoint: <code>{baseUrl}</code></p>}
       <label className="block space-y-1.5 text-xs font-medium">
         <span>API key</span>
         <span className="relative block">
           <KeyRound className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-          <input className="field pl-9 pr-10" type={showApiKey ? 'text' : 'password'} required={!settings?.configured} autoComplete="off" value={apiKey} placeholder={settings?.configured ? 'Stored securely — leave blank to keep it' : 'sk-or-v1-…'} disabled={busy} onChange={(event) => { setApiKey(event.target.value); setStatus(null); }} />
+          <input className="field field-with-leading-icon field-with-trailing-control" type={showApiKey ? 'text' : 'password'} required={!canReuseStoredKey} autoComplete="off" value={apiKey} placeholder={canReuseStoredKey ? 'Stored securely — leave blank to keep it' : provider === 'openrouter' ? 'sk-or-v1-…' : 'API key'} disabled={busy} onChange={(event) => { setApiKey(event.target.value); setStatus(null); }} />
           <button type="button" className="absolute right-2 top-1.5 grid size-7 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground" aria-label={showApiKey ? 'Hide API key' : 'Show API key'} onClick={() => setShowApiKey((current) => !current)}>{showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
         </span>
       </label>
+      {provider === 'custom' ? <label className="block space-y-1.5 text-xs font-medium">
+        <span>Model</span>
+        <input className="field" required value={model} placeholder="provider/model-name" disabled={busy} onChange={(event) => { setModel(event.target.value); setStatus(null); }} />
+      </label> : <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3 text-xs"><span className="font-medium">Model</span><span className="truncate text-muted-foreground" title={model}>Selected: {model}</span></div>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+          <input className="field field-with-leading-icon field-with-trailing-control" value={modelSearch} placeholder={canSearchModels ? 'Search models by name or slug…' : 'Enter an API key to search models'} disabled={busy || !canSearchModels} onFocus={() => setModelPickerOpen(true)} onChange={(event) => { setModelSearch(event.target.value); setModelPickerOpen(true); }} />
+          {modelsLoading && <LoaderCircle className="absolute right-3 top-2.5 size-4 animate-spin text-muted-foreground" />}
+        </div>
+        {modelPickerOpen && canSearchModels && <div className="max-h-64 overflow-y-auto rounded-md border border-border bg-background p-1 shadow-sm">
+          {modelError ? <p className="px-3 py-2 text-xs text-danger">{modelError}</p> : !modelsLoading && models.length === 0 ? <p className="px-3 py-2 text-xs text-muted-foreground">No matching models.</p> : models.map((item) => <button key={item.id} type="button" className={cn('block w-full rounded px-3 py-2 text-left hover:bg-accent', item.id === model && 'bg-accent/60')} onClick={() => { setModel(item.id); setModelSearch(''); setModelPickerOpen(false); setStatus(null); }}><span className="block text-sm font-medium">{item.name}</span><span className="block truncate text-xs text-muted-foreground">{item.id}</span></button>)}
+        </div>}
+      </div>}
       <div className="flex items-center gap-2">
-        <Button type="submit" disabled={busy || !baseUrl.trim() || !model.trim() || (!settings?.configured && !apiKey.trim())}>{busy && <LoaderCircle className="size-4 animate-spin" />}{settings?.configured ? 'Save changes' : 'Connect provider'}</Button>
+        <Button type="submit" disabled={busy || !baseUrl.trim() || !model.trim() || (!canReuseStoredKey && !apiKey.trim())}>{busy && <LoaderCircle className="size-4 animate-spin" />}{settings?.configured ? 'Save changes' : 'Connect provider'}</Button>
         {settings?.configured && <AlertDialog><AlertDialogTrigger asChild><Button type="button" variant="ghost" className="text-danger hover:text-danger" disabled={busy}>Remove</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove the AI provider?</AlertDialogTitle><AlertDialogDescription>This deletes the stored API key and disables AI drafting. Your email and drafts are not affected.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => void remove()}>Remove provider</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>}
       </div>
     </form>

@@ -68,6 +68,7 @@ import { useTheme } from '@/theme';
 import {
   applyUnifiedInboxView,
   inboxGroup,
+  type InboxGroup,
   InboxGroupHeader,
   InboxViewOptions,
   useInboxViewOptions,
@@ -93,6 +94,10 @@ function conversationTime(conversation: MailConversation): number {
   const value = latest?.sentAt ?? latest?.receivedAt;
   const time = value ? new Date(value).getTime() : 0;
   return Number.isNaN(time) ? 0 : time;
+}
+
+function itemKey(item: UnifiedConversationItem): string {
+  return `${item.selection.account.id}:${item.conversation.id}`;
 }
 
 export function UnifiedInbox({
@@ -130,6 +135,9 @@ export function UnifiedInbox({
   );
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedItem, setSelectedItem] = useState<UnifiedConversationItem | null>(null);
+  const [readingOrderKeys, setReadingOrderKeys] = useState<readonly string[] | null>(null);
+  const [readingGroups, setReadingGroups] = useState<ReadonlyMap<string, InboxGroup> | null>(null);
+  const unreadReadingQueue = useRef<readonly string[] | null>(null);
   const pendingActions = useRef(new Set<string>());
   const [busyConversations, setBusyConversations] = useState<ReadonlySet<string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
@@ -389,17 +397,24 @@ export function UnifiedInbox({
     return () => window.clearTimeout(timer);
   }, [applyDraftSaved, draftSavedEvent]);
 
-  const itemKey = (item: UnifiedConversationItem) =>
-    `${item.selection.account.id}:${item.conversation.id}`;
-  const availableItems = useMemo(
-    () => {
-      const items = state.status === 'loaded' ? state.items : [];
-      return mailbox === 'inbox'
-        ? applyUnifiedInboxView(items, inboxView.filter)
-        : items;
-    },
-    [inboxView.filter, mailbox, state],
-  );
+  const visibleItems = useMemo(() => {
+    const items = state.status === 'loaded' ? state.items : [];
+    return mailbox === 'inbox'
+      ? applyUnifiedInboxView(items, inboxView.filter)
+      : items;
+  }, [inboxView.filter, mailbox, state]);
+  const availableItems = useMemo(() => {
+    if (!selectedItem || !readingOrderKeys || state.status !== 'loaded') return visibleItems;
+    const byKey = new Map(state.items.map((item) => [itemKey(item), item]));
+    const pinnedKeys = new Set(readingOrderKeys);
+    return [
+      ...readingOrderKeys.flatMap((key) => {
+        const item = byKey.get(key);
+        return item ? [item] : [];
+      }),
+      ...visibleItems.filter((item) => !pinnedKeys.has(itemKey(item))),
+    ];
+  }, [readingOrderKeys, selectedItem, state, visibleItems]);
   useEffect(() => {
     const pendingKey = pendingUnifiedFocusKey.current;
     if (!pendingKey) return;
@@ -663,12 +678,25 @@ export function UnifiedInbox({
     const removeItem = () => {
       let nextItem: UnifiedConversationItem | undefined;
       if (action === 'delete') {
-        const removedIndex = availableItems.findIndex(
-          (candidate) => itemKey(candidate) === key,
-        );
-        nextItem = removedIndex >= 0
-          ? availableItems[removedIndex + 1] ?? availableItems[removedIndex - 1]
-          : undefined;
+        const queue = selectedItem && itemKey(selectedItem) === key
+          ? unreadReadingQueue.current
+          : null;
+        if (queue && state.status === 'loaded') {
+          const availableByKey = new Map(state.items.map((candidate) => [itemKey(candidate), candidate]));
+          const removedIndex = queue.indexOf(key);
+          const nextKey = removedIndex >= 0
+            ? queue.slice(removedIndex + 1).find((candidateKey) => availableByKey.has(candidateKey))
+              ?? queue.slice(0, removedIndex).findLast((candidateKey) => availableByKey.has(candidateKey))
+            : undefined;
+          nextItem = nextKey ? availableByKey.get(nextKey) : undefined;
+        } else {
+          const removedIndex = availableItems.findIndex(
+            (candidate) => itemKey(candidate) === key,
+          );
+          nextItem = removedIndex >= 0
+            ? availableItems[removedIndex + 1] ?? availableItems[removedIndex - 1]
+            : undefined;
+        }
         const nextKey = nextItem ? itemKey(nextItem) : null;
         pendingUnifiedFocusKey.current = nextKey;
         setSelectionCursorKey(nextKey);
@@ -852,9 +880,13 @@ export function UnifiedInbox({
         selection={selectedItem.selection}
         folders={selectedItem.folders}
         conversation={selectedItem.conversation}
-        onBack={() => setSelectedItem(null)}
+        onBack={() => {
+          unreadReadingQueue.current = null;
+          setReadingGroups(null);
+          setReadingOrderKeys(null);
+          setSelectedItem(null);
+        }}
         navigationVariant={mailLayout === 'split' ? 'close' : 'back'}
-        deferMarkReadUntilLeave={mailLayout === 'split'}
         busy={busyConversations.has(itemKey(selectedItem))}
         actionError={actionError}
         onSetUnread={(unread) =>
@@ -1093,12 +1125,13 @@ export function UnifiedInbox({
               (message) => message.folderPath === selection.folder.path && message.unread,
             );
             const flagged = conversation.messages.some((message) => message.flagged);
+            const key = itemKey(item);
             const group = mailbox === 'inbox'
-              ? inboxGroup(conversation, selection.folder.path)
+              ? (selectedItem ? readingGroups?.get(key) : undefined) ?? inboxGroup(conversation, selection.folder.path)
               : null;
             const previousItem = availableItems[index - 1];
             const previousGroup = mailbox === 'inbox' && previousItem
-              ? inboxGroup(previousItem.conversation, previousItem.selection.folder.path)
+              ? (selectedItem ? readingGroups?.get(itemKey(previousItem)) : undefined) ?? inboxGroup(previousItem.conversation, previousItem.selection.folder.path)
               : null;
             return (
               <Fragment key={`${selection.account.id}:${conversation.id}`}>
@@ -1204,6 +1237,23 @@ export function UnifiedInbox({
                       return;
                     }
                     setActionError(null);
+                    const openedUnread = item.conversation.messages.some(
+                      (message) => message.folderPath === item.selection.folder.path && message.unread,
+                    );
+                    unreadReadingQueue.current = openedUnread
+                      ? availableItems
+                          .filter((candidate) => candidate.conversation.messages.some(
+                            (message) => message.folderPath === candidate.selection.folder.path && message.unread,
+                          ))
+                          .map((candidate) => itemKey(candidate))
+                      : null;
+                    setReadingOrderKeys(availableItems.map((candidate) => itemKey(candidate)));
+                    setReadingGroups(mailbox === 'inbox'
+                      ? new Map(availableItems.map((candidate) => [
+                          itemKey(candidate),
+                          inboxGroup(candidate.conversation, candidate.selection.folder.path),
+                        ]))
+                      : null);
                     setSelectedItem(item);
                   }}
                 >
