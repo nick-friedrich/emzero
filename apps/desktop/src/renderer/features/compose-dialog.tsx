@@ -290,6 +290,7 @@ export function ComposeDialog({
     savedDraftReference,
     handoffSavedDraft,
     discardSavedDraft,
+    discardSavedDraftInBackground,
   } = useDraftAutosave(
     accountId,
     currentDraft,
@@ -357,15 +358,24 @@ export function ComposeDialog({
 
   const deleteAndClose = () => {
     const event = deletedDraftEvent();
-    setBusy(true);
-    void discardSavedDraft().then((deleted) => {
-      if (!deleted) return;
-      setDeleteConfirmationOpen(false);
-      setCloseConfirmationOpen(false);
-      resetComposer();
-      finishClose();
-      onDeleted?.(event);
-    }).finally(() => setBusy(false));
+    const deletion = discardSavedDraftInBackground();
+    const immediateReference = deletion.reference;
+    if (immediateReference && !event.references.some((reference) =>
+      reference.folderPath === immediateReference.folderPath &&
+      reference.uid === immediateReference.uid
+    )) {
+      event.references.push(immediateReference);
+    }
+    setDeleteConfirmationOpen(false);
+    setCloseConfirmationOpen(false);
+    resetComposer();
+    finishClose();
+    onDeleted?.(event);
+    void deletion.completion.then((result) => {
+      if (!result.ok && result.reference) {
+        onDraftSaved?.({ accountId, reference: result.reference });
+      }
+    });
   };
 
   const generateAiDraft = (instruction: string, onProgress: (text: string) => void) => {

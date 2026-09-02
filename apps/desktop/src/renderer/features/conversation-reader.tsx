@@ -99,6 +99,7 @@ function MessageBody({
 }) {
   const { theme, alwaysLoadRemoteImages } = useTheme();
   const [view, setView] = useState<'html' | 'text'>('html');
+  const [showDetails, setShowDetails] = useState(false);
   const [showQuoted, setShowQuoted] = useState(false);
   const [remoteImagesLoadedFor, setRemoteImagesLoadedFor] = useState<string | null>(null);
   const [attachmentAction, setAttachmentAction] = useState<{ index: number; kind: 'open' | 'save' } | null>(null);
@@ -131,32 +132,46 @@ function MessageBody({
 
   return (
     <>
-      <div className="mb-4 text-xs leading-5 text-muted-foreground">
-        <p className="break-words">
-          From: <span className="font-medium text-foreground">{addressDetails(message.from)}</span>
-        </p>
-        <p className="break-words">To: {addressDetails(message.to)}</p>
-        {message.cc.length > 0 && <p className="break-words">Cc: {addressDetails(message.cc)}</p>}
-        {message.replyTo.length > 0 && (
-          <p className="break-words">Reply-To: {addressDetails(message.replyTo)}</p>
+      <div className="flex items-center justify-between gap-3">
+        <Button
+          variant="ghost"
+          className="h-8 px-2 text-xs text-muted-foreground"
+          aria-expanded={showDetails}
+          onClick={() => setShowDetails((current) => !current)}
+        >
+          {showDetails ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+          Details
+        </Button>
+        {message.html && (
+          <div className="flex gap-1" aria-label="Message format">
+            <Button
+              variant={view === 'html' ? 'secondary' : 'ghost'}
+              className="h-8 px-3 text-xs"
+              onClick={() => setView('html')}
+            >
+              HTML
+            </Button>
+            <Button
+              variant={view === 'text' ? 'secondary' : 'ghost'}
+              className="h-8 px-3 text-xs"
+              onClick={() => setView('text')}
+            >
+              Plain text
+            </Button>
+          </div>
         )}
       </div>
-      {message.html && (
-        <div className="flex justify-end gap-1" aria-label="Message format">
-          <Button
-            variant={view === 'html' ? 'secondary' : 'ghost'}
-            className="h-8 px-3 text-xs"
-            onClick={() => setView('html')}
-          >
-            HTML
-          </Button>
-          <Button
-            variant={view === 'text' ? 'secondary' : 'ghost'}
-            className="h-8 px-3 text-xs"
-            onClick={() => setView('text')}
-          >
-            Plain text
-          </Button>
+
+      {showDetails && (
+        <div className="mt-2 rounded-md bg-muted/40 px-3 py-2 text-xs leading-5 text-muted-foreground">
+          <p className="break-words">
+            From: <span className="font-medium text-foreground">{addressDetails(message.from)}</span>
+          </p>
+          <p className="break-words">To: {addressDetails(message.to)}</p>
+          {message.cc.length > 0 && <p className="break-words">Cc: {addressDetails(message.cc)}</p>}
+          {message.replyTo.length > 0 && (
+            <p className="break-words">Reply-To: {addressDetails(message.replyTo)}</p>
+          )}
         </div>
       )}
 
@@ -351,6 +366,8 @@ function ReplyComposer({
   summary,
   message,
   threadMessages,
+  open,
+  onOpenChange,
   onSent,
   onDraftSaved,
   onDraftDeleted,
@@ -359,12 +376,13 @@ function ReplyComposer({
   summary: MailMessageSummary;
   message: MailMessageDetail;
   threadMessages: MailMessageSummary[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onSent: (message: MailMessageSummary) => void;
   onDraftSaved?: (event: DraftSavedEvent) => void;
   onDraftDeleted?: (event: DraftDeletedEvent) => void;
 }) {
   const recipients = replyRecipients(account, message);
-  const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [text, setText] = useState(() => signatureBody(account.id));
   const [signatureId, setSignatureId] = useState(() => signatureIdForAccount(account.id));
@@ -384,6 +402,7 @@ function ReplyComposer({
     savedDraftReference,
     handoffSavedDraft,
     discardSavedDraft,
+    discardSavedDraftInBackground,
   } = useDraftAutosave(
     account.id,
     currentDraft,
@@ -391,7 +410,7 @@ function ReplyComposer({
   );
 
   const resetReply = () => {
-    setOpen(false);
+    onOpenChange(false);
     setExpanded(false);
     setText('');
     setAttachments([]);
@@ -407,23 +426,25 @@ function ReplyComposer({
       }
       if (reference) onDraftSaved?.({ accountId: account.id, reference });
       setCloseConfirmationOpen(false);
-      setOpen(false);
+      onOpenChange(false);
       setExpanded(false);
     }).finally(() => setBusy(false));
   };
 
   const deleteReplyDraft = () => {
-    const reference = savedDraftReference;
-    setBusy(true);
-    void discardSavedDraft().then((deleted) => {
-      if (!deleted) return;
-      if (reference) {
-        onDraftDeleted?.({ accountId: account.id, references: [reference] });
+    const deletion = discardSavedDraftInBackground();
+    const reference = deletion.reference ?? savedDraftReference;
+    if (reference) {
+      onDraftDeleted?.({ accountId: account.id, references: [reference] });
+    }
+    setCloseConfirmationOpen(false);
+    setDeleteConfirmationOpen(false);
+    resetReply();
+    void deletion.completion.then((result) => {
+      if (!result.ok && result.reference) {
+        onDraftSaved?.({ accountId: account.id, reference: result.reference });
       }
-      setCloseConfirmationOpen(false);
-      setDeleteConfirmationOpen(false);
-      resetReply();
-    }).finally(() => setBusy(false));
+    });
   };
 
   const closeReply = () => {
@@ -502,7 +523,7 @@ function ReplyComposer({
         if (result.sentMessage) onSent(result.sentMessage);
         setText('');
         setAttachments([]);
-        setOpen(false);
+        onOpenChange(false);
       }
     } catch {
       setStatus({ kind: 'error', message: 'Could not send reply.' });
@@ -535,34 +556,17 @@ function ReplyComposer({
   };
 
   if (!open) {
-    return (
-      <div className="mt-6 border-t border-border pt-5">
-        <Button
-          variant="secondary"
-          disabled={recipients.length === 0}
-          title={recipients.length === 0 ? 'This message has no valid reply address.' : undefined}
-          onClick={() => {
-            setText((current) => current || signatureBody(account.id));
-            setOpen(true);
-            setStatus(null);
-          }}
-        >
-          <Reply className="size-4" />
-          Reply
-        </Button>
-        {status && (
-          <span
-            className={cn(
-              'ml-3 text-xs',
-              status.kind === 'success' ? 'text-success' : 'text-danger',
-            )}
-            role="status"
-          >
-            {status.message}
-          </span>
+    return status ? (
+      <p
+        className={cn(
+          'mt-3 text-xs',
+          status.kind === 'success' ? 'text-success' : 'text-danger',
         )}
-      </div>
-    );
+        role="status"
+      >
+        {status.message}
+      </p>
+    ) : null;
   }
 
   return (
@@ -616,7 +620,7 @@ function ReplyComposer({
                   draft: currentDraft,
                   ...(reference ? { draftReference: reference } : {}),
                 });
-              }).then((opened) => { if (opened) setOpen(false); });
+              }).then((opened) => { if (opened) onOpenChange(false); });
             }}
           >
             <ExternalLink className="size-4" />
@@ -877,11 +881,14 @@ function ThreadMessageCard({
   );
   const [draftAttachmentError, setDraftAttachmentError] = useState<string | null>(null);
   const [deleteDraftConfirmationOpen, setDeleteDraftConfirmationOpen] = useState(false);
-  const [deletingDraft, setDeletingDraft] = useState(false);
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replySession, setReplySession] = useState(0);
   const senderAddresses = summary.from
     .map(({ address }) => address)
     .filter((address): address is string => Boolean(address))
     .join(', ') || 'Unknown sender address';
+  const canReply = state.status === 'loaded' &&
+    replyRecipients(selection.account, state.message).length > 0;
 
   useEffect(() => {
     if (demoDetail) return;
@@ -943,15 +950,15 @@ function ThreadMessageCard({
 
   return (
     <article className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-accent/50 focus-visible:bg-accent focus-visible:outline-none"
-        aria-expanded={expanded}
-        onClick={() => {
-          if (!draftEditorOpen) setExpanded((current) => !current);
-        }}
-      >
-        <div className="flex min-w-0 items-center gap-3">
+      <div className="flex w-full items-center gap-4 px-5 py-4 hover:bg-accent/50 focus-within:bg-accent/50">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none"
+          aria-expanded={expanded}
+          onClick={() => {
+            if (!draftEditorOpen && !replyOpen) setExpanded((current) => !current);
+          }}
+        >
           <span className="grid size-8 shrink-0 place-items-center rounded-full bg-account text-xs font-semibold text-primary">
             {addressLabel(summary.from).charAt(0).toUpperCase()}
           </span>
@@ -965,8 +972,27 @@ function ThreadMessageCard({
             </p>
             <p className="truncate text-xs text-muted-foreground">To: {addressLabel(summary.to)}</p>
           </div>
-        </div>
+        </button>
         <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+          {expanded && state.status === 'loaded' && !isSavedDraft && !draftEditorOpen && (
+            <Button
+              variant="secondary"
+              className="h-8 px-3"
+              disabled={Boolean(demoDetail) || replyOpen || !canReply}
+              title={demoDetail
+                ? 'Sending is disabled for sample messages'
+                : !canReply
+                  ? 'This message has no valid reply address.'
+                  : undefined}
+              onClick={() => {
+                setReplySession((current) => current + 1);
+                setReplyOpen(true);
+              }}
+            >
+              <Reply className="size-4" />
+              Reply
+            </Button>
+          )}
           {isSavedDraft && (
             <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
               Draft
@@ -975,9 +1001,18 @@ function ThreadMessageCard({
           <time dateTime={summary.sentAt ?? summary.receivedAt ?? undefined}>
             {messageDate(summary.sentAt ?? summary.receivedAt)}
           </time>
-          {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+          <Button
+            variant="ghost"
+            className="size-8 px-0"
+            aria-label={expanded ? 'Collapse message' : 'Expand message'}
+            aria-expanded={expanded}
+            disabled={draftEditorOpen || replyOpen}
+            onClick={() => setExpanded((current) => !current)}
+          >
+            {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+          </Button>
         </div>
-      </button>
+      </div>
 
       {expanded && (
         <div className="border-t border-border px-5 py-5">
@@ -1039,7 +1074,6 @@ function ThreadMessageCard({
                   <Button
                     variant="ghost"
                     className="text-danger hover:text-danger"
-                    disabled={deletingDraft}
                     onClick={() => setDeleteDraftConfirmationOpen(true)}
                   >
                     <Trash2 className="size-4" />
@@ -1054,18 +1088,14 @@ function ThreadMessageCard({
                     Edit draft
                   </Button>
                 </div>
-              ) : !draftEditorOpen && demoDetail ? (
-                <div className="mt-6 border-t border-border pt-5">
-                  <Button variant="secondary" title="Sending is disabled for sample messages">
-                    <Reply className="size-4" />
-                    Reply
-                  </Button>
-                </div>
-              ) : !draftEditorOpen ? <ReplyComposer
+              ) : !draftEditorOpen && !demoDetail ? <ReplyComposer
+                key={replySession}
                 account={selection.account}
                 summary={summary}
                 message={state.message}
                 threadMessages={threadMessages}
+                open={replyOpen}
+                onOpenChange={setReplyOpen}
                 onSent={onReplySent}
                 onDraftSaved={onDraftSaved}
                 onDraftDeleted={onDraftDeleted}
@@ -1088,25 +1118,26 @@ function ThreadMessageCard({
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction
                       variant="destructive"
-                      disabled={deletingDraft}
                       onClick={() => {
-                        setDeletingDraft(true);
-                        void window.emzero.messages.deleteDraft(selection.account.id, {
+                        const reference = {
                           folderPath: summary.folderPath,
                           uid: summary.uid,
-                        }).then((result) => {
+                        };
+                        setDeleteDraftConfirmationOpen(false);
+                        onDraftDeleted?.({
+                          accountId: selection.account.id,
+                          references: [reference],
+                        });
+                        void window.emzero.messages.deleteDraft(
+                          selection.account.id,
+                          reference,
+                        ).then((result) => {
                           if (!result.ok) {
-                            setDraftAttachmentError(result.message ?? 'Could not delete draft.');
-                            return;
+                            onDraftSaved?.({ accountId: selection.account.id, reference });
                           }
-                          setDeleteDraftConfirmationOpen(false);
-                          onDraftDeleted?.({
-                            accountId: selection.account.id,
-                            references: [{ folderPath: summary.folderPath, uid: summary.uid }],
-                          });
                         }).catch(() => {
-                          setDraftAttachmentError('Could not delete draft.');
-                        }).finally(() => setDeletingDraft(false));
+                          onDraftSaved?.({ accountId: selection.account.id, reference });
+                        });
                       }}
                     >
                       <Trash2 className="size-4" />

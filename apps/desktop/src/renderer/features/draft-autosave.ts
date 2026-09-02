@@ -7,6 +7,17 @@ export type DraftAutosaveState =
   | { state: 'saved'; message: string }
   | { state: 'error'; message: string };
 
+export interface BackgroundDraftDeletionResult {
+  ok: boolean;
+  reference?: MailDraftReference;
+  message?: string;
+}
+
+export interface BackgroundDraftDeletion {
+  reference?: MailDraftReference;
+  completion: Promise<BackgroundDraftDeletionResult>;
+}
+
 export function useDraftAutosave(
   accountId: string,
   draft: MailSendDraft,
@@ -17,6 +28,7 @@ export function useDraftAutosave(
   savedDraftReference: MailDraftReference | undefined;
   handoffSavedDraft: () => Promise<MailDraftReference | undefined>;
   discardSavedDraft: () => Promise<boolean>;
+  discardSavedDraftInBackground: () => BackgroundDraftDeletion;
 } {
   const [status, setStatus] = useState<DraftAutosaveState>({ state: 'idle' });
   const [savedDraftReference, setSavedDraftReference] = useState(initialReference);
@@ -54,8 +66,8 @@ export function useDraftAutosave(
           }
           savedDraft.current = { accountId, reference: result.draft };
           lastSavedFingerprint.current = fingerprint;
-          setSavedDraftReference(result.draft);
           if (generation.current !== saveGeneration) return;
+          setSavedDraftReference(result.draft);
           setStatus({ state: 'saved', message: result.message ?? 'Draft saved.' });
         });
     }, 1_200);
@@ -85,6 +97,53 @@ export function useDraftAutosave(
     return true;
   }, []);
 
+  const discardSavedDraftInBackground = useCallback((): BackgroundDraftDeletion => {
+    generation.current += 1;
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+
+    const knownDraft = savedDraft.current;
+    const pendingSaves = queue.current.catch(() => undefined);
+    lastSavedFingerprint.current = null;
+    setSavedDraftReference(undefined);
+    setStatus({ state: 'idle' });
+
+    const completion = pendingSaves.then(async (): Promise<BackgroundDraftDeletionResult> => {
+      const saved = savedDraft.current ?? knownDraft;
+      if (!saved) return { ok: true };
+      try {
+        const result = await window.emzero.messages.deleteDraft(saved.accountId, saved.reference);
+        if (!result.ok) {
+          return {
+            ok: false,
+            reference: saved.reference,
+            message: result.message ?? 'Could not delete draft.',
+          };
+        }
+        if (
+          savedDraft.current?.accountId === saved.accountId &&
+          savedDraft.current.reference.folderPath === saved.reference.folderPath &&
+          savedDraft.current.reference.uid === saved.reference.uid
+        ) {
+          savedDraft.current = null;
+          lastSavedFingerprint.current = null;
+        }
+        return { ok: true, reference: saved.reference };
+      } catch {
+        return {
+          ok: false,
+          reference: saved.reference,
+          message: 'Could not delete draft.',
+        };
+      }
+    });
+
+    // A newly opened editor may start saving again before deletion finishes. Keep
+    // that save behind the deletion so it cannot be mistaken for the old draft.
+    queue.current = completion.then(() => undefined);
+    return { reference: knownDraft?.reference, completion };
+  }, []);
+
   const handoffSavedDraft = useCallback(async () => {
     let saveFailed = false;
     if (timer.current !== null) window.clearTimeout(timer.current);
@@ -110,8 +169,8 @@ export function useDraftAutosave(
           }
           savedDraft.current = { accountId, reference: result.draft };
           lastSavedFingerprint.current = fingerprint;
-          setSavedDraftReference(result.draft);
           if (generation.current === saveGeneration) {
+            setSavedDraftReference(result.draft);
             setStatus({ state: 'saved', message: result.message ?? 'Draft saved.' });
           }
         });
@@ -120,5 +179,11 @@ export function useDraftAutosave(
     return saveFailed ? undefined : savedDraft.current?.reference;
   }, [accountId, draft, enabled, fingerprint]);
 
-  return { status, savedDraftReference, handoffSavedDraft, discardSavedDraft };
+  return {
+    status,
+    savedDraftReference,
+    handoffSavedDraft,
+    discardSavedDraft,
+    discardSavedDraftInBackground,
+  };
 }

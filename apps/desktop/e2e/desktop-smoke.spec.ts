@@ -66,6 +66,15 @@ test('navigates the desktop app and reads sample mail', async () => {
       name: 'The launch page is ready for review',
     })).toBeVisible();
     await expect(page.getByText('launch-checklist.pdf')).toBeVisible();
+    const replyButton = page.getByRole('button', { name: 'Reply', exact: true });
+    await expect(replyButton).toBeVisible();
+    await expect(replyButton).toBeDisabled();
+    const messageDetails = page.getByRole('button', { name: 'Details', exact: true });
+    await expect(messageDetails).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByText(/Reply-To:/)).toHaveCount(0);
+    await messageDetails.click();
+    await expect(messageDetails).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByText(/Reply-To:/)).toBeVisible();
 
     await page.keyboard.press('Escape');
     await expect(page.getByRole('heading', { name: 'Inbox', exact: true })).toBeVisible();
