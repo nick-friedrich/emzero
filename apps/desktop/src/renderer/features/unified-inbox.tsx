@@ -60,7 +60,7 @@ import {
 } from './mail-common';
 import { MailSplitLayout } from './mail-split-layout';
 import { ConversationReader } from './conversation-reader';
-import type { DraftSavedEvent } from './compose-dialog';
+import type { DraftDeletedEvent, DraftSavedEvent } from './compose-dialog';
 import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableAction } from './undoable-delete';
 import type { DemoMailboxSnapshot } from './demo-mode';
@@ -110,6 +110,7 @@ export function UnifiedInbox({
   onToggleSidebar,
   onFoldersChanged,
   draftSavedEvent,
+  draftDeletedEvent,
   demo,
 }: {
   accounts: AccountSummary[];
@@ -121,6 +122,7 @@ export function UnifiedInbox({
   onToggleSidebar: () => void;
   onFoldersChanged?: () => void;
   draftSavedEvent?: DraftSavedEvent | null;
+  draftDeletedEvent?: DraftDeletedEvent | null;
   demo?: DemoMailboxSnapshot;
 }) {
   const { selectNextOnDelete } = useTheme();
@@ -391,11 +393,54 @@ export function UnifiedInbox({
     });
   }, [accounts, demo, mailbox]);
 
+  const applyDraftDeleted = useCallback((event: DraftDeletedEvent) => {
+    if (demo || event.references.length === 0) return;
+    const deleted = new Set(event.references.map(
+      (reference) => `${reference.folderPath}:${reference.uid}`,
+    ));
+    const draftFolderPaths = new Set(event.references.map((reference) => reference.folderPath));
+    setState((current) => {
+      if (current.status !== 'loaded') return current;
+      let removedMessages = 0;
+      const items = current.items.flatMap((item) => {
+        if (item.selection.account.id !== event.accountId) return [item];
+        const messages = item.conversation.messages.filter((message) => {
+          const remove = deleted.has(`${message.folderPath}:${message.uid}`);
+          if (remove) removedMessages += 1;
+          return !remove;
+        });
+        const remainsInDrafts = mailbox !== 'drafts' || messages.some(
+          (message) => draftFolderPaths.has(message.folderPath),
+        );
+        return messages.length > 0 && remainsInDrafts
+          ? [{ ...item, conversation: { ...item.conversation, messages } }]
+          : [];
+      });
+      setSelectedItem((selected) => {
+        if (!selected || selected.selection.account.id !== event.accountId) return selected;
+        return items.find((item) => itemKey(item) === itemKey(selected)) ?? null;
+      });
+      const removedPrimaryMessages = mailbox === 'drafts' ? removedMessages : 0;
+      return {
+        ...current,
+        items,
+        loadedMessages: Math.max(0, current.loadedMessages - removedPrimaryMessages),
+        totalMessages: Math.max(0, current.totalMessages - removedPrimaryMessages),
+      };
+    });
+  }, [demo, mailbox]);
+
   useEffect(() => {
     if (!draftSavedEvent) return;
     const timer = window.setTimeout(() => void applyDraftSaved(draftSavedEvent), 0);
     return () => window.clearTimeout(timer);
   }, [applyDraftSaved, draftSavedEvent]);
+
+  useEffect(() => {
+    if (!draftDeletedEvent) return;
+    const timer = window.setTimeout(() => applyDraftDeleted(draftDeletedEvent), 0);
+    return () => window.clearTimeout(timer);
+  }, [applyDraftDeleted, draftDeletedEvent]);
 
   const visibleItems = useMemo(() => {
     const items = state.status === 'loaded' ? state.items : [];
@@ -920,7 +965,7 @@ export function UnifiedInbox({
           );
         }}
         onDraftSaved={applyDraftSaved}
-        onDraftSent={refresh}
+        onDraftDeleted={applyDraftDeleted}
         demoDetails={demo?.details}
       />
     ) : null;

@@ -57,6 +57,11 @@ export interface DraftSavedEvent {
   reference: MailDraftReference;
 }
 
+export interface DraftDeletedEvent {
+  accountId: string;
+  references: MailDraftReference[];
+}
+
 function recipientQuery(value: string): string {
   return value.slice(Math.max(value.lastIndexOf(','), value.lastIndexOf(';')) + 1).trim();
 }
@@ -226,7 +231,7 @@ export function ComposeDialog({
   composerKind?: MailComposerKind;
   variant?: 'floating' | 'inline' | 'window';
   onDraftSaved?: (event: DraftSavedEvent) => void;
-  onDeleted?: () => void;
+  onDeleted?: (event: DraftDeletedEvent) => void;
 }) {
   const [accountId, setAccountId] = useState(() =>
     accounts.some((account) => account.id === defaultAccountId)
@@ -262,9 +267,11 @@ export function ComposeDialog({
   );
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
+  const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<MailSendDraft | null>(null);
   const confirmationActionRef = useRef<HTMLButtonElement>(null);
+  const allowWindowCloseRef = useRef(false);
   const currentDraft: MailSendDraft = {
     to: parseAddressList(to),
     cc: parseAddressList(cc),
@@ -278,7 +285,12 @@ export function ComposeDialog({
   const hasDraftContent = Boolean(
     to.trim() || cc.trim() || bcc.trim() || subject.trim() || body.trim() || attachments.length,
   );
-  const { status: draftStatus, handoffSavedDraft, discardSavedDraft } = useDraftAutosave(
+  const {
+    status: draftStatus,
+    savedDraftReference,
+    handoffSavedDraft,
+    discardSavedDraft,
+  } = useDraftAutosave(
     accountId,
     currentDraft,
     open && hasDraftContent,
@@ -290,6 +302,71 @@ export function ComposeDialog({
   const preservedSignature = signatureStart >= 0
     ? body.slice(signatureStart)
     : formatSignature(signatureBodyForId(signatureId));
+
+  useEffect(() => {
+    if (variant !== 'window') return;
+    const preventUnconfirmedClose = (event: BeforeUnloadEvent) => {
+      if (
+        allowWindowCloseRef.current ||
+        (!hasDraftContent && !savedDraftReference && !initialDraftReference)
+      ) return;
+      event.preventDefault();
+      event.returnValue = '';
+      setCloseConfirmationOpen(true);
+    };
+    window.addEventListener('beforeunload', preventUnconfirmedClose);
+    return () => window.removeEventListener('beforeunload', preventUnconfirmedClose);
+  }, [hasDraftContent, initialDraftReference, savedDraftReference, variant]);
+
+  const finishClose = () => {
+    allowWindowCloseRef.current = true;
+    onOpenChange(false);
+  };
+
+  const deletedDraftEvent = (): DraftDeletedEvent => {
+    const references = [savedDraftReference, initialDraftReference]
+      .filter((reference): reference is MailDraftReference => Boolean(reference))
+      .filter((reference, index, all) => all.findIndex(
+        (candidate) => candidate.folderPath === reference.folderPath && candidate.uid === reference.uid,
+      ) === index);
+    return { accountId, references };
+  };
+
+  const resetComposer = () => {
+    setTo('');
+    setCc('');
+    setBcc('');
+    setSubject('');
+    setBody('');
+    setAttachments([]);
+    setExpanded(variant === 'window');
+  };
+
+  const keepAndClose = () => {
+    setBusy(true);
+    void handoffSavedDraft().then((reference) => {
+      if (!reference && hasDraftContent) {
+        setCloseConfirmationOpen(false);
+        return;
+      }
+      if (reference) onDraftSaved?.({ accountId, reference });
+      setCloseConfirmationOpen(false);
+      finishClose();
+    }).finally(() => setBusy(false));
+  };
+
+  const deleteAndClose = () => {
+    const event = deletedDraftEvent();
+    setBusy(true);
+    void discardSavedDraft().then((deleted) => {
+      if (!deleted) return;
+      setDeleteConfirmationOpen(false);
+      setCloseConfirmationOpen(false);
+      resetComposer();
+      finishClose();
+      onDeleted?.(event);
+    }).finally(() => setBusy(false));
+  };
 
   const generateAiDraft = (instruction: string, onProgress: (text: string) => void) => {
     const account = accounts.find((candidate) => candidate.id === accountId);
@@ -317,15 +394,12 @@ export function ComposeDialog({
         setStatus({ kind: 'error', message: result.message ?? 'Could not send message.' });
         return;
       }
-      await discardSavedDraft();
-      setTo('');
-      setCc('');
-      setBcc('');
-      setSubject('');
-      setBody('');
+      const deletedEvent = deletedDraftEvent();
+      const discarded = await discardSavedDraft();
+      if (discarded && deletedEvent.references.length > 0) onDeleted?.(deletedEvent);
+      resetComposer();
       onSent(result.sentMessage);
-      setAttachments([]);
-      onOpenChange(false);
+      finishClose();
     } catch {
       setStatus({ kind: 'error', message: 'Could not send message.' });
     } finally {
@@ -358,10 +432,11 @@ export function ComposeDialog({
 
   const closeComposer = () => {
     if (busy || aiBusy) return;
-    void handoffSavedDraft().then((reference) => {
-      if (reference) onDraftSaved?.({ accountId, reference });
-      onOpenChange(false);
-    });
+    if (!hasDraftContent && !savedDraftReference && !initialDraftReference) {
+      finishClose();
+      return;
+    }
+    setCloseConfirmationOpen(true);
   };
 
   return (
@@ -388,7 +463,7 @@ export function ComposeDialog({
             {subject && <p className="truncate text-xs text-muted-foreground">{subject}</p>}
           </div>
           <div className="ml-auto flex items-center gap-1">
-            {composerKind === 'draft' && <Button
+            {(hasDraftContent || savedDraftReference || initialDraftReference) && <Button
               type="button"
               variant="ghost"
               className="size-8 px-0 text-danger hover:text-danger"
@@ -427,7 +502,7 @@ export function ComposeDialog({
                     draft: currentDraft,
                     ...(reference ? { draftReference: reference } : {}),
                   });
-                  if (opened) onOpenChange(false);
+                  if (opened) finishClose();
                 });
               }}
             >
@@ -707,18 +782,30 @@ export function ComposeDialog({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              onClick={() => {
-                setBusy(true);
-                void discardSavedDraft().then((deleted) => {
-                  if (!deleted) return;
-                  setDeleteConfirmationOpen(false);
-                  onOpenChange(false);
-                  onDeleted?.();
-                }).finally(() => setBusy(false));
-              }}
+              onClick={deleteAndClose}
             >
               <Trash2 className="size-4" />
               Delete draft
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={closeConfirmationOpen} onOpenChange={setCloseConfirmationOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Keep this draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Keep it in Drafts so you can continue later, or delete it permanently.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continue editing</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={busy} onClick={deleteAndClose}>
+              <Trash2 className="size-4" />
+              Delete draft
+            </AlertDialogAction>
+            <AlertDialogAction variant="default" disabled={busy} onClick={keepAndClose}>
+              Keep draft
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -58,7 +58,7 @@ import {
 } from './mail-common';
 import { MailSplitLayout } from './mail-split-layout';
 import { ConversationReader } from './conversation-reader';
-import type { DraftSavedEvent } from './compose-dialog';
+import type { DraftDeletedEvent, DraftSavedEvent } from './compose-dialog';
 import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableAction } from './undoable-delete';
 import { useTheme } from '@/theme';
@@ -81,6 +81,7 @@ export function MessageList({
   onToggleSidebar,
   onFoldersChanged,
   draftSavedEvent,
+  draftDeletedEvent,
 }: {
   accounts: AccountSummary[];
   selection: FolderSelection;
@@ -91,6 +92,7 @@ export function MessageList({
   onToggleSidebar: () => void;
   onFoldersChanged: () => void;
   draftSavedEvent?: DraftSavedEvent | null;
+  draftDeletedEvent?: DraftDeletedEvent | null;
 }) {
   const [state, setState] = useState<MessageLoadState>({ status: 'loading' });
   const { selectNextOnDelete } = useTheme();
@@ -246,11 +248,46 @@ export function MessageList({
     });
   }, [selection.account.id, selection.folder.path]);
 
+  const applyDraftDeleted = useCallback((event: DraftDeletedEvent) => {
+    if (event.accountId !== selection.account.id || event.references.length === 0) return;
+    const deleted = new Set(event.references.map(
+      (reference) => `${reference.folderPath}:${reference.uid}`,
+    ));
+    setState((current) => {
+      if (current.status !== 'loaded') return current;
+      const removedPrimaryCount = current.messages.filter(
+        (message) => deleted.has(`${message.folderPath}:${message.uid}`),
+      ).length;
+      const messages = current.messages.filter(
+        (message) => !deleted.has(`${message.folderPath}:${message.uid}`),
+      );
+      const relatedMessages = current.relatedMessages.filter(
+        (message) => !deleted.has(`${message.folderPath}:${message.uid}`),
+      );
+      const nextConversations = groupMessagesWithRelated(messages, relatedMessages);
+      setSelectedConversation((selected) => selected
+        ? nextConversations.find((conversation) => conversation.id === selected.id) ?? null
+        : selected);
+      return {
+        ...current,
+        messages,
+        relatedMessages,
+        total: Math.max(0, current.total - removedPrimaryCount),
+      };
+    });
+  }, [selection.account.id]);
+
   useEffect(() => {
     if (!draftSavedEvent) return;
     const timer = window.setTimeout(() => void applyDraftSaved(draftSavedEvent), 0);
     return () => window.clearTimeout(timer);
   }, [applyDraftSaved, draftSavedEvent]);
+
+  useEffect(() => {
+    if (!draftDeletedEvent) return;
+    const timer = window.setTimeout(() => applyDraftDeleted(draftDeletedEvent), 0);
+    return () => window.clearTimeout(timer);
+  }, [applyDraftDeleted, draftDeletedEvent]);
 
   const showRecipients = selection.folder.specialUse === '\\Sent';
   const allConversations = useMemo(
@@ -729,7 +766,7 @@ export function MessageList({
           });
         }}
         onDraftSaved={applyDraftSaved}
-        onDraftSent={refresh}
+        onDraftDeleted={applyDraftDeleted}
       />
     ) : null;
 

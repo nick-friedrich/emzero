@@ -86,6 +86,7 @@ export function useDraftAutosave(
   }, []);
 
   const handoffSavedDraft = useCallback(async () => {
+    let saveFailed = false;
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
     if (accountId && enabled && lastSavedFingerprint.current !== fingerprint) {
@@ -101,6 +102,7 @@ export function useDraftAutosave(
             : undefined;
           const result = await window.emzero.messages.saveDraft(accountId, snapshot, previous);
           if (!result.ok || !result.draft) {
+            saveFailed = true;
             if (generation.current === saveGeneration) {
               setStatus({ state: 'error', message: result.message ?? 'Could not save draft.' });
             }
@@ -115,7 +117,7 @@ export function useDraftAutosave(
         });
     }
     await queue.current.catch(() => undefined);
-    return savedDraft.current?.reference;
+    return saveFailed ? undefined : savedDraft.current?.reference;
   }, [accountId, draft, enabled, fingerprint]);
 
   return { status, savedDraftReference, handoffSavedDraft, discardSavedDraft };

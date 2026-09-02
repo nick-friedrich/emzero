@@ -295,7 +295,7 @@ export function MailSearch({
                 : current,
             );
           }}
-          onDraftSent={() => {
+          onDraftDeleted={() => {
             setSelected(null);
             setSearchRequest((current) => ({ ...current, revision: current.revision + 1 }));
           }}

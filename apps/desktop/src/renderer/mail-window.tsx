@@ -8,7 +8,11 @@ import type {
   MessageMoveDestination,
 } from '../shared/accounts';
 import { groupMessagesWithRelated, type MailConversation } from '../shared/conversations';
-import { ComposeDialog, type DraftSavedEvent } from './features/compose-dialog';
+import {
+  ComposeDialog,
+  type DraftDeletedEvent,
+  type DraftSavedEvent,
+} from './features/compose-dialog';
 import { ConversationReader } from './features/conversation-reader';
 import {
   conversationWithFlaggedValues,
@@ -30,6 +34,13 @@ function notifyMailChanged(): void {
 function notifyDraftSaved(event: DraftSavedEvent): void {
   const channel = new BroadcastChannel(mailEventsChannel);
   channel.postMessage({ type: 'draft-saved', event });
+  channel.close();
+}
+
+function notifyDraftDeleted(event: DraftDeletedEvent): void {
+  if (event.references.length === 0) return;
+  const channel = new BroadcastChannel(mailEventsChannel);
+  channel.postMessage({ type: 'draft-deleted', event });
   channel.close();
 }
 
@@ -69,7 +80,7 @@ function ComposerWindow({ context }: { context: Extract<MailWindowContext, { kin
       onOpenChange={(open) => { if (!open) window.close(); }}
       onDraftSaved={notifyDraftSaved}
       onSent={notifyMailChanged}
-      onDeleted={notifyMailChanged}
+      onDeleted={notifyDraftDeleted}
     />
   );
 }
@@ -198,7 +209,10 @@ function MessageWindow({ context }: { context: Extract<MailWindowContext, { kind
             : current);
           notifyMailChanged();
         }}
-        onDraftSent={() => window.close()}
+        onDraftDeleted={(event) => {
+          notifyDraftDeleted(event);
+          window.close();
+        }}
       />
     </main>
   );

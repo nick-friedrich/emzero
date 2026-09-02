@@ -78,7 +78,11 @@ import {
 import { AttachmentPicker } from './attachment-picker';
 import { AiDraftAssistant } from './ai-draft-assistant';
 import { useDraftAutosave } from './draft-autosave';
-import { ComposeDialog, type DraftSavedEvent } from './compose-dialog';
+import {
+  ComposeDialog,
+  type DraftDeletedEvent,
+  type DraftSavedEvent,
+} from './compose-dialog';
 import { SignaturePicker } from './signature-picker';
 import { formatSignature, replaceSignature, signatureBody, signatureBodyForId, signatureIdForAccount } from './signatures';
 
@@ -348,12 +352,16 @@ function ReplyComposer({
   message,
   threadMessages,
   onSent,
+  onDraftSaved,
+  onDraftDeleted,
 }: {
   account: AccountSummary;
   summary: MailMessageSummary;
   message: MailMessageDetail;
   threadMessages: MailMessageSummary[];
   onSent: (message: MailMessageSummary) => void;
+  onDraftSaved?: (event: DraftSavedEvent) => void;
+  onDraftDeleted?: (event: DraftDeletedEvent) => void;
 }) {
   const recipients = replyRecipients(account, message);
   const [open, setOpen] = useState(false);
@@ -365,15 +373,67 @@ function ReplyComposer({
   const [aiBusy, setAiBusy] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<MailSendDraft | null>(null);
   const confirmationActionRef = useRef<HTMLButtonElement>(null);
   const currentDraft = { ...createReplyDraft(account, summary, message, text), attachments };
-  const { status: draftStatus, handoffSavedDraft, discardSavedDraft } = useDraftAutosave(
+  const {
+    status: draftStatus,
+    savedDraftReference,
+    handoffSavedDraft,
+    discardSavedDraft,
+  } = useDraftAutosave(
     account.id,
     currentDraft,
     open && Boolean(text.trim() || attachments.length),
   );
+
+  const resetReply = () => {
+    setOpen(false);
+    setExpanded(false);
+    setText('');
+    setAttachments([]);
+    setStatus(null);
+  };
+
+  const keepReplyDraft = () => {
+    setBusy(true);
+    void handoffSavedDraft().then((reference) => {
+      if (!reference && (text.trim() || attachments.length > 0)) {
+        setCloseConfirmationOpen(false);
+        return;
+      }
+      if (reference) onDraftSaved?.({ accountId: account.id, reference });
+      setCloseConfirmationOpen(false);
+      setOpen(false);
+      setExpanded(false);
+    }).finally(() => setBusy(false));
+  };
+
+  const deleteReplyDraft = () => {
+    const reference = savedDraftReference;
+    setBusy(true);
+    void discardSavedDraft().then((deleted) => {
+      if (!deleted) return;
+      if (reference) {
+        onDraftDeleted?.({ accountId: account.id, references: [reference] });
+      }
+      setCloseConfirmationOpen(false);
+      setDeleteConfirmationOpen(false);
+      resetReply();
+    }).finally(() => setBusy(false));
+  };
+
+  const closeReply = () => {
+    if (busy || aiBusy) return;
+    if (!text.trim() && attachments.length === 0 && !savedDraftReference) {
+      resetReply();
+      return;
+    }
+    setCloseConfirmationOpen(true);
+  };
 
   const generateAiReply = async (instruction: string, onProgress: (text: string) => void) => {
     setStatus(null);
@@ -434,7 +494,11 @@ function ReplyComposer({
         message: result.message ?? (result.ok ? 'Reply sent.' : 'Could not send reply.'),
       });
       if (result.ok) {
-        await discardSavedDraft();
+        const reference = savedDraftReference;
+        const discarded = await discardSavedDraft();
+        if (discarded && reference) {
+          onDraftDeleted?.({ accountId: account.id, references: [reference] });
+        }
         if (result.sentMessage) onSent(result.sentMessage);
         setText('');
         setAttachments([]);
@@ -518,6 +582,17 @@ function ReplyComposer({
           <Button
             type="button"
             variant="ghost"
+            className="size-8 px-0 text-danger hover:text-danger"
+            disabled={busy || aiBusy}
+            aria-label="Delete reply draft"
+            title="Delete reply draft"
+            onClick={() => setDeleteConfirmationOpen(true)}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
             className="size-8 px-0"
             aria-label={expanded ? 'Return reply to conversation' : 'Expand reply to message area'}
             title={expanded ? 'Return reply to conversation' : 'Expand reply to message area'}
@@ -532,13 +607,16 @@ function ReplyComposer({
             aria-label="Open reply in new window"
             title="Open reply in new window"
             onClick={() => {
-              void handoffSavedDraft().then((reference) => window.emzero.openMailWindow({
-                kind: 'composer',
-                composerKind: 'reply',
-                accountId: account.id,
-                draft: currentDraft,
-                ...(reference ? { draftReference: reference } : {}),
-              })).then((opened) => { if (opened) setOpen(false); });
+              void handoffSavedDraft().then((reference) => {
+                if (reference) onDraftSaved?.({ accountId: account.id, reference });
+                return window.emzero.openMailWindow({
+                  kind: 'composer',
+                  composerKind: 'reply',
+                  accountId: account.id,
+                  draft: currentDraft,
+                  ...(reference ? { draftReference: reference } : {}),
+                });
+              }).then((opened) => { if (opened) setOpen(false); });
             }}
           >
             <ExternalLink className="size-4" />
@@ -612,18 +690,9 @@ function ReplyComposer({
             type="button"
             variant="ghost"
             disabled={busy || aiBusy}
-            onClick={() => {
-              void discardSavedDraft().then((deleted) => {
-                if (!deleted) return;
-                setOpen(false);
-                setExpanded(false);
-                setText('');
-                setAttachments([]);
-                setStatus(null);
-              });
-            }}
+            onClick={closeReply}
           >
-            Cancel
+            Close
           </Button>
           <Button
             type="submit"
@@ -726,6 +795,43 @@ function ReplyComposer({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <AlertDialog open={deleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this reply draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The draft will be permanently removed and this reply will close.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={busy} onClick={deleteReplyDraft}>
+              <Trash2 className="size-4" />
+              Delete draft
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={closeConfirmationOpen} onOpenChange={setCloseConfirmationOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Keep this reply draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Keep it in Drafts so you can continue later, or delete it permanently.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continue editing</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={busy} onClick={deleteReplyDraft}>
+              <Trash2 className="size-4" />
+              Delete draft
+            </AlertDialogAction>
+            <AlertDialogAction variant="default" disabled={busy} onClick={keepReplyDraft}>
+              Keep draft
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -742,7 +848,7 @@ function ThreadMessageCard({
   defaultExpanded,
   onReplySent,
   onDraftSaved,
-  onDraftSent,
+  onDraftDeleted,
   demoDetail,
 }: {
   selection: FolderSelection;
@@ -756,7 +862,7 @@ function ThreadMessageCard({
   defaultExpanded: boolean;
   onReplySent: (message: MailMessageSummary) => void;
   onDraftSaved?: (event: DraftSavedEvent) => void;
-  onDraftSent?: () => void;
+  onDraftDeleted?: (event: DraftDeletedEvent) => void;
   demoDetail?: MailMessageDetail;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -919,9 +1025,8 @@ function ThreadMessageCard({
                   onDraftSaved={onDraftSaved}
                   onSent={(sentMessage) => {
                     if (sentMessage) onReplySent(sentMessage);
-                    onDraftSent?.();
                   }}
-                  onDeleted={onDraftSent}
+                  onDeleted={onDraftDeleted}
                 />
               ) : <MessageBody
                 accountId={selection.account.id}
@@ -962,6 +1067,8 @@ function ThreadMessageCard({
                 message={state.message}
                 threadMessages={threadMessages}
                 onSent={onReplySent}
+                onDraftSaved={onDraftSaved}
+                onDraftDeleted={onDraftDeleted}
               /> : null}
               {draftAttachmentError && (
                 <p className="mt-3 text-xs text-danger" role="status">{draftAttachmentError}</p>
@@ -993,7 +1100,10 @@ function ThreadMessageCard({
                             return;
                           }
                           setDeleteDraftConfirmationOpen(false);
-                          onDraftSent?.();
+                          onDraftDeleted?.({
+                            accountId: selection.account.id,
+                            references: [{ folderPath: summary.folderPath, uid: summary.uid }],
+                          });
                         }).catch(() => {
                           setDraftAttachmentError('Could not delete draft.');
                         }).finally(() => setDeletingDraft(false));
@@ -1029,7 +1139,7 @@ export function ConversationReader({
   onDelete,
   onReplySent,
   onDraftSaved,
-  onDraftSent,
+  onDraftDeleted,
   demoDetails,
 }: {
   accounts: AccountSummary[];
@@ -1047,7 +1157,7 @@ export function ConversationReader({
   onDelete: () => void;
   onReplySent: (message: MailMessageSummary) => void;
   onDraftSaved?: (event: DraftSavedEvent) => void;
-  onDraftSent?: () => void;
+  onDraftDeleted?: (event: DraftDeletedEvent) => void;
   demoDetails?: ReadonlyMap<string, MailMessageDetail>;
 }) {
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
@@ -1210,7 +1320,7 @@ export function ConversationReader({
                   }
                   onReplySent={onReplySent}
                   onDraftSaved={onDraftSaved}
-                  onDraftSent={onDraftSent}
+                  onDraftDeleted={onDraftDeleted}
                   demoDetail={demoDetails?.get(
                     `${selection.account.id}:${message.folderPath}:${message.uid}`,
                   )}

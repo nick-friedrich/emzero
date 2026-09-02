@@ -20,7 +20,11 @@ import {
   BulkOperationBar,
   type BulkOperationView,
 } from './features/bulk-operation';
-import { ComposeDialog, type DraftSavedEvent } from './features/compose-dialog';
+import {
+  ComposeDialog,
+  type DraftDeletedEvent,
+  type DraftSavedEvent,
+} from './features/compose-dialog';
 import {
   demoAccounts,
   demoFolders,
@@ -81,6 +85,7 @@ export function App() {
   const [syncRevision, setSyncRevision] = useState(0);
   const [folderRevision, setFolderRevision] = useState(0);
   const [draftSavedEvent, setDraftSavedEvent] = useState<DraftSavedEvent | null>(null);
+  const [draftDeletedEvent, setDraftDeletedEvent] = useState<DraftDeletedEvent | null>(null);
   const [bulkOperation, setBulkOperation] = useState<BulkOperationView | null>(null);
 
   const keepSidebarOpen = () => {
@@ -133,9 +138,16 @@ export function App() {
   useEffect(() => {
     const channel = new BroadcastChannel(mailEventsChannel);
     channel.onmessage = (event) => {
-      const data = event.data as { type?: unknown; event?: DraftSavedEvent } | null;
+      const data = event.data as {
+        type?: unknown;
+        event?: DraftSavedEvent | DraftDeletedEvent;
+      } | null;
       if (data?.type === 'draft-saved' && data.event) {
-        setDraftSavedEvent({ ...data.event });
+        setDraftSavedEvent({ ...(data.event as DraftSavedEvent) });
+        return;
+      }
+      if (data?.type === 'draft-deleted' && data.event) {
+        setDraftDeletedEvent({ ...(data.event as DraftDeletedEvent) });
         return;
       }
       if (data?.type !== 'changed') return;
@@ -582,9 +594,11 @@ export function App() {
         onDraftSaved={(event) => {
           setComposeRevision((current) => current + 1);
           setDraftSavedEvent({ ...event });
-          setSyncRevision((current) => current + 1);
         }}
-        onDeleted={() => setSyncRevision((current) => current + 1)}
+        onDeleted={(event) => {
+          setComposeRevision((current) => current + 1);
+          if (event.references.length > 0) setDraftDeletedEvent({ ...event });
+        }}
         onSent={() => {
           setComposeRevision((current) => current + 1);
           setSyncRevision((current) => current + 1);
@@ -625,6 +639,7 @@ export function App() {
           onToggleSidebar={() => setSidebarPinned((current) => !current)}
           onFoldersChanged={refreshFolders}
           draftSavedEvent={draftSavedEvent}
+          draftDeletedEvent={draftDeletedEvent}
         />
       ) : selection.kind === 'search' ? (
         <MailSearch
@@ -648,6 +663,7 @@ export function App() {
           onToggleSidebar={() => setSidebarPinned((current) => !current)}
           onFoldersChanged={refreshFolders}
           draftSavedEvent={draftSavedEvent}
+          draftDeletedEvent={draftDeletedEvent}
         />
       )}
       {bulkOperation && (
