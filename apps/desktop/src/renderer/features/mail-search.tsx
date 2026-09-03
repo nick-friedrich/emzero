@@ -524,8 +524,11 @@ export function MailSearch({
                     compactList
                       ? 'col-span-2 col-start-1 row-start-2 pl-3.5'
                       : 'lg:row-span-2',
-                  )}>
+                    )}>
                     <p className={cn('truncate text-sm', item.message.unread && 'font-semibold')}>
+                      {item.folder.specialUse === '\\Drafts' && (
+                        <span className="mr-2 font-medium text-danger">Draft</span>
+                      )}
                       {item.message.subject || '(No subject)'}
                     </p>
                     {item.snippet && (

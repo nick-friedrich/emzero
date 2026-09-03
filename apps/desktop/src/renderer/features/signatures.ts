@@ -40,7 +40,7 @@ export function signatureBodyForId(signatureId: string): string {
 }
 
 export function formatSignature(signature: string): string {
-  return signature ? `\n\n-- \n${signature}` : '';
+  return signature ? `\n\n${signature}` : '';
 }
 
 export function signatureBody(accountId: string): string {
@@ -48,12 +48,13 @@ export function signatureBody(accountId: string): string {
 }
 
 export function replaceSignature(message: string, previousSignatureId: string, nextSignatureId: string): string {
-  const previous = formatSignature(signatureBodyForId(previousSignatureId));
+  const previousBody = signatureBodyForId(previousSignatureId);
+  const previous = formatSignature(previousBody);
+  const legacyPrevious = previousBody ? `\n\n-- \n${previousBody}` : '';
   const next = formatSignature(signatureBodyForId(nextSignatureId));
   if (previous && message.endsWith(previous)) return `${message.slice(0, -previous.length)}${next}`;
-  if (previous) {
-    const separatorIndex = message.lastIndexOf('\n\n-- \n');
-    if (separatorIndex >= 0) return `${message.slice(0, separatorIndex)}${next}`;
+  if (legacyPrevious && message.endsWith(legacyPrevious)) {
+    return `${message.slice(0, -legacyPrevious.length)}${next}`;
   }
   return `${message}${next}`;
 }

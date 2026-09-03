@@ -123,6 +123,10 @@ export function MessageList({
   );
   const inboxView = useInboxViewOptions();
   const isInbox = displayFolderName(selection.folder) === 'Inbox';
+  const draftFolderPaths = useMemo(
+    () => new Set(folders.filter((folder) => folder.specialUse === '\\Drafts').map((folder) => folder.path)),
+    [folders],
+  );
 
   useEffect(() => {
     let active = true;
@@ -1003,6 +1007,7 @@ export function MessageList({
               (message) => message.folderPath === selection.folder.path && message.unread,
             );
             const flagged = conversation.messages.some((message) => message.flagged);
+            const hasDraft = conversation.messages.some((message) => draftFolderPaths.has(message.folderPath));
             const importantMessage = conversation.messages.find(
               (message) => message.folderPath === selection.folder.path && message.important,
             );
@@ -1153,6 +1158,9 @@ export function MessageList({
                         : 'col-span-2 col-start-1 row-start-2 pl-3.5 lg:col-auto lg:row-auto lg:pl-0',
                     )}
                   >
+                    {hasDraft && (
+                      <span className="mr-2 font-medium text-danger">Draft</span>
+                    )}
                     {conversation.subject}
                     {conversation.messages.length > 1 && (
                       <span className="ml-2 font-normal text-muted-foreground">

@@ -253,7 +253,10 @@ export function ComposeDialog({
       ? defaultAccountId!
       : (accounts[0]?.id ?? '');
     const assignedSignatureId = signatureIdForAccount(initialAccountId);
-    return (!initialDraft && composerKind !== 'draft') || initialDraft?.text.endsWith(signatureBody(initialAccountId))
+    const assignedSignatureBody = signatureBodyForId(assignedSignatureId);
+    const hasAssignedSignature = initialDraft?.text.endsWith(formatSignature(assignedSignatureBody)) ||
+      (assignedSignatureBody && initialDraft?.text.endsWith(`\n\n-- \n${assignedSignatureBody}`));
+    return (!initialDraft && composerKind !== 'draft') || hasAssignedSignature
       ? assignedSignatureId
       : '';
   });
@@ -298,11 +301,19 @@ export function ComposeDialog({
     initialDraftReference,
   );
 
-  const signatureStart = body.lastIndexOf('\n\n-- \n');
-  const bodyWithoutSignature = signatureStart >= 0 ? body.slice(0, signatureStart) : body;
-  const preservedSignature = signatureStart >= 0
-    ? body.slice(signatureStart)
-    : formatSignature(signatureBodyForId(signatureId));
+  const formattedSignature = formatSignature(signatureBodyForId(signatureId));
+  const legacySignature = signatureId
+    ? `\n\n-- \n${signatureBodyForId(signatureId)}`
+    : '';
+  const currentSignature = formattedSignature && body.endsWith(formattedSignature)
+    ? formattedSignature
+    : legacySignature && body.endsWith(legacySignature)
+      ? legacySignature
+      : '';
+  const bodyWithoutSignature = currentSignature
+    ? body.slice(0, -currentSignature.length)
+    : body;
+  const preservedSignature = currentSignature || formattedSignature;
 
   useEffect(() => {
     if (variant !== 'window') return;
