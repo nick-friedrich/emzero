@@ -1166,6 +1166,9 @@ export function ConversationReader({
   actionError,
   onSetUnread,
   onSetFlagged,
+  onSetImportant,
+  onSetColor,
+  supportsEmzeroKeywords,
   onMove,
   onDelete,
   onReplySent,
@@ -1184,6 +1187,9 @@ export function ConversationReader({
   actionError: string | null;
   onSetUnread: (unread: boolean) => void;
   onSetFlagged: (flagged: boolean) => void;
+  onSetImportant: (important: boolean, dueDate?: string) => void;
+  onSetColor: (color: MailMessageSummary['color']) => void;
+  supportsEmzeroKeywords: boolean;
   onMove: (destination: MessageMoveDestination) => void;
   onDelete: () => void;
   onReplySent: (message: MailMessageSummary) => void;
@@ -1201,6 +1207,12 @@ export function ConversationReader({
   const flagged = conversation.messages.some(
     (message) => message.folderPath === selection.folder.path && message.flagged,
   );
+  const importantMessage = conversation.messages.find(
+    (message) => message.folderPath === selection.folder.path && message.important,
+  );
+  const color = conversation.messages.find(
+    (message) => message.folderPath === selection.folder.path && message.color,
+  )?.color ?? null;
   const draftFolderPaths = new Set(
     folders.filter((folder) => folder.specialUse === '\\Drafts').map((folder) => folder.path),
   );
@@ -1301,10 +1313,16 @@ export function ConversationReader({
             messageCount={messageCountInFolder(conversation, selection.folder.path)}
             unread={unread}
             flagged={flagged}
+            important={Boolean(importantMessage)}
+            dueDate={importantMessage?.dueDate ?? null}
+            color={color}
+            supportsEmzeroKeywords={supportsEmzeroKeywords}
             busy={busy}
             confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
             onSetUnread={setUnreadExplicitly}
             onSetFlagged={onSetFlagged}
+            onSetImportant={onSetImportant}
+            onSetColor={onSetColor}
             onMove={onMove}
             onDelete={onDelete}
             deleteButtonRef={deleteButtonRef}

@@ -15,6 +15,11 @@ import {
   mailCache,
   withAccountImap,
 } from './mail-runtime.js';
+import {
+  emzeroColorFromFlags,
+  emzeroImportanceFromFlags,
+  supportsEmzeroKeywords,
+} from '../shared/message-keywords.js';
 
 export function mailAddresses(
   value: Array<{ name?: string; address?: string }> | undefined,
@@ -100,6 +105,7 @@ async function messageSummary(
       })
     : null;
   const senderAvatarUrl = faceHeaderAvatar(parsedHeaders?.headers.get('face'));
+  const importance = emzeroImportanceFromFlags(message.flags);
   return {
     folderPath,
     uid: message.uid,
@@ -113,6 +119,8 @@ async function messageSummary(
     receivedAt: mailDateString(message.internalDate),
     unread: !message.flags?.has('\\Seen'),
     flagged: message.flags?.has('\\Flagged') ?? false,
+    ...importance,
+    color: emzeroColorFromFlags(message.flags),
     size: message.size ?? null,
   };
 }
@@ -159,7 +167,7 @@ export async function listFolderMessages(
   let password = '';
   const cached = mailCache().getFolderSyncState(account.id, folderPath);
 
-  if (cached.syncedAt && !refresh) {
+  if (cached.syncedAt && cached.supportsEmzeroKeywords !== undefined && !refresh) {
     return { ok: true, ...cached, source: 'cache' };
   }
 
@@ -172,6 +180,7 @@ export async function listFolderMessages(
         try {
           if (!imap.mailbox) throw new Error('Mailbox did not open.');
           const mailbox = imap.mailbox;
+          const keywordSupport = supportsEmzeroKeywords(mailbox.permanentFlags);
           const uidValidity = mailbox.uidValidity.toString();
           const validityChanged = cached.uidValidity !== null && cached.uidValidity !== uidValidity;
           const reconcile =
@@ -235,6 +244,7 @@ export async function listFolderMessages(
               highestModseq: mailbox.highestModseq?.toString() ?? null,
               reconcile,
               messageCount: mailbox.exists,
+              supportsEmzeroKeywords: keywordSupport,
             },
           );
           return {

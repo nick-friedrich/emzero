@@ -31,6 +31,9 @@ function message(uid: number, subject = `Message ${uid}`): MailMessageSummary {
     receivedAt: `2026-08-${String(uid).padStart(2, '0')}T10:00:01.000Z`,
     unread: uid % 2 === 0,
     flagged: uid === 2,
+    important: false,
+    dueDate: null,
+    color: null,
     size: 100 + uid,
   };
 }
@@ -261,6 +264,7 @@ describe('MailCache', () => {
       uidNext: 4,
       highestModseq: '120',
       syncedAt: 'later',
+      supportsEmzeroKeywords: true,
     });
 
     expect(cache.getFolderSyncState('account-1', 'INBOX')).toEqual({
@@ -270,7 +274,9 @@ describe('MailCache', () => {
       uidValidity: '99',
       uidNext: 4,
       highestModseq: '120',
+      supportsEmzeroKeywords: true,
     });
+    expect(cache.listFolders('account-1')[0].supportsEmzeroKeywords).toBe(true);
   });
 
   it('updates an incrementally refreshed folder without dropping unscanned messages', () => {
@@ -371,6 +377,29 @@ describe('MailCache', () => {
       { uid: 2, flagged: false },
       { uid: 1, flagged: true },
     ]);
+  });
+
+  it('updates Emzero importance and its due date in the cache', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox]);
+    cache.replaceRecentMessages('account-1', 'INBOX', [message(1)], 1);
+
+    cache.setMessagesImportant('account-1', 'INBOX', [1], true, '2026-09-04');
+    expect(cache.listMessages('account-1', 'INBOX').messages[0]).toMatchObject({
+      important: true,
+      dueDate: '2026-09-04',
+    });
+
+    cache.setMessagesImportant('account-1', 'INBOX', [1], false, null);
+    expect(cache.listMessages('account-1', 'INBOX').messages[0]).toMatchObject({
+      important: false,
+      dueDate: null,
+    });
+
+    cache.setMessagesColor('account-1', 'INBOX', [1], 'blue');
+    expect(cache.listMessages('account-1', 'INBOX').messages[0].color).toBe('blue');
+    cache.setMessagesColor('account-1', 'INBOX', [1], null);
+    expect(cache.listMessages('account-1', 'INBOX').messages[0].color).toBeNull();
   });
 
   it('invalidates folder sync metadata after an external change', () => {

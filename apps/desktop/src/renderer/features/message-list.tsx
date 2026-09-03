@@ -9,6 +9,7 @@ import {
 } from 'react';
 import {
   CircleAlert,
+  Flag,
   LoaderCircle,
   Mail,
   RefreshCw,
@@ -41,6 +42,9 @@ import {
   conversationOpponent,
   conversationWithMessage,
   conversationWithFlaggedValues,
+  conversationWithImportanceValues,
+  dueDateLabel,
+  messageColorBackgroundClass,
   conversationWithUnreadValues,
   isEditableTarget,
   MailLayoutToggle,
@@ -70,6 +74,7 @@ import {
   InboxViewOptions,
   useInboxViewOptions,
 } from './inbox-view-options';
+import { tomorrowDateKey, type EmzeroMessageColor } from '../../shared/message-keywords';
 
 export function MessageList({
   accounts,
@@ -187,6 +192,7 @@ export function MessageList({
           messages,
           relatedMessages,
           total: result.total,
+          supportsEmzeroKeywords: Boolean(result.supportsEmzeroKeywords),
           notice: notices.filter(Boolean).join(' '),
         });
       }
@@ -452,6 +458,7 @@ export function MessageList({
     conversation: MailConversation,
     action: ConversationAction,
     destination?: MessageMoveDestination,
+    metadata?: { dueDate?: string; color?: EmzeroMessageColor | null },
   ) => {
     if (pendingActions.current.has(conversation.id)) return false;
     pendingActions.current.add(conversation.id);
@@ -471,6 +478,19 @@ export function MessageList({
       conversation.messages
         .filter((message) => keys.has(`${message.folderPath}:${message.uid}`))
         .map((message) => [`${message.folderPath}:${message.uid}`, message.flagged]),
+    );
+    const previousImportance = new Map(
+      conversation.messages
+        .filter((message) => keys.has(`${message.folderPath}:${message.uid}`))
+        .map((message) => [
+          `${message.folderPath}:${message.uid}`,
+          { important: message.important, dueDate: message.dueDate },
+        ]),
+    );
+    const previousColors = new Map(
+      conversation.messages
+        .filter((message) => keys.has(`${message.folderPath}:${message.uid}`))
+        .map((message) => [`${message.folderPath}:${message.uid}`, message.color]),
     );
     const updateUnread = (unreadByMessage: ReadonlyMap<string, boolean>) => {
       const update = (message: MailMessageSummary) => {
@@ -512,6 +532,34 @@ export function MessageList({
           : current,
       );
     };
+    const updateImportance = (
+      importanceByMessage: ReadonlyMap<string, { important: boolean; dueDate: string | null }>,
+    ) => {
+      const update = (message: MailMessageSummary) => {
+        const value = importanceByMessage.get(`${message.folderPath}:${message.uid}`);
+        return value === undefined ? message : { ...message, ...value };
+      };
+      setState((current) => current.status === 'loaded'
+        ? { ...current, messages: current.messages.map(update), relatedMessages: current.relatedMessages.map(update) }
+        : current);
+      setSelectedConversation((current) =>
+        current?.id === conversation.id
+          ? conversationWithImportanceValues(current, importanceByMessage)
+          : current,
+      );
+    };
+    const updateColors = (colors: ReadonlyMap<string, EmzeroMessageColor | null>) => {
+      const update = (message: MailMessageSummary) => {
+        const color = colors.get(`${message.folderPath}:${message.uid}`);
+        return color === undefined ? message : { ...message, color };
+      };
+      setState((current) => current.status === 'loaded'
+        ? { ...current, messages: current.messages.map(update), relatedMessages: current.relatedMessages.map(update) }
+        : current);
+      setSelectedConversation((current) => current?.id === conversation.id
+        ? { ...current, messages: current.messages.map(update) }
+        : current);
+    };
 
     if (action === 'read' || action === 'unread') {
       const unread = action === 'unread';
@@ -520,6 +568,15 @@ export function MessageList({
     if (action === 'star' || action === 'unstar') {
       const flagged = action === 'star';
       updateFlagged(new Map([...keys].map((key) => [key, flagged])));
+    }
+    if (action === 'mark-important' || action === 'clear-important') {
+      const important = action === 'mark-important';
+      const dueDate = important ? (metadata?.dueDate ?? tomorrowDateKey()) : null;
+      updateImportance(new Map([...keys].map((key) => [key, { important, dueDate }])));
+    }
+    if (action === 'set-color' || action === 'clear-color') {
+      const color = action === 'set-color' ? (metadata?.color ?? null) : null;
+      updateColors(new Map([...keys].map((key) => [key, color])));
     }
 
     const previousState = state;
@@ -535,7 +592,7 @@ export function MessageList({
           const removedIndex = queue.indexOf(conversation.id);
           const nextId = removedIndex >= 0
             ? queue.slice(removedIndex + 1).find((id) => availableById.has(id))
-              ?? queue.slice(0, removedIndex).findLast((id) => availableById.has(id))
+              ?? queue.slice(0, removedIndex).reverse().find((id) => availableById.has(id))
             : undefined;
           nextConversation = nextId ? availableById.get(nextId) : undefined;
         } else {
@@ -596,6 +653,7 @@ export function MessageList({
           conversation,
           action,
           destination,
+          metadata,
         ),
         restoreConversation,
         setActionError,
@@ -611,11 +669,14 @@ export function MessageList({
         conversation,
         action,
         destination,
+        metadata,
       );
       if (error) {
         setActionError(error);
         if (action === 'read' || action === 'unread') updateUnread(previousUnread);
         if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
+        if (action === 'mark-important' || action === 'clear-important') updateImportance(previousImportance);
+        if (action === 'set-color' || action === 'clear-color') updateColors(previousColors);
         return false;
       }
       onFoldersChanged();
@@ -624,6 +685,8 @@ export function MessageList({
       setActionError('The action could not be completed.');
       if (action === 'read' || action === 'unread') updateUnread(previousUnread);
       if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
+      if (action === 'mark-important' || action === 'clear-important') updateImportance(previousImportance);
+      if (action === 'set-color' || action === 'clear-color') updateColors(previousColors);
       return false;
     } finally {
       pendingActions.current.delete(conversation.id);
@@ -731,6 +794,11 @@ export function MessageList({
         onSetFlagged={(flagged) =>
           void runAction(selectedConversation, flagged ? 'star' : 'unstar')
         }
+        supportsEmzeroKeywords={state.status === 'loaded' && state.supportsEmzeroKeywords}
+        onSetImportant={(important, dueDate) =>
+          void runAction(selectedConversation, important ? 'mark-important' : 'clear-important', undefined, { dueDate })
+        }
+        onSetColor={(color) => void runAction(selectedConversation, color ? 'set-color' : 'clear-color', undefined, { color })}
         onMove={(destination) =>
           void runAction(selectedConversation, 'move', destination)
         }
@@ -935,6 +1003,12 @@ export function MessageList({
               (message) => message.folderPath === selection.folder.path && message.unread,
             );
             const flagged = conversation.messages.some((message) => message.flagged);
+            const importantMessage = conversation.messages.find(
+              (message) => message.folderPath === selection.folder.path && message.important,
+            );
+            const color = conversation.messages.find(
+              (message) => message.folderPath === selection.folder.path && message.color,
+            )?.color ?? null;
             const group = isInbox
               ? (selectedConversation ? readingGroups?.get(conversation.id) : undefined) ?? inboxGroup(conversation, selection.folder.path)
               : null;
@@ -1095,6 +1169,13 @@ export function MessageList({
                     {flagged && (
                       <Star className="size-3.5 fill-primary text-primary" aria-label="Flagged" />
                     )}
+                    {importantMessage && (
+                      <span className="flex items-center gap-1 text-danger" title={dueDateLabel(importantMessage.dueDate)}>
+                        <Flag className="size-3.5 fill-danger" aria-label="Important" />
+                        <span className="hidden xl:inline">{dueDateLabel(importantMessage.dueDate)}</span>
+                      </span>
+                    )}
+                    {color && <span className={cn('size-2.5 rounded-full', messageColorBackgroundClass(color))} aria-label={`${color} color`} />}
                     <time dateTime={date ?? undefined}>{messageDate(date)}</time>
                   </div>
                 </button>
@@ -1111,6 +1192,10 @@ export function MessageList({
                     messageCount={messageCountInFolder(conversation, selection.folder.path)}
                     unread={unread}
                     flagged={flagged}
+                    important={Boolean(importantMessage)}
+                    dueDate={importantMessage?.dueDate ?? null}
+                    color={color}
+                    supportsEmzeroKeywords={state.status === 'loaded' && state.supportsEmzeroKeywords}
                     busy={busyConversations.has(conversation.id)}
                     confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
                     onSetUnread={(nextUnread) =>
@@ -1119,6 +1204,10 @@ export function MessageList({
                     onSetFlagged={(nextFlagged) =>
                       void runAction(conversation, nextFlagged ? 'star' : 'unstar')
                     }
+                    onSetImportant={(nextImportant, dueDate) =>
+                      void runAction(conversation, nextImportant ? 'mark-important' : 'clear-important', undefined, { dueDate })
+                    }
+                    onSetColor={(nextColor) => void runAction(conversation, nextColor ? 'set-color' : 'clear-color', undefined, { color: nextColor })}
                     onMove={(destination) =>
                       void runAction(conversation, 'move', destination)
                     }

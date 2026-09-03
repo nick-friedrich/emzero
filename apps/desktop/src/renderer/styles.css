@@ -281,7 +281,19 @@ body {
 
 @media (max-width: 63.999rem) {
   .macos-content-header {
+    position: relative;
     padding-top: 3rem;
+    -webkit-app-region: no-drag;
+  }
+
+  /* Leave a real gap for the floating mobile navigation button. A no-drag
+     sibling cannot reliably punch through an overlapping Electron drag area. */
+  .macos-content-header::before {
+    position: absolute;
+    inset: 0 0 auto 4rem;
+    height: 3rem;
+    content: "";
+    -webkit-app-region: drag;
   }
 }
 

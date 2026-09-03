@@ -21,6 +21,9 @@ function conversation(
     receivedAt: null,
     unread: false,
     flagged: false,
+    important: false,
+    dueDate: null,
+    color: null,
     size: null,
     ...values,
   });

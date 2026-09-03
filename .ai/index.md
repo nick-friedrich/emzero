@@ -61,6 +61,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/shared/ai.ts` — AI provider/draft IPC contracts, defaults, and renderer-to-main input validation.
 - `apps/desktop/src/shared/conversations.ts` — conversation grouping and quoted-text splitting.
 - `apps/desktop/src/shared/replies.ts` — reply construction, address parsing, and outgoing-draft validation.
+- `apps/desktop/src/shared/message-keywords.ts` — Emzero-private IMAP importance and due-date keyword encoding, parsing, and capability rules.
 
 Shared modules must remain usable by both Electron and renderer code; do not import renderer components or browser-only state into them.
 

@@ -10,6 +10,7 @@ import {
 import {
   CircleAlert,
   FileText,
+  Flag,
   Inbox,
   LoaderCircle,
   RefreshCw,
@@ -42,7 +43,10 @@ import {
   conversationOpponent,
   conversationWithMessage,
   conversationWithFlaggedValues,
+  conversationWithImportanceValues,
   conversationWithUnreadValues,
+  dueDateLabel,
+  messageColorBackgroundClass,
   isEditableTarget,
   MailLayoutToggle,
   SidebarHeaderToggle,
@@ -73,6 +77,7 @@ import {
   InboxViewOptions,
   useInboxViewOptions,
 } from './inbox-view-options';
+import { tomorrowDateKey, type EmzeroMessageColor } from '../../shared/message-keywords';
 
 function demoLoadState(demo: DemoMailboxSnapshot): UnifiedInboxLoadState {
   const messageCount = demo.items.reduce(
@@ -226,6 +231,7 @@ export function UnifiedInbox({
 
           const loadedSources = sourceResults.map(({ folder, result }) => ({
             folder,
+            supportsEmzeroKeywords: Boolean(result.supportsEmzeroKeywords),
             messages: result.messages
               .filter((message) => mailbox !== 'starred' || message.flagged)
               .map((message) => ({ ...message, folderPath: folder.path })),
@@ -244,7 +250,7 @@ export function UnifiedInbox({
           );
           return {
             account,
-            items: loadedSources.flatMap(({ folder, messages }) => {
+            items: loadedSources.flatMap(({ folder, messages, supportsEmzeroKeywords }) => {
               const selection: FolderSelection = { kind: 'folder', account, folder };
               return groupMessagesWithRelated(
                 messages,
@@ -253,6 +259,7 @@ export function UnifiedInbox({
                 selection,
                 folders: folderResult.folders,
                 conversation,
+                supportsEmzeroKeywords,
               }));
             }),
             loadedMessages: loadedSources.reduce((total, source) => total + source.messages.length, 0),
@@ -363,6 +370,9 @@ export function UnifiedInbox({
           selection,
           folders: folderResult.folders,
           conversation,
+          supportsEmzeroKeywords: mailbox === 'drafts'
+            ? Boolean(draftResult.supportsEmzeroKeywords)
+            : Boolean(sourceFolder.supportsEmzeroKeywords),
         }),
       );
       const items = [
@@ -630,6 +640,7 @@ export function UnifiedInbox({
     item: UnifiedConversationItem,
     action: ConversationAction,
     destination?: MessageMoveDestination,
+    metadata?: { dueDate?: string; color?: EmzeroMessageColor | null },
   ) => {
     const key = itemKey(item);
     if (pendingActions.current.has(key)) return false;
@@ -645,6 +656,19 @@ export function UnifiedInbox({
       item.conversation.messages
         .filter((message) => message.folderPath === item.selection.folder.path)
         .map((message) => [`${message.folderPath}:${message.uid}`, message.flagged]),
+    );
+    const previousImportance = new Map(
+      item.conversation.messages
+        .filter((message) => message.folderPath === item.selection.folder.path)
+        .map((message) => [
+          `${message.folderPath}:${message.uid}`,
+          { important: message.important, dueDate: message.dueDate },
+        ]),
+    );
+    const previousColors = new Map(
+      item.conversation.messages
+        .filter((message) => message.folderPath === item.selection.folder.path)
+        .map((message) => [`${message.folderPath}:${message.uid}`, message.color]),
     );
     const updateUnread = (unreadByMessage: ReadonlyMap<string, boolean>) => {
       const updateItem = (candidate: UnifiedConversationItem): UnifiedConversationItem =>
@@ -680,6 +704,37 @@ export function UnifiedInbox({
       );
       setSelectedItem((current) => (current ? updateItem(current) : current));
     };
+    const updateImportance = (
+      importanceByMessage: ReadonlyMap<string, { important: boolean; dueDate: string | null }>,
+    ) => {
+      const updateItem = (candidate: UnifiedConversationItem): UnifiedConversationItem =>
+        itemKey(candidate) === key
+          ? { ...candidate, conversation: conversationWithImportanceValues(candidate.conversation, importanceByMessage) }
+          : candidate;
+      setState((current) => current.status === 'loaded'
+        ? { ...current, items: current.items.map(updateItem) }
+        : current);
+      setSelectedItem((current) => (current ? updateItem(current) : current));
+    };
+    const updateColors = (colors: ReadonlyMap<string, EmzeroMessageColor | null>) => {
+      const updateItem = (candidate: UnifiedConversationItem): UnifiedConversationItem =>
+        itemKey(candidate) === key
+          ? {
+              ...candidate,
+              conversation: {
+                ...candidate.conversation,
+                messages: candidate.conversation.messages.map((message) => {
+                  const color = colors.get(`${message.folderPath}:${message.uid}`);
+                  return color === undefined ? message : { ...message, color };
+                }),
+              },
+            }
+          : candidate;
+      setState((current) => current.status === 'loaded'
+        ? { ...current, items: current.items.map(updateItem) }
+        : current);
+      setSelectedItem((current) => (current ? updateItem(current) : current));
+    };
 
     if (demo) {
       if (action === 'read' || action === 'unread') {
@@ -694,6 +749,16 @@ export function UnifiedInbox({
             : current);
           setSelectedItem(null);
         }
+      } else if (action === 'mark-important' || action === 'clear-important') {
+        const important = action === 'mark-important';
+        const dueDate = important ? (metadata?.dueDate ?? tomorrowDateKey()) : null;
+        updateImportance(new Map([...previousImportance.keys()].map((messageKey) => [
+          messageKey,
+          { important, dueDate },
+        ])));
+      } else if (action === 'set-color' || action === 'clear-color') {
+        const color = action === 'set-color' ? (metadata?.color ?? null) : null;
+        updateColors(new Map([...previousColors.keys()].map((messageKey) => [messageKey, color])));
       } else {
         setState((current) => current.status === 'loaded'
           ? { ...current, items: current.items.filter((candidate) => itemKey(candidate) !== key) }
@@ -717,6 +782,18 @@ export function UnifiedInbox({
       const flagged = action === 'star';
       updateFlagged(new Map([...previousFlagged.keys()].map((messageKey) => [messageKey, flagged])));
     }
+    if (action === 'mark-important' || action === 'clear-important') {
+      const important = action === 'mark-important';
+      const dueDate = important ? (metadata?.dueDate ?? tomorrowDateKey()) : null;
+      updateImportance(new Map([...previousImportance.keys()].map((messageKey) => [
+        messageKey,
+        { important, dueDate },
+      ])));
+    }
+    if (action === 'set-color' || action === 'clear-color') {
+      const color = action === 'set-color' ? (metadata?.color ?? null) : null;
+      updateColors(new Map([...previousColors.keys()].map((messageKey) => [messageKey, color])));
+    }
 
     const previousState = state;
     const previousSelection = selectedItem;
@@ -731,7 +808,7 @@ export function UnifiedInbox({
           const removedIndex = queue.indexOf(key);
           const nextKey = removedIndex >= 0
             ? queue.slice(removedIndex + 1).find((candidateKey) => availableByKey.has(candidateKey))
-              ?? queue.slice(0, removedIndex).findLast((candidateKey) => availableByKey.has(candidateKey))
+              ?? queue.slice(0, removedIndex).reverse().find((candidateKey) => availableByKey.has(candidateKey))
             : undefined;
           nextItem = nextKey ? availableByKey.get(nextKey) : undefined;
         } else {
@@ -794,6 +871,7 @@ export function UnifiedInbox({
           item.conversation,
           action,
           destination,
+          metadata,
         ),
         restoreItem,
         setActionError,
@@ -809,11 +887,14 @@ export function UnifiedInbox({
         item.conversation,
         action,
         destination,
+        metadata,
       );
       if (error) {
         setActionError(error);
         if (action === 'read' || action === 'unread') updateUnread(previousUnread);
         if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
+        if (action === 'mark-important' || action === 'clear-important') updateImportance(previousImportance);
+        if (action === 'set-color' || action === 'clear-color') updateColors(previousColors);
         return false;
       }
       onFoldersChanged?.();
@@ -823,6 +904,8 @@ export function UnifiedInbox({
       setActionError('The action could not be completed.');
       if (action === 'read' || action === 'unread') updateUnread(previousUnread);
       if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
+      if (action === 'mark-important' || action === 'clear-important') updateImportance(previousImportance);
+      if (action === 'set-color' || action === 'clear-color') updateColors(previousColors);
       return false;
     } finally {
       pendingActions.current.delete(key);
@@ -940,6 +1023,11 @@ export function UnifiedInbox({
         onSetFlagged={(flagged) =>
           void runAction(selectedItem, flagged ? 'star' : 'unstar')
         }
+        supportsEmzeroKeywords={selectedItem.supportsEmzeroKeywords}
+        onSetImportant={(important, dueDate) =>
+          void runAction(selectedItem, important ? 'mark-important' : 'clear-important', undefined, { dueDate })
+        }
+        onSetColor={(color) => void runAction(selectedItem, color ? 'set-color' : 'clear-color', undefined, { color })}
         onMove={(destination) => void runAction(selectedItem, 'move', destination)}
         onDelete={() => void runAction(selectedItem, 'delete')}
         onReplySent={(message) => {
@@ -1170,6 +1258,12 @@ export function UnifiedInbox({
               (message) => message.folderPath === selection.folder.path && message.unread,
             );
             const flagged = conversation.messages.some((message) => message.flagged);
+            const importantMessage = conversation.messages.find(
+              (message) => message.folderPath === selection.folder.path && message.important,
+            );
+            const color = conversation.messages.find(
+              (message) => message.folderPath === selection.folder.path && message.color,
+            )?.color ?? null;
             const key = itemKey(item);
             const group = mailbox === 'inbox'
               ? (selectedItem ? readingGroups?.get(key) : undefined) ?? inboxGroup(conversation, selection.folder.path)
@@ -1338,6 +1432,13 @@ export function UnifiedInbox({
                   {flagged && (
                     <Star className="size-3.5 fill-primary text-primary" aria-label="Flagged" />
                   )}
+                  {importantMessage && (
+                    <span className="flex items-center gap-1 text-danger" title={dueDateLabel(importantMessage.dueDate)}>
+                      <Flag className="size-3.5 fill-danger" aria-label="Important" />
+                      <span className="hidden xl:inline">{dueDateLabel(importantMessage.dueDate)}</span>
+                    </span>
+                  )}
+                  {color && <span className={cn('size-2.5 rounded-full', messageColorBackgroundClass(color))} aria-label={`${color} color`} />}
                   <time dateTime={date ?? undefined}>{messageDate(date)}</time>
                 </div>
                 </button>
@@ -1354,6 +1455,10 @@ export function UnifiedInbox({
                     messageCount={messageCountInFolder(item.conversation, selection.folder.path)}
                     unread={unread}
                     flagged={flagged}
+                    important={Boolean(importantMessage)}
+                    dueDate={importantMessage?.dueDate ?? null}
+                    color={color}
+                    supportsEmzeroKeywords={item.supportsEmzeroKeywords}
                     busy={busyConversations.has(itemKey(item))}
                     confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
                     onSetUnread={(nextUnread) =>
@@ -1362,6 +1467,10 @@ export function UnifiedInbox({
                     onSetFlagged={(nextFlagged) =>
                       void runAction(item, nextFlagged ? 'star' : 'unstar')
                     }
+                    onSetImportant={(nextImportant, dueDate) =>
+                      void runAction(item, nextImportant ? 'mark-important' : 'clear-important', undefined, { dueDate })
+                    }
+                    onSetColor={(nextColor) => void runAction(item, nextColor ? 'set-color' : 'clear-color', undefined, { color: nextColor })}
                     onMove={(destination) => void runAction(item, 'move', destination)}
                     onDelete={() => void runAction(item, 'delete')}
                     deleteButtonRef={(node) => {

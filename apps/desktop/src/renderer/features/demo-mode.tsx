@@ -123,6 +123,9 @@ const summaries = seeds.map((seed, index): MailMessageSummary => {
     receivedAt: seed.sentAt,
     unread: Boolean(seed.unread),
     flagged: Boolean(seed.flagged),
+    important: false,
+    dueDate: null,
+    color: null,
     size: seed.body.length * 4,
   };
 });
@@ -181,6 +184,7 @@ export function demoMailboxSnapshot(selection: MailboxSelection): DemoMailboxSna
       },
       folders,
       conversation,
+      supportsEmzeroKeywords: true,
     }));
   });
   items.sort((left, right) =>

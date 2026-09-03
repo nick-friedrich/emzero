@@ -62,6 +62,8 @@ import {
 import { getBackgroundSyncStatus, runBackgroundSync } from './background-sync.js';
 import { cancelBulkMessageJob, startBulkMessageJob } from './bulk-message-jobs.js';
 import {
+  changeMessageColor,
+  changeMessageImportant,
   changeMessageUnread,
   changeMessageFlagged,
   deleteFolderMessages,
@@ -79,6 +81,7 @@ import {
   finishMicrosoftAuth,
 } from './microsoft-oauth.js';
 import { discoverProvider, listProviders } from './provider-discovery.js';
+import { isEmzeroMessageColor } from '../shared/message-keywords.js';
 
 async function saveConnectedAccount(
   draft: AccountDraft,
@@ -567,6 +570,52 @@ export function registerAccountHandlers(): void {
       const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
       if (!account) return { ok: false, message: 'Account not found.' } satisfies MessageOperationResult;
       return changeMessageFlagged(account, folderPath, uids, flagged);
+    },
+  );
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.setMessageImportant,
+    async (
+      event,
+      accountId: unknown,
+      folderPath: unknown,
+      uids: unknown,
+      important: unknown,
+      dueDate: unknown,
+    ) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (
+        typeof accountId !== 'string' ||
+        typeof folderPath !== 'string' ||
+        !folderPath ||
+        !validMessageUids(uids) ||
+        typeof important !== 'boolean' ||
+        (dueDate !== undefined && typeof dueDate !== 'string')
+      ) {
+        return { ok: false, message: 'Invalid messages.' } satisfies MessageOperationResult;
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return { ok: false, message: 'Account not found.' } satisfies MessageOperationResult;
+      return changeMessageImportant(account, folderPath, uids, important, dueDate);
+    },
+  );
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.setMessageColor,
+    async (event, accountId: unknown, folderPath: unknown, uids: unknown, color: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (
+        typeof accountId !== 'string' ||
+        typeof folderPath !== 'string' ||
+        !folderPath ||
+        !validMessageUids(uids) ||
+        (color !== null && !isEmzeroMessageColor(color))
+      ) {
+        return { ok: false, message: 'Invalid messages.' } satisfies MessageOperationResult;
+      }
+      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+      if (!account) return { ok: false, message: 'Account not found.' } satisfies MessageOperationResult;
+      return changeMessageColor(account, folderPath, uids, color);
     },
   );
 

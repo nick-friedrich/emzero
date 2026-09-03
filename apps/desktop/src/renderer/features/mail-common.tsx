@@ -8,6 +8,8 @@ import {
   Archive,
   Check,
   FileText,
+  Flag,
+  CalendarDays,
   Folder,
   Inbox,
   LoaderCircle,
@@ -20,6 +22,7 @@ import {
   Columns3,
   PanelLeftClose,
   PanelLeftOpen,
+  Palette,
 } from 'lucide-react';
 import {
   Button,
@@ -35,6 +38,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import {
   cn,
 } from '@/lib/utils';
@@ -53,6 +64,12 @@ import {
   findArchiveFolder,
 } from '../../shared/accounts';
 import type { MailConversation } from '../../shared/conversations';
+import {
+  EMZERO_MESSAGE_COLORS,
+  localDateKeyAfter,
+  tomorrowDateKey,
+  type EmzeroMessageColor,
+} from '../../shared/message-keywords';
 import { MoveToDialog } from './message-move';
 
 export type MailboxSelection =
@@ -111,7 +128,7 @@ export function SidebarHeaderToggle({
   return (
     <Button
       variant="ghost"
-      className="header-tooltip px-3"
+      className="header-tooltip hidden px-3 lg:inline-flex"
       aria-label="Toggle main sidebar"
       data-tooltip={`Toggle main sidebar (${window.emzero?.platform === 'darwin' ? '⌘B' : 'Ctrl+B'})`}
       onClick={onToggle}
@@ -347,6 +364,7 @@ export type MessageLoadState =
       messages: MailMessageSummary[];
       relatedMessages: MailMessageSummary[];
       total: number;
+      supportsEmzeroKeywords: boolean;
       notice?: string;
     }
   | { status: 'error'; message: string };
@@ -355,6 +373,7 @@ export interface UnifiedConversationItem {
   selection: FolderSelection;
   folders: MailFolderSummary[];
   conversation: MailConversation;
+  supportsEmzeroKeywords: boolean;
 }
 
 interface UnifiedAccountFailure {
@@ -378,7 +397,17 @@ export type MessageDetailLoadState =
   | { status: 'loaded'; message: MailMessageDetail }
   | { status: 'error'; message: string };
 
-export type ConversationAction = 'read' | 'unread' | 'star' | 'unstar' | 'move' | 'delete';
+export type ConversationAction =
+  | 'read'
+  | 'unread'
+  | 'star'
+  | 'unstar'
+  | 'mark-important'
+  | 'clear-important'
+  | 'set-color'
+  | 'clear-color'
+  | 'move'
+  | 'delete';
 
 export type StartBulkOperation = (
   request: BulkMessageJobRequest,
@@ -408,6 +437,7 @@ export async function performConversationAction(
   conversation: MailConversation,
   action: ConversationAction,
   destination?: MessageMoveDestination,
+  metadata?: { dueDate?: string; color?: EmzeroMessageColor | null },
 ): Promise<string | null> {
   if (action === 'move' && !destination) return 'Choose a destination folder.';
   const uids = conversation.messages
@@ -426,6 +456,21 @@ export async function performConversationAction(
           )
         : action === 'star' || action === 'unstar'
           ? await window.emzero.messages.setFlagged(accountId, folderPath, uids, action === 'star')
+          : action === 'mark-important' || action === 'clear-important'
+            ? await window.emzero.messages.setImportant(
+                accountId,
+                folderPath,
+                uids,
+                action === 'mark-important',
+                metadata?.dueDate,
+              )
+          : action === 'set-color' || action === 'clear-color'
+            ? await window.emzero.messages.setColor(
+                accountId,
+                folderPath,
+                uids,
+                action === 'set-color' ? (metadata?.color ?? null) : null,
+              )
           : await window.emzero.messages.setUnread(accountId, folderPath, uids, action === 'unread');
   return result.ok ? null : result.message ?? 'The action could not be completed.';
 }
@@ -456,6 +501,51 @@ export function conversationWithFlaggedValues(
   };
 }
 
+export function conversationWithImportanceValues(
+  conversation: MailConversation,
+  values: ReadonlyMap<string, { important: boolean; dueDate: string | null }>,
+): MailConversation {
+  return {
+    ...conversation,
+    messages: conversation.messages.map((message) => {
+      const value = values.get(`${message.folderPath}:${message.uid}`);
+      return value === undefined ? message : { ...message, ...value };
+    }),
+  };
+}
+
+export function dueDateLabel(dueDate: string | null): string {
+  if (!dueDate) return 'No due date';
+  const today = new Date();
+  const todayKey = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, '0'),
+    String(today.getDate()).padStart(2, '0'),
+  ].join('-');
+  if (dueDate === todayKey) return 'Due today';
+  if (dueDate === tomorrowDateKey(today)) return 'Due tomorrow';
+  const parsed = new Date(`${dueDate}T00:00:00`);
+  if (dueDate < todayKey) return `Overdue · ${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(parsed)}`;
+  return `Due ${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(parsed)}`;
+}
+
+const messageColorClasses: Record<EmzeroMessageColor, { background: string; text: string }> = {
+  red: { background: 'bg-red-500', text: 'text-red-500' },
+  orange: { background: 'bg-orange-500', text: 'text-orange-500' },
+  yellow: { background: 'bg-yellow-400', text: 'text-yellow-500' },
+  green: { background: 'bg-green-500', text: 'text-green-500' },
+  blue: { background: 'bg-blue-500', text: 'text-blue-500' },
+  purple: { background: 'bg-purple-500', text: 'text-purple-500' },
+};
+
+export function messageColorBackgroundClass(color: EmzeroMessageColor): string {
+  return messageColorClasses[color].background;
+}
+
+export function messageColorTextClass(color: EmzeroMessageColor): string {
+  return messageColorClasses[color].text;
+}
+
 export function conversationWithMessage(
   conversation: MailConversation,
   message: MailMessageSummary,
@@ -480,10 +570,16 @@ export function ConversationActions({
   messageCount,
   unread,
   flagged,
+  important,
+  dueDate,
+  color,
+  supportsEmzeroKeywords,
   busy,
   confirmPermanentDelete,
   onSetUnread,
   onSetFlagged,
+  onSetImportant,
+  onSetColor,
   onMove,
   onDelete,
   deleteButtonRef,
@@ -495,14 +591,23 @@ export function ConversationActions({
   messageCount: number;
   unread: boolean;
   flagged: boolean;
+  important: boolean;
+  dueDate: string | null;
+  color: EmzeroMessageColor | null;
+  supportsEmzeroKeywords: boolean;
   busy: boolean;
   confirmPermanentDelete: boolean;
   onSetUnread: (unread: boolean) => void;
   onSetFlagged: (flagged: boolean) => void;
+  onSetImportant: (important: boolean, dueDate?: string) => void;
+  onSetColor: (color: EmzeroMessageColor | null) => void;
   onMove: (destination: MessageMoveDestination) => void;
   onDelete: () => void;
   deleteButtonRef?: Ref<HTMLButtonElement>;
 }) {
+  const [dueDialogOpen, setDueDialogOpen] = useState(false);
+  const [colorDialogOpen, setColorDialogOpen] = useState(false);
+  const [customDueDate, setCustomDueDate] = useState(dueDate ?? tomorrowDateKey());
   const archive = findArchiveFolder(folders);
   const unreadLabel = unread ? 'Mark as read' : 'Mark as unread';
   const deleteButton = (
@@ -540,6 +645,77 @@ export function ConversationActions({
       >
         <Star className={cn('size-4', flagged && 'fill-primary text-primary')} />
       </Button>
+      {supportsEmzeroKeywords && (
+        <>
+          <Button
+            variant="ghost"
+            className="size-8 px-0"
+            aria-label={important ? 'Remove important marker' : 'Mark important with a due date of tomorrow'}
+            title={important ? `${dueDateLabel(dueDate)} · Remove important` : 'Mark important · Due tomorrow'}
+            disabled={busy}
+            onClick={() => onSetImportant(!important)}
+          >
+            <Flag className={cn('size-4', important && 'fill-danger text-danger')} />
+          </Button>
+          <Dialog open={dueDialogOpen} onOpenChange={(open) => {
+            setDueDialogOpen(open);
+            if (open) setCustomDueDate(dueDate ?? tomorrowDateKey());
+          }}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" className="size-8 px-0" aria-label="Set important due date" title="Set important due date" disabled={busy}>
+                <CalendarDays className="size-4" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="w-[min(28rem,calc(100%-2rem))]">
+              <DialogHeader>
+                <DialogTitle>Set due date</DialogTitle>
+                <DialogDescription>Mark this conversation as important and choose when it is due.</DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ['Today', localDateKeyAfter(0)],
+                  ['Tomorrow', localDateKeyAfter(1)],
+                  ['Next week', localDateKeyAfter(7)],
+                ].map(([label, value]) => (
+                  <Button key={label} variant="secondary" onClick={() => { onSetImportant(true, value); setDueDialogOpen(false); }}>
+                    {label}
+                  </Button>
+                ))}
+              </div>
+              <label className="space-y-2 text-sm font-medium">
+                <span className="block">Custom date</span>
+                <input type="date" className="field" value={customDueDate} onChange={(event) => setCustomDueDate(event.target.value)} />
+              </label>
+              <div className="flex justify-between gap-2">
+                {important ? <Button variant="ghost" onClick={() => { onSetImportant(false); setDueDialogOpen(false); }}>Remove important</Button> : <span />}
+                <Button disabled={!customDueDate} onClick={() => { onSetImportant(true, customDueDate); setDueDialogOpen(false); }}>Set due date</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={colorDialogOpen} onOpenChange={setColorDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" className="size-8 px-0" aria-label="Assign color" title="Assign color" disabled={busy}>
+                <Palette className={cn('size-4', color && messageColorTextClass(color))} />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="w-[min(25rem,calc(100%-2rem))]">
+              <DialogHeader>
+                <DialogTitle>Assign color</DialogTitle>
+                <DialogDescription>Choose a color that will synchronize with other Emzero clients.</DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-2">
+                {EMZERO_MESSAGE_COLORS.map((candidate) => (
+                  <Button key={candidate} variant={candidate === color ? 'default' : 'secondary'} className="justify-start capitalize" onClick={() => { onSetColor(candidate); setColorDialogOpen(false); }}>
+                    <span className={cn('size-3 rounded-full', messageColorBackgroundClass(candidate))} />
+                    {candidate}
+                  </Button>
+                ))}
+              </div>
+              {color && <Button variant="ghost" onClick={() => { onSetColor(null); setColorDialogOpen(false); }}>Remove color</Button>}
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
       {archive && archive.path !== sourcePath && (
         <Button
           variant="ghost"

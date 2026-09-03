@@ -37,6 +37,7 @@ export interface MailFolderSummary {
   selectable: boolean;
   unreadCount: number;
   totalCount?: number;
+  supportsEmzeroKeywords?: boolean;
 }
 
 export function findInboxFolder(
@@ -250,6 +251,9 @@ export interface MailMessageSummary {
   receivedAt: string | null;
   unread: boolean;
   flagged: boolean;
+  important: boolean;
+  dueDate: string | null;
+  color: import('./message-keywords.js').EmzeroMessageColor | null;
   size: number | null;
 }
 
@@ -259,6 +263,7 @@ export interface MessageListResult {
   total: number;
   source?: 'server' | 'cache';
   syncedAt?: string | null;
+  supportsEmzeroKeywords?: boolean;
   message?: string;
 }
 
@@ -557,6 +562,8 @@ export const ACCOUNT_CHANNELS = {
   prefetchMessage: 'messages:prefetch',
   setMessageUnread: 'messages:set-unread',
   setMessageFlagged: 'messages:set-flagged',
+  setMessageImportant: 'messages:set-important',
+  setMessageColor: 'messages:set-color',
   deleteMessages: 'messages:delete',
   moveMessages: 'messages:move',
   startBulkMessageJob: 'messages:bulk-start',

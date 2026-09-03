@@ -48,6 +48,7 @@ import {
   type AttachmentSaveResult,
   type AttachmentSelectionResult,
 } from '../shared/accounts.js';
+import type { EmzeroMessageColor } from '../shared/message-keywords.js';
 
 export interface EmzeroDesktopApi {
   platform: NodeJS.Platform;
@@ -107,6 +108,19 @@ export interface EmzeroDesktopApi {
       folderPath: string,
       uids: number[],
       flagged: boolean,
+    ) => Promise<MessageOperationResult>;
+    setImportant: (
+      accountId: string,
+      folderPath: string,
+      uids: number[],
+      important: boolean,
+      dueDate?: string,
+    ) => Promise<MessageOperationResult>;
+    setColor: (
+      accountId: string,
+      folderPath: string,
+      uids: number[],
+      color: EmzeroMessageColor | null,
     ) => Promise<MessageOperationResult>;
     delete: (
       accountId: string,
@@ -244,6 +258,17 @@ contextBridge.exposeInMainWorld('emzero', {
       ipcRenderer.invoke(ACCOUNT_CHANNELS.setMessageUnread, accountId, folderPath, uids, unread),
     setFlagged: (accountId, folderPath, uids, flagged) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.setMessageFlagged, accountId, folderPath, uids, flagged),
+    setImportant: (accountId, folderPath, uids, important, dueDate) =>
+      ipcRenderer.invoke(
+        ACCOUNT_CHANNELS.setMessageImportant,
+        accountId,
+        folderPath,
+        uids,
+        important,
+        dueDate,
+      ),
+    setColor: (accountId, folderPath, uids, color) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.setMessageColor, accountId, folderPath, uids, color),
     delete: (accountId, folderPath, uids) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.deleteMessages, accountId, folderPath, uids),
     move: (accountId, folderPath, uids, destinationAccountId, destinationPath) =>

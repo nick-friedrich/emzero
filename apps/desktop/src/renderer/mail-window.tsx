@@ -16,12 +16,14 @@ import {
 import { ConversationReader } from './features/conversation-reader';
 import {
   conversationWithFlaggedValues,
+  conversationWithImportanceValues,
   conversationWithMessage,
   conversationWithUnreadValues,
   performConversationAction,
   type ConversationAction,
   type FolderSelection,
 } from './features/mail-common';
+import { tomorrowDateKey, type EmzeroMessageColor } from '../shared/message-keywords';
 
 export const mailEventsChannel = 'emzero-mail-events';
 
@@ -130,10 +132,14 @@ function MessageWindow({ context }: { context: Extract<MailWindowContext, { kind
       );
       if (!conversation) throw new Error('Conversation not found.');
       if (active) {
+        const selectedFolder = {
+          ...folder,
+          supportsEmzeroKeywords: Boolean(primaryResult.supportsEmzeroKeywords),
+        };
         setState({
           status: 'loaded',
           accounts,
-          selection: { kind: 'folder', account, folder },
+          selection: { kind: 'folder', account, folder: selectedFolder },
           folders: folderResult.folders,
           conversation,
         });
@@ -149,7 +155,11 @@ function MessageWindow({ context }: { context: Extract<MailWindowContext, { kind
     return <main className="grid h-screen place-items-center bg-background p-8 text-center text-sm text-danger">{state.message}</main>;
   }
 
-  const runAction = async (action: ConversationAction, destination?: MessageMoveDestination) => {
+  const runAction = async (
+    action: ConversationAction,
+    destination?: MessageMoveDestination,
+    metadata?: { dueDate?: string; color?: EmzeroMessageColor | null },
+  ) => {
     setBusy(true);
     setActionError(null);
     try {
@@ -159,6 +169,7 @@ function MessageWindow({ context }: { context: Extract<MailWindowContext, { kind
         state.conversation,
         action,
         destination,
+        metadata,
       );
       if (error) {
         setActionError(error);
@@ -169,15 +180,34 @@ function MessageWindow({ context }: { context: Extract<MailWindowContext, { kind
         window.close();
         return;
       }
-      const values = new Map(state.conversation.messages
+      const targetMessages = state.conversation.messages
         .filter((message) => message.folderPath === state.selection.folder.path)
+      const values = new Map(targetMessages
         .map((message) => [`${message.folderPath}:${message.uid}`, action === 'unread' || action === 'star']));
+      const importanceValues = new Map(targetMessages.map((message) => [
+        `${message.folderPath}:${message.uid}`,
+        {
+          important: action === 'mark-important',
+          dueDate: action === 'mark-important' ? (metadata?.dueDate ?? tomorrowDateKey()) : null,
+        },
+      ]));
       setState((current) => current.status === 'loaded'
         ? {
             ...current,
             conversation: action === 'read' || action === 'unread'
               ? conversationWithUnreadValues(current.conversation, values)
-              : conversationWithFlaggedValues(current.conversation, values),
+              : action === 'star' || action === 'unstar'
+                ? conversationWithFlaggedValues(current.conversation, values)
+                : action === 'mark-important' || action === 'clear-important'
+                  ? conversationWithImportanceValues(current.conversation, importanceValues)
+                  : {
+                      ...current.conversation,
+                      messages: current.conversation.messages.map((message) =>
+                        message.folderPath === state.selection.folder.path
+                          ? { ...message, color: action === 'set-color' ? (metadata?.color ?? null) : null }
+                          : message,
+                      ),
+                    },
           }
         : current);
     } catch {
@@ -201,6 +231,9 @@ function MessageWindow({ context }: { context: Extract<MailWindowContext, { kind
         actionError={actionError}
         onSetUnread={(value) => void runAction(value ? 'unread' : 'read')}
         onSetFlagged={(value) => void runAction(value ? 'star' : 'unstar')}
+        supportsEmzeroKeywords={Boolean(state.selection.folder.supportsEmzeroKeywords)}
+        onSetImportant={(value, dueDate) => void runAction(value ? 'mark-important' : 'clear-important', undefined, { dueDate })}
+        onSetColor={(color) => void runAction(color ? 'set-color' : 'clear-color', undefined, { color })}
         onMove={(destination) => void runAction('move', destination)}
         onDelete={() => void runAction('delete')}
         onReplySent={(message: MailMessageSummary) => {

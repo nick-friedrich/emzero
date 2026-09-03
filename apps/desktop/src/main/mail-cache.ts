@@ -8,6 +8,7 @@ import type {
   MailSearchItem,
   RecipientSuggestion,
 } from '../shared/accounts.js';
+import type { EmzeroMessageColor } from '../shared/message-keywords.js';
 
 interface FolderRow {
   path: string;
@@ -22,6 +23,7 @@ interface FolderRow {
   uid_validity: string | null;
   uid_next: number | null;
   highest_modseq: string | null;
+  supports_emzero_keywords: number | null;
 }
 
 interface MessageRow {
@@ -37,6 +39,9 @@ interface MessageRow {
   received_at: string | null;
   unread: number;
   flagged: number;
+  important: number;
+  due_date: string | null;
+  color: string | null;
   size: number | null;
 }
 
@@ -70,6 +75,7 @@ interface SearchRow extends MessageRow {
   folder_special_use: string | null;
   folder_selectable: number;
   folder_unread_count: number;
+  folder_supports_emzero_keywords: number | null;
   snippet: string | null;
 }
 
@@ -77,6 +83,7 @@ export interface CachedFolderMessages {
   messages: MailMessageSummary[];
   total: number;
   syncedAt: string | null;
+  supportsEmzeroKeywords?: boolean;
 }
 
 export interface FolderSyncState extends CachedFolderMessages {
@@ -318,6 +325,28 @@ export class MailCache {
         PRAGMA user_version = 6;
         COMMIT;
       `);
+      version = 6;
+    }
+
+    if (version < 7) {
+      this.#database.exec(`
+        BEGIN;
+        ALTER TABLE folders ADD COLUMN supports_emzero_keywords INTEGER;
+        ALTER TABLE messages ADD COLUMN important INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE messages ADD COLUMN due_date TEXT;
+        PRAGMA user_version = 7;
+        COMMIT;
+      `);
+      version = 7;
+    }
+
+    if (version < 8) {
+      this.#database.exec(`
+        BEGIN;
+        ALTER TABLE messages ADD COLUMN color TEXT;
+        PRAGMA user_version = 8;
+        COMMIT;
+      `);
     }
   }
 
@@ -388,7 +417,7 @@ export class MailCache {
     const rows = this.#database
       .prepare(`
         SELECT path, name, parent_path, delimiter, special_use, selectable, unread_count,
-               message_count, synced_at
+               message_count, synced_at, supports_emzero_keywords
         FROM folders
         WHERE account_id = ?
         ORDER BY position
@@ -403,6 +432,9 @@ export class MailCache {
       selectable: Boolean(row.selectable),
       unreadCount: row.unread_count,
       totalCount: row.message_count,
+      ...(row.supports_emzero_keywords === null
+        ? {}
+        : { supportsEmzeroKeywords: row.supports_emzero_keywords === 1 }),
     }));
   }
 
@@ -448,8 +480,9 @@ export class MailCache {
     const upsert = this.#database.prepare(`
       INSERT INTO messages (
         account_id, folder_path, uid, message_id, in_reply_to, reference_ids, subject,
-        sender_addresses, recipient_addresses, sent_at, received_at, unread, flagged, size
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sender_addresses, recipient_addresses, sent_at, received_at, unread, flagged,
+        important, due_date, color, size
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (account_id, folder_path, uid) DO UPDATE SET
         message_id = excluded.message_id,
         in_reply_to = excluded.in_reply_to,
@@ -461,6 +494,9 @@ export class MailCache {
         received_at = excluded.received_at,
         unread = excluded.unread,
         flagged = excluded.flagged,
+        important = excluded.important,
+        due_date = excluded.due_date,
+        color = excluded.color,
         size = excluded.size
     `);
     const updateFolder = this.#database.prepare(`
@@ -497,6 +533,9 @@ export class MailCache {
             message.receivedAt,
             message.unread ? 1 : 0,
             message.flagged ? 1 : 0,
+            message.important ? 1 : 0,
+            message.dueDate,
+            message.color,
             message.size,
           );
         }
@@ -512,15 +551,15 @@ export class MailCache {
   listMessages(accountId: string, folderPath: string): CachedFolderMessages {
     const folder = this.#database
       .prepare(`
-        SELECT message_count, synced_at FROM folders
+        SELECT message_count, synced_at, supports_emzero_keywords FROM folders
         WHERE account_id = ? AND path = ?
       `)
-      .get(accountId, folderPath) as Pick<FolderRow, 'message_count' | 'synced_at'> | undefined;
+      .get(accountId, folderPath) as Pick<FolderRow, 'message_count' | 'synced_at' | 'supports_emzero_keywords'> | undefined;
     const rows = this.#database
       .prepare(`
         SELECT folder_path, uid, message_id, in_reply_to, reference_ids, subject,
                sender_addresses, recipient_addresses, sent_at, received_at,
-               unread, flagged, size
+               unread, flagged, important, due_date, color, size
         FROM messages
         WHERE account_id = ? AND folder_path = ?
         ORDER BY COALESCE(received_at, sent_at) DESC, uid DESC
@@ -541,10 +580,16 @@ export class MailCache {
         receivedAt: row.received_at,
         unread: Boolean(row.unread),
         flagged: Boolean(row.flagged),
+        important: Boolean(row.important),
+        dueDate: row.due_date,
+        color: row.color as EmzeroMessageColor | null,
         size: row.size,
       })),
       total: folder?.message_count ?? 0,
       syncedAt: folder?.synced_at ?? null,
+      ...(folder?.supports_emzero_keywords == null
+        ? {}
+        : { supportsEmzeroKeywords: folder.supports_emzero_keywords === 1 }),
     };
   }
 
@@ -587,11 +632,13 @@ export class MailCache {
         SELECT messages.account_id, messages.folder_path, messages.uid, messages.message_id,
                messages.in_reply_to, messages.reference_ids, messages.subject,
                messages.sender_addresses, messages.recipient_addresses, messages.sent_at,
-               messages.received_at, messages.unread, messages.flagged, messages.size,
+               messages.received_at, messages.unread, messages.flagged, messages.important,
+               messages.due_date, messages.color, messages.size,
                folders.name AS folder_name, folders.parent_path AS folder_parent_path,
                folders.delimiter AS folder_delimiter, folders.special_use AS folder_special_use,
                folders.selectable AS folder_selectable,
                folders.unread_count AS folder_unread_count,
+               folders.supports_emzero_keywords AS folder_supports_emzero_keywords,
                NULLIF(snippet(message_search, 6, '', '', ' … ', 24), '') AS snippet
         FROM message_search
         JOIN messages
@@ -617,6 +664,7 @@ export class MailCache {
         specialUse: row.folder_special_use,
         selectable: Boolean(row.folder_selectable),
         unreadCount: row.folder_unread_count,
+        supportsEmzeroKeywords: row.folder_supports_emzero_keywords === 1,
       },
       message: {
         folderPath: row.folder_path,
@@ -631,6 +679,9 @@ export class MailCache {
         receivedAt: row.received_at,
         unread: Boolean(row.unread),
         flagged: Boolean(row.flagged),
+        important: Boolean(row.important),
+        dueDate: row.due_date,
+        color: row.color as EmzeroMessageColor | null,
         size: row.size,
       },
       snippet: row.snippet,
@@ -799,6 +850,49 @@ export class MailCache {
     }
   }
 
+  setMessagesImportant(
+    accountId: string,
+    folderPath: string,
+    uids: number[],
+    important: boolean,
+    dueDate: string | null,
+  ): void {
+    const update = this.#database.prepare(`
+      UPDATE messages SET important = ?, due_date = ?
+      WHERE account_id = ? AND folder_path = ? AND uid = ?
+    `);
+    this.#database.exec('BEGIN');
+    try {
+      for (const uid of uids) {
+        update.run(important ? 1 : 0, important ? dueDate : null, accountId, folderPath, uid);
+      }
+      this.#database.exec('COMMIT');
+    } catch (error) {
+      this.#database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  setMessagesColor(
+    accountId: string,
+    folderPath: string,
+    uids: number[],
+    color: EmzeroMessageColor | null,
+  ): void {
+    const update = this.#database.prepare(`
+      UPDATE messages SET color = ?
+      WHERE account_id = ? AND folder_path = ? AND uid = ?
+    `);
+    this.#database.exec('BEGIN');
+    try {
+      for (const uid of uids) update.run(color, accountId, folderPath, uid);
+      this.#database.exec('COMMIT');
+    } catch (error) {
+      this.#database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   invalidateFolder(accountId: string, folderPath: string): void {
     this.#database.prepare(`
       UPDATE folders
@@ -913,6 +1007,7 @@ export class MailCache {
       syncedAt?: string;
       reconcile?: boolean;
       messageCount?: number;
+      supportsEmzeroKeywords?: boolean;
     },
   ): void {
     const currentState = this.getFolderSyncState(accountId, folderPath);
@@ -924,8 +1019,9 @@ export class MailCache {
     const upsert = this.#database.prepare(`
       INSERT INTO messages (
         account_id, folder_path, uid, message_id, in_reply_to, reference_ids, subject,
-        sender_addresses, recipient_addresses, sent_at, received_at, unread, flagged, size
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sender_addresses, recipient_addresses, sent_at, received_at, unread, flagged,
+        important, due_date, color, size
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (account_id, folder_path, uid) DO UPDATE SET
         message_id = excluded.message_id,
         in_reply_to = excluded.in_reply_to,
@@ -937,6 +1033,9 @@ export class MailCache {
         received_at = excluded.received_at,
         unread = excluded.unread,
         flagged = excluded.flagged,
+        important = excluded.important,
+        due_date = excluded.due_date,
+        color = excluded.color,
         size = excluded.size
     `);
     const resetMessages = this.#database.prepare(
@@ -944,7 +1043,8 @@ export class MailCache {
     );
     const updateFolder = this.#database.prepare(`
       UPDATE folders
-      SET message_count = ?, synced_at = ?, uid_validity = ?, uid_next = ?, highest_modseq = ?
+      SET message_count = ?, synced_at = ?, uid_validity = ?, uid_next = ?, highest_modseq = ?,
+          supports_emzero_keywords = ?
       WHERE account_id = ? AND path = ?
     `);
 
@@ -971,6 +1071,9 @@ export class MailCache {
           message.receivedAt,
           message.unread ? 1 : 0,
           message.flagged ? 1 : 0,
+          message.important ? 1 : 0,
+          message.dueDate,
+          message.color,
           message.size,
         );
       }
@@ -984,6 +1087,7 @@ export class MailCache {
         metadata.uidValidity,
         metadata.uidNext,
         metadata.highestModseq,
+        metadata.supportsEmzeroKeywords ? 1 : 0,
         accountId,
         folderPath,
       );

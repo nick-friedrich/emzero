@@ -31,7 +31,12 @@ function SheetContent({
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute right-3 top-3 grid size-9 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <DialogPrimitive.Close
+          className={cn(
+            'macos-titlebar-no-drag absolute right-3 grid size-9 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            window.emzero?.platform === 'darwin' ? 'top-12' : 'top-3',
+          )}
+        >
           <X className="size-4" />
           <span className="sr-only">Close navigation</span>
         </DialogPrimitive.Close>

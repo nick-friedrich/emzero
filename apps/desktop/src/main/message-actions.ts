@@ -13,6 +13,18 @@ import {
   resolveMailSecret,
   withAccountImap,
 } from './mail-runtime.js';
+import {
+  EMZERO_IMPORTANT_KEYWORD,
+  emzeroDueKeyword,
+  isEmzeroDueKeyword,
+  supportsEmzeroKeywords,
+  tomorrowDateKey,
+  validDateKey,
+  emzeroColorKeyword,
+  isEmzeroColorKeyword,
+  type EmzeroMessageColor,
+  isEmzeroMessageColor,
+} from '../shared/message-keywords.js';
 
 export function validMessageUids(value: unknown): value is number[] {
   return (
@@ -93,6 +105,108 @@ export async function changeMessageFlagged(
           : await imap.messageFlagsRemove(uids, ['\\Flagged'], { uid: true });
         if (!changed) return { ok: false, message: 'The messages are no longer available.' };
         mailCache().setMessagesFlagged(account.id, folderPath, uids, flagged);
+        return { ok: true };
+      } finally {
+        lock.release();
+      }
+    });
+  } catch (error) {
+    return { ok: false, message: `Could not update messages: ${errorMessage(error, password)}` };
+  }
+}
+
+export async function changeMessageImportant(
+  account: StoredAccount,
+  folderPath: string,
+  uids: number[],
+  important: boolean,
+  requestedDueDate?: string,
+): Promise<MessageOperationResult> {
+  const dueDate = important ? (requestedDueDate ?? tomorrowDateKey()) : null;
+  if (dueDate && !validDateKey(dueDate)) return { ok: false, message: 'Choose a valid due date.' };
+  let password = '';
+  try {
+    return await withAccountImap(account, async (imap, secret) => {
+      password = secret;
+      const lock = await imap.getMailboxLock(folderPath);
+      try {
+        if (!imap.mailbox || !supportsEmzeroKeywords(imap.mailbox.permanentFlags)) {
+          return { ok: false, message: 'This mailbox does not support Emzero importance markers.' };
+        }
+        const dueKeywords = new Set<string>();
+        for await (const message of imap.fetch(uids, { uid: true, flags: true }, { uid: true })) {
+          for (const flag of message.flags ?? []) {
+            if (isEmzeroDueKeyword(flag)) dueKeywords.add(flag);
+          }
+        }
+        if (important && dueDate) {
+          const nextDueKeyword = emzeroDueKeyword(dueDate);
+          const changed = await imap.messageFlagsAdd(
+            uids,
+            [EMZERO_IMPORTANT_KEYWORD, nextDueKeyword],
+            { uid: true },
+          );
+          if (!changed) return { ok: false, message: 'The messages are no longer available.' };
+          const obsoleteDueKeywords = [...dueKeywords].filter(
+            (flag) => flag.toLowerCase() !== nextDueKeyword.toLowerCase(),
+          );
+          if (obsoleteDueKeywords.length > 0) {
+            await imap.messageFlagsRemove(uids, obsoleteDueKeywords, { uid: true });
+          }
+        } else {
+          await imap.messageFlagsRemove(
+            uids,
+            [EMZERO_IMPORTANT_KEYWORD, ...dueKeywords],
+            { uid: true },
+          );
+        }
+        mailCache().setMessagesImportant(account.id, folderPath, uids, important, dueDate);
+        return { ok: true };
+      } finally {
+        lock.release();
+      }
+    });
+  } catch (error) {
+    return { ok: false, message: `Could not update messages: ${errorMessage(error, password)}` };
+  }
+}
+
+export async function changeMessageColor(
+  account: StoredAccount,
+  folderPath: string,
+  uids: number[],
+  color: EmzeroMessageColor | null,
+): Promise<MessageOperationResult> {
+  if (color !== null && !isEmzeroMessageColor(color)) {
+    return { ok: false, message: 'Choose a valid message color.' };
+  }
+  let password = '';
+  try {
+    return await withAccountImap(account, async (imap, secret) => {
+      password = secret;
+      const lock = await imap.getMailboxLock(folderPath);
+      try {
+        if (!imap.mailbox || !supportsEmzeroKeywords(imap.mailbox.permanentFlags)) {
+          return { ok: false, message: 'This mailbox does not support Emzero message colors.' };
+        }
+        const existingKeywords = new Set<string>();
+        for await (const message of imap.fetch(uids, { uid: true, flags: true }, { uid: true })) {
+          for (const flag of message.flags ?? []) {
+            if (isEmzeroColorKeyword(flag)) existingKeywords.add(flag);
+          }
+        }
+        if (color) {
+          const nextKeyword = emzeroColorKeyword(color);
+          const changed = await imap.messageFlagsAdd(uids, [nextKeyword], { uid: true });
+          if (!changed) return { ok: false, message: 'The messages are no longer available.' };
+          const obsolete = [...existingKeywords].filter(
+            (flag) => flag.toLowerCase() !== nextKeyword.toLowerCase(),
+          );
+          if (obsolete.length > 0) await imap.messageFlagsRemove(uids, obsolete, { uid: true });
+        } else if (existingKeywords.size > 0) {
+          await imap.messageFlagsRemove(uids, [...existingKeywords], { uid: true });
+        }
+        mailCache().setMessagesColor(account.id, folderPath, uids, color);
         return { ok: true };
       } finally {
         lock.release();

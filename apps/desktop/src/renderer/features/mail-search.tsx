@@ -28,6 +28,7 @@ import {
 } from '../../shared/conversations';
 import {
   addressLabel,
+  conversationWithImportanceValues,
   conversationWithMessage,
   MailLayoutToggle,
   SidebarHeaderToggle,
@@ -38,6 +39,7 @@ import {
   type MailLayout,
   useCompactMailList,
 } from './mail-common';
+import { tomorrowDateKey, type EmzeroMessageColor } from '../../shared/message-keywords';
 import { MailSplitLayout } from './mail-split-layout';
 import { ConversationReader } from './conversation-reader';
 import { useMessagePrefetch } from './message-prefetch';
@@ -176,7 +178,11 @@ export function MailSearch({
         account,
         folder: selected.item.folder,
       };
-      const runAction = async (action: ConversationAction, destination?: MessageMoveDestination) => {
+      const runAction = async (
+        action: ConversationAction,
+        destination?: MessageMoveDestination,
+        metadata?: { dueDate?: string; color?: EmzeroMessageColor | null },
+      ) => {
         if (actionBusy) return;
         setActionBusy(true);
         setActionError(null);
@@ -226,6 +232,7 @@ export function MailSearch({
               selected.conversation,
               action,
               destination,
+              metadata,
             ),
             restoreSelection,
             setActionError,
@@ -240,6 +247,7 @@ export function MailSearch({
             selected.conversation,
             action,
             destination,
+            metadata,
           );
           if (error) {
             setActionError(error);
@@ -247,12 +255,38 @@ export function MailSearch({
           }
           onFoldersChanged();
           const isFlagAction = action === 'star' || action === 'unstar';
+          const isImportanceAction = action === 'mark-important' || action === 'clear-important';
+          const isColorAction = action === 'set-color' || action === 'clear-color';
           const nextValue = action === 'unread' || action === 'star';
           setSelected((current) =>
             current
               ? {
                   ...current,
-                  conversation: {
+                  conversation: isImportanceAction
+                    ? conversationWithImportanceValues(
+                        current.conversation,
+                        new Map(current.conversation.messages
+                          .filter((message) => message.folderPath === selection.folder.path)
+                          .map((message) => [
+                            `${message.folderPath}:${message.uid}`,
+                            {
+                              important: action === 'mark-important',
+                              dueDate: action === 'mark-important'
+                                ? (metadata?.dueDate ?? tomorrowDateKey())
+                                : null,
+                            },
+                          ])),
+                      )
+                    : isColorAction
+                      ? {
+                          ...current.conversation,
+                          messages: current.conversation.messages.map((message) =>
+                            message.folderPath === selection.folder.path
+                              ? { ...message, color: action === 'set-color' ? (metadata?.color ?? null) : null }
+                              : message,
+                          ),
+                        }
+                      : {
                     ...current.conversation,
                     messages: current.conversation.messages.map((message) =>
                       message.folderPath !== selection.folder.path
@@ -286,6 +320,9 @@ export function MailSearch({
           actionError={actionError}
           onSetUnread={(unread) => void runAction(unread ? 'unread' : 'read')}
           onSetFlagged={(flagged) => void runAction(flagged ? 'star' : 'unstar')}
+          supportsEmzeroKeywords={Boolean(selected.item.folder.supportsEmzeroKeywords)}
+          onSetImportant={(important, dueDate) => void runAction(important ? 'mark-important' : 'clear-important', undefined, { dueDate })}
+          onSetColor={(color) => void runAction(color ? 'set-color' : 'clear-color', undefined, { color })}
           onMove={(destination) => void runAction('move', destination)}
           onDelete={() => void runAction('delete')}
           onReplySent={(message) => {
