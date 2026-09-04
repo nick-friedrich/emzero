@@ -617,7 +617,15 @@ export function ConversationActions({
   useEffect(() => {
     if (!moreMenuOpen) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!moreMenuRef.current?.contains(event.target as Node)) setMoreMenuOpen(false);
+      if (moreMenuRef.current?.contains(event.target as Node)) return;
+      const focusedElement = document.activeElement;
+      if (
+        focusedElement instanceof HTMLElement &&
+        moreMenuRef.current?.contains(focusedElement)
+      ) {
+        focusedElement.blur();
+      }
+      setMoreMenuOpen(false);
     };
     document.addEventListener('pointerdown', closeOnOutsidePointer);
     return () => document.removeEventListener('pointerdown', closeOnOutsidePointer);
@@ -690,12 +698,17 @@ export function ConversationActions({
           aria-expanded={moreMenuOpen}
           disabled={busy}
           onClick={(event) => {
+            if (moreMenuOpen) {
+              setMoreMenuOpen(false);
+              if (event.detail > 0) event.currentTarget.blur();
+              return;
+            }
             setMoreMenuPlacement(
               window.innerHeight - event.currentTarget.getBoundingClientRect().bottom < 220
                 ? 'above'
                 : 'below',
             );
-            setMoreMenuOpen((open) => !open);
+            setMoreMenuOpen(true);
           }}
         >
           <MoreHorizontal className="size-4" />
