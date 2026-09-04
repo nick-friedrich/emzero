@@ -15,6 +15,7 @@ import {
   LoaderCircle,
   Mail,
   MailOpen,
+  MoreHorizontal,
   Send,
   Star,
   Trash2,
@@ -44,7 +45,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   cn,
@@ -607,9 +607,27 @@ export function ConversationActions({
 }) {
   const [dueDialogOpen, setDueDialogOpen] = useState(false);
   const [colorDialogOpen, setColorDialogOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [moreMenuPlacement, setMoreMenuPlacement] = useState<'above' | 'below'>('below');
   const [customDueDate, setCustomDueDate] = useState(dueDate ?? tomorrowDateKey());
+  const moreMenuRef = useRef<HTMLDivElement>(null);
   const archive = findArchiveFolder(folders);
   const unreadLabel = unread ? 'Mark as read' : 'Mark as unread';
+
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!moreMenuRef.current?.contains(event.target as Node)) setMoreMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer);
+  }, [moreMenuOpen]);
+
+  const runMenuAction = (action: () => void) => {
+    setMoreMenuOpen(false);
+    action();
+  };
+  const menuItemClass = 'h-8 w-full justify-start rounded-md px-2 text-xs';
   const deleteButton = (
     <Button
       ref={deleteButtonRef}
@@ -635,37 +653,139 @@ export function ConversationActions({
       >
         {unread ? <MailOpen className="size-4" /> : <Mail className="size-4" />}
       </Button>
-      <Button
-        variant="ghost"
-        className="size-8 px-0"
-        aria-label={flagged ? 'Remove star' : 'Add star'}
-        title={flagged ? 'Remove star' : 'Add star'}
-        disabled={busy}
-        onClick={() => onSetFlagged(!flagged)}
+      {confirmPermanentDelete ? (
+        <AlertDialog>
+          <AlertDialogTrigger asChild>{deleteButton}</AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Permanently delete this conversation?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This conversation will be permanently removed and cannot be recovered.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={onDelete}>Permanently delete</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : (
+        deleteButton
+      )}
+      <div
+        ref={moreMenuRef}
+        className="relative"
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape') return;
+          setMoreMenuOpen(false);
+          moreMenuRef.current?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')?.focus();
+        }}
       >
-        <Star className={cn('size-4', flagged && 'fill-primary text-primary')} />
-      </Button>
+        <Button
+          variant="ghost"
+          className="size-8 px-0"
+          aria-label="More conversation actions"
+          title="More conversation actions"
+          aria-haspopup="menu"
+          aria-expanded={moreMenuOpen}
+          disabled={busy}
+          onClick={(event) => {
+            setMoreMenuPlacement(
+              window.innerHeight - event.currentTarget.getBoundingClientRect().bottom < 220
+                ? 'above'
+                : 'below',
+            );
+            setMoreMenuOpen((open) => !open);
+          }}
+        >
+          <MoreHorizontal className="size-4" />
+        </Button>
+        {moreMenuOpen && (
+          <div
+            role="menu"
+            aria-label="More conversation actions"
+            className={cn(
+              'absolute right-0 z-50 w-48 rounded-lg border border-border bg-card p-1 shadow-lg',
+              moreMenuPlacement === 'above'
+                ? 'bottom-[calc(100%+0.25rem)]'
+                : 'top-[calc(100%+0.25rem)]',
+            )}
+          >
+            <Button
+              autoFocus
+              variant="ghost"
+              role="menuitem"
+              className={menuItemClass}
+              onClick={() => runMenuAction(() => onSetFlagged(!flagged))}
+            >
+              <Star className={cn('size-4', flagged && 'fill-primary text-primary')} />
+              {flagged ? 'Remove star' : 'Add star'}
+            </Button>
+            {supportsEmzeroKeywords && (
+              <>
+                <Button
+                  variant="ghost"
+                  role="menuitem"
+                  className={menuItemClass}
+                  onClick={() => runMenuAction(() => onSetImportant(!important))}
+                >
+                  <Flag className={cn('size-4', important && 'fill-danger text-danger')} />
+                  {important ? 'Remove important' : 'Mark important'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  role="menuitem"
+                  className={menuItemClass}
+                  onClick={() => runMenuAction(() => {
+                    setCustomDueDate(dueDate ?? tomorrowDateKey());
+                    setDueDialogOpen(true);
+                  })}
+                >
+                  <CalendarDays className="size-4" />
+                  Set due date
+                </Button>
+                <Button
+                  variant="ghost"
+                  role="menuitem"
+                  className={menuItemClass}
+                  onClick={() => runMenuAction(() => setColorDialogOpen(true))}
+                >
+                  <Palette className={cn('size-4', color && messageColorTextClass(color))} />
+                  {color ? 'Change color' : 'Assign color'}
+                </Button>
+              </>
+            )}
+            {archive && archive.path !== sourcePath && (
+              <Button
+                variant="ghost"
+                role="menuitem"
+                className={menuItemClass}
+                onClick={() => runMenuAction(() => onMove({ accountId: sourceAccountId, folderPath: archive.path }))}
+              >
+                <Archive className="size-4" />
+                Archive
+              </Button>
+            )}
+            <MoveToDialog
+              accounts={accounts}
+              sourceAccountId={sourceAccountId}
+              sourceFolders={folders}
+              sourcePath={sourcePath}
+              count={messageCount}
+              busy={busy}
+              menuItem
+              onTrigger={() => setMoreMenuOpen(false)}
+              onMove={onMove}
+            />
+          </div>
+        )}
+      </div>
       {supportsEmzeroKeywords && (
         <>
-          <Button
-            variant="ghost"
-            className="size-8 px-0"
-            aria-label={important ? 'Remove important marker' : 'Mark important with a due date of tomorrow'}
-            title={important ? `${dueDateLabel(dueDate)} · Remove important` : 'Mark important · Due tomorrow'}
-            disabled={busy}
-            onClick={() => onSetImportant(!important)}
-          >
-            <Flag className={cn('size-4', important && 'fill-danger text-danger')} />
-          </Button>
           <Dialog open={dueDialogOpen} onOpenChange={(open) => {
             setDueDialogOpen(open);
             if (open) setCustomDueDate(dueDate ?? tomorrowDateKey());
           }}>
-            <DialogTrigger asChild>
-              <Button variant="ghost" className="size-8 px-0" aria-label="Set important due date" title="Set important due date" disabled={busy}>
-                <CalendarDays className="size-4" />
-              </Button>
-            </DialogTrigger>
             <DialogContent className="w-[min(28rem,calc(100%-2rem))]">
               <DialogHeader>
                 <DialogTitle>Set due date</DialogTitle>
@@ -693,11 +813,6 @@ export function ConversationActions({
             </DialogContent>
           </Dialog>
           <Dialog open={colorDialogOpen} onOpenChange={setColorDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="ghost" className="size-8 px-0" aria-label="Assign color" title="Assign color" disabled={busy}>
-                <Palette className={cn('size-4', color && messageColorTextClass(color))} />
-              </Button>
-            </DialogTrigger>
             <DialogContent className="w-[min(25rem,calc(100%-2rem))]">
               <DialogHeader>
                 <DialogTitle>Assign color</DialogTitle>
@@ -715,47 +830,6 @@ export function ConversationActions({
             </DialogContent>
           </Dialog>
         </>
-      )}
-      {archive && archive.path !== sourcePath && (
-        <Button
-          variant="ghost"
-          className="size-8 px-0"
-          aria-label="Archive conversation"
-          title="Archive conversation"
-          disabled={busy}
-          onClick={() => onMove({ accountId: sourceAccountId, folderPath: archive.path })}
-        >
-          <Archive className="size-4" />
-        </Button>
-      )}
-      <MoveToDialog
-        accounts={accounts}
-        sourceAccountId={sourceAccountId}
-        sourceFolders={folders}
-        sourcePath={sourcePath}
-        count={messageCount}
-        busy={busy}
-        compact
-        onMove={onMove}
-      />
-      {confirmPermanentDelete ? (
-        <AlertDialog>
-          <AlertDialogTrigger asChild>{deleteButton}</AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Permanently delete this conversation?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This conversation will be permanently removed and cannot be recovered.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={onDelete}>Permanently delete</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      ) : (
-        deleteButton
       )}
     </div>
   );

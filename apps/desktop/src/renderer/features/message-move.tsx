@@ -24,6 +24,8 @@ export function MoveToDialog({
   count,
   busy,
   compact = false,
+  menuItem = false,
+  onTrigger,
   onMove,
 }: {
   accounts: AccountSummary[];
@@ -34,6 +36,8 @@ export function MoveToDialog({
   count: number;
   busy: boolean;
   compact?: boolean;
+  menuItem?: boolean;
+  onTrigger?: () => void;
   onMove: (destination: MessageMoveDestination) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -99,14 +103,18 @@ export function MoveToDialog({
     <>
       <Button
         variant="ghost"
-        className={compact ? 'size-8 px-0' : 'px-3'}
+        className={menuItem ? 'h-8 w-full justify-start rounded-md px-2 text-xs' : compact ? 'size-8 px-0' : 'px-3'}
+        role={menuItem ? 'menuitem' : undefined}
         aria-label="Move to folder"
         title="Move to folder"
         disabled={busy || accounts.length === 0}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          onTrigger?.();
+          setOpen(true);
+        }}
       >
         <Folder className="size-4" />
-        {!compact && <span className="hidden sm:inline">Move to</span>}
+        {menuItem ? 'Move to folder' : !compact && <span className="hidden sm:inline">Move to</span>}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
