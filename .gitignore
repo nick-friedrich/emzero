@@ -8,3 +8,8 @@ playwright-report/
 test-results/
 *.log
 .DS_Store
+
+# Local environment files at any depth; keep shareable examples tracked.
+.env
+.env.*
+!.env.example
