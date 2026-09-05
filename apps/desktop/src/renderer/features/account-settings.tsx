@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import type { AccountSummary } from '../../shared/accounts';
 import { DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL, DEFAULT_OPENAI_MODEL, OPENAI_BASE_URL, type AiModelSummary, type AiProvider, type AiSettingsSummary } from '../../shared/ai';
 import { interfaceFonts, themes, useTheme, type InterfaceFont, type Theme } from '@/theme';
+import { appearanceShortcutLabel } from '@/features/appearance-switcher';
 import type { Status } from './app-shared';
 import { saveSignatures, storedSignatures, type MailSignature } from './signatures';
 
@@ -239,7 +240,7 @@ function GeneralSettings() {
     <section className="space-y-4 rounded-lg border border-border bg-card p-5"><div className="flex items-center gap-3"><Palette className="size-5 text-muted-foreground" /><h3 className="text-sm font-medium">Appearance</h3></div><div className="grid gap-4 sm:grid-cols-2">
       <label className="space-y-1.5 text-xs font-medium"><span>Color theme</span><span className="relative block"><Palette className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" /><select className="preference-select" value={preferences.theme} onChange={(event) => preferences.setTheme(event.target.value as Theme)}>{themes.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></span></label>
       <label className="space-y-1.5 text-xs font-medium"><span>Interface font</span><span className="relative block"><Type className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" /><select className="preference-select" value={preferences.interfaceFont} onChange={(event) => preferences.setInterfaceFont(event.target.value as InterfaceFont)}>{interfaceFonts.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></span></label>
-    </div></section>
+    </div><p className="text-xs text-muted-foreground">Press <kbd className="rounded border border-border bg-background px-1.5 py-0.5 font-sans">{appearanceShortcutLabel()}</kbd> in any window to quickly switch themes and fonts.</p></section>
     <section className="mt-5 rounded-lg border border-border bg-card p-5"><h3 className="mb-1 text-sm font-medium">Mail behavior</h3>
       <Toggle checked={preferences.markReadOnOpen} onChange={preferences.setMarkReadOnOpen} title="Mark as read automatically" description="Automatically mark unread messages as read after you view their conversation." />
       <Toggle checked={preferences.selectNextOnDelete} onChange={preferences.setSelectNextOnDelete} title="Select the next email after deleting" description="Keep reading by opening the next conversation in the list after a delete." />

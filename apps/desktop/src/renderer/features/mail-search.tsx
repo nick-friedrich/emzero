@@ -28,6 +28,7 @@ import {
 } from '../../shared/conversations';
 import {
   addressLabel,
+  dueDateRowClass,
   conversationWithImportanceValues,
   conversationWithMessage,
   MailLayoutToggle,
@@ -494,6 +495,7 @@ export function MailSearch({
                   role="listitem"
                   className={cn(
                     'grid w-full min-w-0 gap-y-1 border-b border-border text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none',
+                    dueDateRowClass(item.message.important ? item.message.dueDate : null),
                     compactList
                       ? 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-4 py-3.5'
                       : 'grid-cols-[minmax(0,1fr)_auto] gap-x-4 px-4 py-3 lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:px-6',

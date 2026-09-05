@@ -81,6 +81,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/demo-mode.tsx` — persistent, privacy-safe show-off dataset injected into the existing mailbox and conversation UI for screenshots.
 - `features/account-setup.tsx` — provider detection, password/app-password setup, and personal Microsoft device-code connection flow.
 - `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior, accounts, signatures, and encrypted backup/restore.
+- `features/appearance-switcher.tsx` — global keyboard shortcut and accessible quick theme/font picker, shared by all renderer windows; owns the settings shortcut label.
 - `features/signatures.ts` — persisted account-to-signature assignments and outgoing-message signature formatting.
 - `features/signature-picker.tsx` — compose-time signature selection shared by new-message and reply composers.
 - `features/compose-dialog.tsx` — reusable docked, full-area, inline-draft, and standalone composer with recipient suggestions, attachments, validation, confirmation, and sending.

@@ -39,14 +39,36 @@ test('navigates the desktop app and reads sample mail', async () => {
     const userDataPath = await application.evaluate(({ app }) => app.getPath('userData'));
     expect(path.resolve(userDataPath)).toBe(path.resolve(profilePath));
     const page = await application.firstWindow();
+    await page.setViewportSize({ width: 1280, height: 800 });
     await page.getByLabel('Emzero').click({ clickCount: 5 });
 
     await expect(page.getByRole('heading', { name: 'Inbox', exact: true })).toBeVisible();
     await expect(page.getByRole('list', { name: 'Messages' }).getByRole('listitem')).toHaveCount(5);
 
+    const appearanceShortcut = process.platform === 'darwin' ? 'Meta+Shift+P' : 'Control+Shift+P';
+    const appearance = page.getByRole('dialog', { name: 'Quick appearance' });
+    await page.keyboard.press(appearanceShortcut);
+    await expect(appearance.getByRole('radio', { name: 'Light', exact: true })).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await page.keyboard.press('Tab');
+    await expect(appearance.getByRole('radio', { name: 'Inter', exact: true })).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.locator('html')).toHaveAttribute('data-font', 'jetbrains-mono');
+    await page.keyboard.press('Escape');
+    await expect(appearance).toBeHidden();
+    await page.keyboard.press(appearanceShortcut);
+    await expect(appearance.getByRole('radio', { name: 'Dark', exact: true })).toBeChecked();
+    await expect(appearance.getByRole('radio', { name: 'JetBrains Mono', exact: true })).toBeChecked();
+    await appearance.getByText('Light', { exact: true }).click();
+    await appearance.getByText('Inter', { exact: true }).click();
+    await page.keyboard.press(appearanceShortcut);
+    await expect(appearance).toBeHidden();
+
     await application.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setSize(800, 700);
     });
+    await page.setViewportSize({ width: 800, height: 700 });
     await page.getByRole('button', { name: 'Open navigation' }).click();
     await expect(page.getByRole('navigation', { name: 'Mailboxes' })).toBeVisible();
     await page.getByRole('button', { name: 'Close navigation' }).click();
@@ -54,6 +76,7 @@ test('navigates the desktop app and reads sample mail', async () => {
     await application.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setSize(1280, 800);
     });
+    await page.setViewportSize({ width: 1280, height: 800 });
 
     await page.keyboard.press('ArrowDown');
     const launchConversation = page.getByRole('button', {

@@ -44,6 +44,7 @@ import {
   conversationWithFlaggedValues,
   conversationWithImportanceValues,
   dueDateLabel,
+  dueDateRowClass,
   messageColorBackgroundClass,
   conversationWithUnreadValues,
   isEditableTarget,
@@ -631,7 +632,11 @@ export function MessageList({
             }
           : current,
       );
-      setSelectedConversation(action === 'delete' && selectNextOnDelete ? (nextConversation ?? null) : null);
+      setSelectedConversation(
+        action === 'delete' && selectNextOnDelete && (mailLayout === 'split' || previousSelection !== null)
+          ? (nextConversation ?? null)
+          : null,
+      );
     };
     const restoreConversation = () => {
       setState(previousState);
@@ -1027,6 +1032,7 @@ export function MessageList({
               <div
                 className={cn(
                   'group relative flex min-w-0 items-center border-b border-border hover:bg-accent/60',
+                  dueDateRowClass(importantMessage?.dueDate ?? null),
                   selectedConversationIds.has(conversation.id) && 'bg-accent/60',
                   mailLayout === 'split' && selectedConversation?.id === conversation.id && 'bg-accent',
                 )}

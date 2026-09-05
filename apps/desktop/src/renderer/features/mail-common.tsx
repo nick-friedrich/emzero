@@ -529,6 +529,14 @@ export function dueDateLabel(dueDate: string | null): string {
   return `Due ${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(parsed)}`;
 }
 
+export function dueDateRowClass(dueDate: string | null): string | undefined {
+  if (!dueDate) return undefined;
+  const today = localDateKeyAfter(0);
+  if (dueDate < today) return 'bg-red-500/10 hover:bg-red-500/15';
+  if (dueDate === today) return 'bg-yellow-500/10 hover:bg-yellow-500/15';
+  return undefined;
+}
+
 const messageColorClasses: Record<EmzeroMessageColor, { background: string; text: string }> = {
   red: { background: 'bg-red-500', text: 'text-red-500' },
   orange: { background: 'bg-orange-500', text: 'text-orange-500' },
@@ -748,14 +756,21 @@ export function ConversationActions({
                 <Button
                   variant="ghost"
                   role="menuitem"
-                  className={menuItemClass}
+                  className={cn(menuItemClass, dueDate && 'h-auto py-2')}
                   onClick={() => runMenuAction(() => {
                     setCustomDueDate(dueDate ?? tomorrowDateKey());
                     setDueDialogOpen(true);
                   })}
                 >
                   <CalendarDays className="size-4" />
-                  Set due date
+                  <span className="min-w-0 text-left">
+                    <span className="block">{dueDate ? dueDateLabel(dueDate) : 'Set due date'}</span>
+                    {dueDate && (
+                      <span className="block text-[10px] text-muted-foreground">
+                        {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(`${dueDate}T00:00:00`))}
+                      </span>
+                    )}
+                  </span>
                 </Button>
                 <Button
                   variant="ghost"

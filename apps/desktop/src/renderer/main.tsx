@@ -11,6 +11,7 @@ import {
 } from '@/theme';
 import { MailWindowBootstrap, parsedMailWindowId } from '@/mail-window';
 import { SettingsWindow } from '@/features/account-settings';
+import { AppearanceSwitcher } from '@/features/appearance-switcher';
 
 const root = document.getElementById('root');
 
@@ -29,6 +30,7 @@ createRoot(root).render(
         : mailWindowId
           ? <MailWindowBootstrap windowId={mailWindowId} />
           : <App />}
+      <AppearanceSwitcher />
     </ThemeProvider>
   </StrictMode>,
 );

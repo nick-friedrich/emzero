@@ -46,6 +46,7 @@ import {
   conversationWithImportanceValues,
   conversationWithUnreadValues,
   dueDateLabel,
+  dueDateRowClass,
   messageColorBackgroundClass,
   isEditableTarget,
   MailLayoutToggle,
@@ -845,7 +846,11 @@ export function UnifiedInbox({
             }
           : current,
       );
-      setSelectedItem(action === 'delete' && selectNextOnDelete ? (nextItem ?? null) : null);
+      setSelectedItem(
+        action === 'delete' && selectNextOnDelete && (mailLayout === 'split' || previousSelection !== null)
+          ? (nextItem ?? null)
+          : null,
+      );
     };
     const restoreItem = () => {
       setState(previousState);
@@ -1284,6 +1289,7 @@ export function UnifiedInbox({
               <div
                 className={cn(
                   'group relative flex min-w-0 items-center border-b border-border hover:bg-accent/60',
+                  dueDateRowClass(importantMessage?.dueDate ?? null),
                   selectedItemKeys.has(itemKey(item)) && 'bg-accent/60',
                   mailLayout === 'split' && selectedItem && itemKey(selectedItem) === itemKey(item) && 'bg-accent',
                 )}
