@@ -12,6 +12,7 @@ This index records where application responsibilities live. Read it before makin
 - `plan.md` — current product scope and delivery plan.
 - `package.json` — workspace commands; `pnpm check` runs lint, type checking, and tests.
 - `apps/desktop/package.json` — Electron application dependencies and package-level scripts.
+- `apps/desktop/forge.config.ts` — platform packaging, including the MIT license and runtime branding assets in packaged resources.
 - `apps/web/` — Laravel 13 / Inertia React website for the public landing page, waitlist, blog, and private admin.
 
 ## Website

@@ -11,15 +11,18 @@ const macAppIcon = path.resolve(import.meta.dirname, 'assets/emzero-logo.icns');
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    extraResource: [path.resolve(import.meta.dirname, '../../LICENSE')],
+    extraResource: [
+      path.resolve(import.meta.dirname, '../../LICENSE'),
+      path.resolve(import.meta.dirname, 'assets'),
+    ],
     executableName: 'emzero',
     icon: process.platform === 'darwin' ? macAppIcon : appIcon,
   },
   rebuildConfig: {},
   makers: [
     new MakerZIP({}, ['darwin']),
-    new MakerDeb({ options: { icon: appIcon } }),
-    new MakerRpm({ options: { icon: appIcon } }),
+    new MakerDeb({ options: { name: 'emzero', bin: 'emzero', maintainer: 'Nick Friedrich', icon: appIcon } }),
+    new MakerRpm({ options: { name: 'emzero', bin: 'emzero', icon: appIcon } }),
   ],
   plugins: [
     new VitePlugin({

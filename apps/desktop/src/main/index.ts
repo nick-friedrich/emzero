@@ -9,7 +9,9 @@ import { setMailNotificationActivationHandler } from './mail-notifications.js';
 
 let mainWindow: BrowserWindow | null = null;
 
-const bundledAssets = path.join(app.getAppPath(), 'assets');
+const bundledAssets = app.isPackaged
+  ? path.join(process.resourcesPath, 'assets')
+  : path.join(app.getAppPath(), 'assets');
 const assetsDirectory = existsSync(bundledAssets)
   ? bundledAssets
   : path.resolve(__dirname, '../../assets');
