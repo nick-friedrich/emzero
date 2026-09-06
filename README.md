@@ -76,4 +76,4 @@ To scan locally with Gitleaks 8.30.1:
 gitleaks git . --log-opts="--all" --config=.gitleaks.toml --redact=100
 ```
 
-These checks validate unsigned packages. Public macOS releases still need Apple signing and notarization, and a release publishing workflow. Passing CI alone does not publish a release or change repository visibility.
+These checks validate unsigned packages. Pushing a `v*` tag runs the release workflow, which packages Linux and macOS builds and publishes them as GitHub Release assets; the macOS build is signed and notarized only when the `APPLE_SIGNING_IDENTITY`, `APPLE_CERTIFICATE_P12`, `APPLE_CERTIFICATE_PASSWORD`, `KEYCHAIN_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` repository secrets are configured. Passing CI alone does not publish a release or change repository visibility.
