@@ -615,6 +615,7 @@ export function ConversationActions({
 }) {
   const [dueDialogOpen, setDueDialogOpen] = useState(false);
   const [colorDialogOpen, setColorDialogOpen] = useState(false);
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [moreMenuPlacement, setMoreMenuPlacement] = useState<'above' | 'below'>('below');
   const [customDueDate, setCustomDueDate] = useState(dueDate ?? tomorrowDateKey());
@@ -794,20 +795,31 @@ export function ConversationActions({
                 Archive
               </Button>
             )}
-            <MoveToDialog
-              accounts={accounts}
-              sourceAccountId={sourceAccountId}
-              sourceFolders={folders}
-              sourcePath={sourcePath}
-              count={messageCount}
-              busy={busy}
-              menuItem
-              onTrigger={() => setMoreMenuOpen(false)}
-              onMove={onMove}
-            />
+            <Button
+              variant="ghost"
+              role="menuitem"
+              className={menuItemClass}
+              disabled={busy || accounts.length === 0}
+              onClick={() => runMenuAction(() => setMoveDialogOpen(true))}
+            >
+              <Folder className="size-4" />
+              Move to folder
+            </Button>
           </div>
         )}
       </div>
+      <MoveToDialog
+        accounts={accounts}
+        sourceAccountId={sourceAccountId}
+        sourceFolders={folders}
+        sourcePath={sourcePath}
+        count={messageCount}
+        busy={busy}
+        hideTrigger
+        open={moveDialogOpen}
+        onOpenChange={setMoveDialogOpen}
+        onMove={onMove}
+      />
       {supportsEmzeroKeywords && (
         <>
           <Dialog open={dueDialogOpen} onOpenChange={(open) => {

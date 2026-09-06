@@ -25,6 +25,9 @@ export function MoveToDialog({
   busy,
   compact = false,
   menuItem = false,
+  hideTrigger = false,
+  open: openProp,
+  onOpenChange,
   onTrigger,
   onMove,
 }: {
@@ -37,10 +40,15 @@ export function MoveToDialog({
   busy: boolean;
   compact?: boolean;
   menuItem?: boolean;
+  hideTrigger?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onTrigger?: () => void;
   onMove: (destination: MessageMoveDestination) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [accountId, setAccountId] = useState(sourceAccountId);
   const [destinationPath, setDestinationPath] = useState('');
   const [folderStates, setFolderStates] = useState<Record<string, {
@@ -101,21 +109,23 @@ export function MoveToDialog({
 
   return (
     <>
-      <Button
-        variant="ghost"
-        className={menuItem ? 'h-8 w-full justify-start rounded-md px-2 text-xs' : compact ? 'size-8 px-0' : 'px-3'}
-        role={menuItem ? 'menuitem' : undefined}
-        aria-label="Move to folder"
-        title="Move to folder"
-        disabled={busy || accounts.length === 0}
-        onClick={() => {
-          onTrigger?.();
-          setOpen(true);
-        }}
-      >
-        <Folder className="size-4" />
-        {menuItem ? 'Move to folder' : !compact && <span className="hidden sm:inline">Move to</span>}
-      </Button>
+      {!hideTrigger && (
+        <Button
+          variant="ghost"
+          className={menuItem ? 'h-8 w-full justify-start rounded-md px-2 text-xs' : compact ? 'size-8 px-0' : 'px-3'}
+          role={menuItem ? 'menuitem' : undefined}
+          aria-label="Move to folder"
+          title="Move to folder"
+          disabled={busy || accounts.length === 0}
+          onClick={() => {
+            onTrigger?.();
+            setOpen(true);
+          }}
+        >
+          <Folder className="size-4" />
+          {menuItem ? 'Move to folder' : !compact && <span className="hidden sm:inline">Move to</span>}
+        </Button>
+      )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
