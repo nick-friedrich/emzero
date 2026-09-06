@@ -1,0 +1,13 @@
+title = "Emzero secret scanning"
+
+[extend]
+useDefault = true
+
+# Only the reviewed dummy Stripe credential in the bundled teaching example.
+# Other credentials in these files must still be reported.
+[[allowlists]]
+description = "Laravel documentation dummy Stripe credential"
+condition = "AND"
+paths = ['''^apps/web/\.(agents|claude|pi|grok)/skills/laravel-best-practices/rules/config\.md$''']
+regexTarget = "secret"
+regexes = ['''^sk_live_abc123$''']

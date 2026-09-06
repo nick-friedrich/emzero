@@ -1,6 +1,7 @@
 {
   "name": "emzero",
   "private": true,
+  "license": "MIT",
   "packageManager": "pnpm@11.22.0",
   "engines": {
     "node": ">=24 <25"

@@ -11,6 +11,7 @@ const macAppIcon = path.resolve(import.meta.dirname, 'assets/emzero-logo.icns');
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    extraResource: [path.resolve(import.meta.dirname, '../../LICENSE')],
     executableName: 'emzero',
     icon: process.platform === 'darwin' ? macAppIcon : appIcon,
   },

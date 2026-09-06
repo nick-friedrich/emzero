@@ -16,6 +16,7 @@ test('navigates the desktop app and reads sample mail', async () => {
   const testInfo = test.info();
   const profilePath = testInfo.outputPath('electron-profile');
   const executablePath = packagedExecutable();
+  expect(executablePath, 'Build the packaged Electron app before running smoke tests').toBeDefined();
   const launchArgs = executablePath
     ? [`--user-data-dir=${profilePath}`]
     : [
@@ -118,7 +119,9 @@ test('navigates the desktop app and reads sample mail', async () => {
       .first()
       .click();
     await expect(page.getByRole('heading', { name: 'Drafts', exact: true })).toBeVisible();
-    await expect(page.getByText('Partnership details', { exact: true })).toBeVisible();
+    await expect(page.getByRole('checkbox', {
+      name: 'Select conversation: Partnership details', exact: true,
+    })).toBeVisible();
 
     await page.getByRole('navigation', { name: 'Mailboxes' })
       .getByRole('button', { name: 'Trash', exact: true })

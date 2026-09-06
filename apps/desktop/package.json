@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "A private, multi-account desktop mail client",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "main": ".vite/build/main.cjs",
   "scripts": {

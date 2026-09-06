@@ -4,6 +4,10 @@ This index records where application responsibilities live. Read it before makin
 
 ## Repository entry points
 
+- `LICENSE` — MIT license for the project; third-party notices retain their own terms.
+- `.github/workflows/checks.yml` — full-history secret scanning, Linux/macOS desktop checks and packaging, and website CI.
+- `.gitleaks.toml` — standard secret-detection rules with one narrowly scoped documentation placeholder exception.
+
 - `README.md` — local development requirements and commands.
 - `plan.md` — current product scope and delivery plan.
 - `package.json` — workspace commands; `pnpm check` runs lint, type checking, and tests.

@@ -17,7 +17,7 @@ The initial application lives in `apps/desktop`. Electron main and preload own d
 ## Commands
 
 - `pnpm dev` — start the desktop app with hot reload
-- `pnpm check` — run linting, type checks, and unit tests
+- `pnpm check` — run linting, type checks, unit tests, and packaged Electron smoke tests
 - `pnpm build` — create an unpacked application in `apps/desktop/out`
 - `pnpm --filter @emzero/desktop make` — create platform installers
 
@@ -61,3 +61,19 @@ Emzero uses its registered Microsoft public-client application and device-code O
 3. Copy the displayed device code, select **Open Microsoft**, and approve mail access in the browser.
 
 The public Microsoft application ID is stored with the account. The Microsoft refresh token is encrypted with Electron's operating-system credential storage; access tokens are kept in memory and refreshed as needed.
+
+## License
+
+Emzero is licensed under the [MIT License](./LICENSE). Third-party dependencies retain their own licenses and notices.
+
+## Automated checks
+
+The root GitHub Actions workflow runs on pushes to `main`, version tags (`v*`), pull requests, and manual dispatch. It scans the full Git history with Gitleaks, runs desktop checks and creates packages on Linux and macOS, and builds and checks the website. The nested website workflow is a starter-template file; GitHub uses the root workflow for this monorepo.
+
+To scan locally with Gitleaks 8.30.1:
+
+```sh
+gitleaks git . --log-opts="--all" --config=.gitleaks.toml --redact=100
+```
+
+These checks validate unsigned packages. Public macOS releases still need Apple signing and notarization, and a release publishing workflow. Passing CI alone does not publish a release or change repository visibility.
