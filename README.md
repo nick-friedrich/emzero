@@ -2,6 +2,34 @@
 
 A private, multi-account desktop mail client for Linux and macOS, with a Laravel-powered product website.
 
+## Install
+
+### macOS
+
+```sh
+brew install --cask nick-friedrich/tap/emzero
+```
+
+Apple Silicon and Intel are both supported on macOS 12 (Monterey) or newer. Homebrew selects the matching build. Releases are signed with a Developer ID certificate and notarized by Apple, so they launch without a Gatekeeper prompt.
+
+Upgrade later with `brew upgrade --cask emzero`.
+
+### Linux
+
+Download the package for your distribution from the [latest release](https://github.com/nick-friedrich/emzero/releases/latest) and install it:
+
+```sh
+sudo apt install ./emzero_*_amd64.deb
+```
+
+```sh
+sudo dnf install ./emzero-*.x86_64.rpm
+```
+
+Linux packages are currently built for x86_64 only.
+
+macOS builds are also published as `.zip` archives on the [releases page](https://github.com/nick-friedrich/emzero/releases/latest) for anyone not using Homebrew. Direct downloads do not update themselves.
+
 ## Development
 
 Requirements: Node.js 24 and pnpm 11.22.
