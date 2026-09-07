@@ -38,6 +38,7 @@ const config: ForgeConfig = {
       path.resolve(import.meta.dirname, 'assets'),
     ],
     executableName: 'emzero',
+    appBundleId: 'email.emzero.desktop',
     icon: process.platform === 'darwin' ? macAppIcon : appIcon,
     osxSign,
     osxNotarize,
