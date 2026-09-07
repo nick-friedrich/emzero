@@ -30,6 +30,10 @@ Linux packages are currently built for x86_64 only.
 
 macOS builds are also published as `.zip` archives on the [releases page](https://github.com/nick-friedrich/emzero/releases/latest) for anyone not using Homebrew. Direct downloads do not update themselves.
 
+### From source
+
+There is no Arch Linux package yet, and building yourself is also the way to run only code you have inspected. See [docs/BUILDING.md](./docs/BUILDING.md) for the build steps, the system tools each package format needs, and how to verify a published build against its recorded checksum.
+
 ## Development
 
 Requirements: Node.js 24 and pnpm 11.22.
