@@ -64,6 +64,7 @@ import {
   useCompactMailList,
 } from './mail-common';
 import { MailSplitLayout } from './mail-split-layout';
+import { readerSelectionAfterRemoval } from './reader-selection';
 import { ConversationReader } from './conversation-reader';
 import type { DraftDeletedEvent, DraftSavedEvent } from './compose-dialog';
 import { useMessagePrefetch } from './message-prefetch';
@@ -846,11 +847,13 @@ export function UnifiedInbox({
             }
           : current,
       );
-      setSelectedItem(
-        action === 'delete' && selectNextOnDelete && (mailLayout === 'split' || previousSelection !== null)
-          ? (nextItem ?? null)
-          : null,
-      );
+      setSelectedItem((current) => readerSelectionAfterRemoval({
+        current,
+        keyOf: itemKey,
+        removedKey: key,
+        selectNext: action === 'delete' && selectNextOnDelete,
+        next: nextItem,
+      }));
     };
     const restoreItem = () => {
       setState(previousState);

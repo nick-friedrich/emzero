@@ -62,6 +62,7 @@ import {
   useCompactMailList,
 } from './mail-common';
 import { MailSplitLayout } from './mail-split-layout';
+import { readerSelectionAfterRemoval } from './reader-selection';
 import { ConversationReader } from './conversation-reader';
 import type { DraftDeletedEvent, DraftSavedEvent } from './compose-dialog';
 import { useMessagePrefetch } from './message-prefetch';
@@ -632,11 +633,13 @@ export function MessageList({
             }
           : current,
       );
-      setSelectedConversation(
-        action === 'delete' && selectNextOnDelete && (mailLayout === 'split' || previousSelection !== null)
-          ? (nextConversation ?? null)
-          : null,
-      );
+      setSelectedConversation((current) => readerSelectionAfterRemoval({
+        current,
+        keyOf: (candidate) => candidate.id,
+        removedKey: conversation.id,
+        selectNext: action === 'delete' && selectNextOnDelete,
+        next: nextConversation,
+      }));
     };
     const restoreConversation = () => {
       setState(previousState);
