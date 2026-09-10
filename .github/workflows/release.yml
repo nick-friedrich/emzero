@@ -101,3 +101,48 @@ jobs:
             --title "$RELEASE_TAG" \
             --generate-notes \
             "${files[@]}"
+
+  tap:
+    name: Update Homebrew cask
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: nick-friedrich/homebrew-tap
+          # A PAT with contents:write on the tap; github.token is scoped to this
+          # repository and cannot push there.
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      - name: Bump the cask
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          gh release download "$RELEASE_TAG" \
+            --repo "$RELEASE_REPO" \
+            --pattern 'Emzero-darwin-*.zip' \
+            --dir zips
+          arm="$(sha256sum "zips/Emzero-darwin-arm64-$version.zip" | cut -d ' ' -f 1)"
+          intel="$(sha256sum "zips/Emzero-darwin-x64-$version.zip" | cut -d ' ' -f 1)"
+          rm -rf zips
+          sed -i \
+            -e "s|^  version \".*\"$|  version \"$version\"|" \
+            -e "s|^  sha256 arm:   \".*\",$|  sha256 arm:   \"$arm\",|" \
+            -e "s|^         intel: \".*\"$|         intel: \"$intel\"|" \
+            Casks/emzero.rb
+          # A silent sed miss would publish a cask with stale checksums.
+          grep -qF "  version \"$version\"" Casks/emzero.rb
+          grep -qF "\"$arm\"" Casks/emzero.rb
+          grep -qF "\"$intel\"" Casks/emzero.rb
+          if git diff --quiet; then
+            echo "Cask is already at $version."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -a -m "Update to $version"
+          git push
