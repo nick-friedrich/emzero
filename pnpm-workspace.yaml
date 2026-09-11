@@ -9,3 +9,9 @@ allowBuilds:
 
 overrides:
   "@electron/node-gyp": 10.2.0-electron.2
+  # Build-time only (Forge's webpack templates); patched releases for
+  # Dependabot alerts that the parents have not picked up yet.
+  "fast-uri": ^3.1.6
+  # external-editor (Forge CLI prompts) only calls tmp.tmpNameSync, which
+  # tmp 0.2 keeps.
+  "external-editor>tmp": ^0.2.7
