@@ -466,9 +466,15 @@ export function MessageList({
     destination?: MessageMoveDestination,
     metadata?: { dueDate?: string; color?: EmzeroMessageColor | null },
   ) => {
-    if (pendingActions.current.has(conversation.id)) return false;
-    pendingActions.current.add(conversation.id);
-    setBusyConversations((current) => new Set(current).add(conversation.id));
+    // Delete and move are removed optimistically and committed after the undo
+    // delay, so they must not wait for an in-flight flag change such as
+    // mark-read-on-open.
+    const deferred = action === 'delete' || action === 'move';
+    if (!deferred) {
+      if (pendingActions.current.has(conversation.id)) return false;
+      pendingActions.current.add(conversation.id);
+      setBusyConversations((current) => new Set(current).add(conversation.id));
+    }
     setActionError(null);
     const keys = new Set(
       conversation.messages
@@ -646,14 +652,8 @@ export function MessageList({
       setSelectedConversation(previousSelection);
     };
 
-    if (action === 'delete' || action === 'move') {
+    if (deferred) {
       removeConversation();
-      pendingActions.current.delete(conversation.id);
-      setBusyConversations((current) => {
-        const next = new Set(current);
-        next.delete(conversation.id);
-        return next;
-      });
       const archive = destination?.accountId === selection.account.id
         ? folders.find((folder) => folder.path === destination.folderPath)?.specialUse === '\\Archive'
         : false;

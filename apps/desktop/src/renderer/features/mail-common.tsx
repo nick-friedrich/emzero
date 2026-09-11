@@ -12,7 +12,6 @@ import {
   CalendarDays,
   Folder,
   Inbox,
-  LoaderCircle,
   Mail,
   MailOpen,
   MoreHorizontal,
@@ -652,10 +651,9 @@ export function ConversationActions({
       className="size-8 px-0 text-danger hover:text-danger"
       aria-label="Delete conversation"
       title="Delete conversation"
-      disabled={busy}
       onClick={confirmPermanentDelete ? undefined : onDelete}
     >
-      {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+      <Trash2 className="size-4" />
     </Button>
   );
   return (

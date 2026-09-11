@@ -645,9 +645,15 @@ export function UnifiedInbox({
     metadata?: { dueDate?: string; color?: EmzeroMessageColor | null },
   ) => {
     const key = itemKey(item);
-    if (pendingActions.current.has(key)) return false;
-    pendingActions.current.add(key);
-    setBusyConversations((current) => new Set(current).add(key));
+    // Delete and move are removed optimistically and committed after the undo
+    // delay, so they must not wait for an in-flight flag change such as
+    // mark-read-on-open.
+    const deferred = action === 'delete' || action === 'move';
+    if (!deferred) {
+      if (pendingActions.current.has(key)) return false;
+      pendingActions.current.add(key);
+      setBusyConversations((current) => new Set(current).add(key));
+    }
     setActionError(null);
     const previousUnread = new Map(
       item.conversation.messages
@@ -860,14 +866,8 @@ export function UnifiedInbox({
       setSelectedItem(previousSelection);
     };
 
-    if (action === 'delete' || action === 'move') {
+    if (deferred) {
       removeItem();
-      pendingActions.current.delete(key);
-      setBusyConversations((current) => {
-        const next = new Set(current);
-        next.delete(key);
-        return next;
-      });
       const archive = destination?.accountId === item.selection.account.id
         ? item.folders.find((folder) => folder.path === destination.folderPath)?.specialUse === '\\Archive'
         : false;
