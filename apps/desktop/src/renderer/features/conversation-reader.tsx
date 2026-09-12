@@ -84,7 +84,7 @@ import {
   type DraftSavedEvent,
 } from './compose-dialog';
 import { SignaturePicker } from './signature-picker';
-import { formatSignature, replaceSignature, signatureBody, signatureBodyForId, signatureIdForAccount } from './signatures';
+import { formatSignature, replaceSignature, signatureBody, signatureBodyForId, signatureIdForAccount, withoutSignature } from './signatures';
 
 function MessageBody({
   accountId,
@@ -497,7 +497,7 @@ function ReplyComposer({
         subject: message.subject,
         to: currentDraft.to,
         cc: currentDraft.cc,
-        existingDraft: text.replace(formatSignature(signatureBodyForId(signatureId)), '').trim(),
+        existingDraft: withoutSignature(text, signatureId).trim(),
         conversation,
       }, onProgress);
     } catch {
@@ -642,7 +642,7 @@ function ReplyComposer({
         <AiDraftAssistant
           className="mt-3"
           disabled={busy}
-          currentText={text.replace(formatSignature(signatureBodyForId(signatureId)), '')}
+          currentText={withoutSignature(text, signatureId)}
           actionLabel="Draft reply"
           placeholder="For example: Kein Interesse — freundlich und professionell absagen."
           privacyDescription="The conversation, your existing text, and your instruction will be sent to your configured AI provider."

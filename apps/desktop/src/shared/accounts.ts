@@ -1,3 +1,5 @@
+import type { MailSignature } from './signatures.js';
+
 export interface MailServerSettings {
   host: string;
   port: number;
@@ -457,12 +459,7 @@ export interface AccountBackupExportRequest {
   appSettings?: AppSettingsBackup;
 }
 
-export interface BackupSignature {
-  id: string;
-  name: string;
-  body: string;
-  accountIds: string[];
-}
+export type BackupSignature = MailSignature;
 
 export interface AppSettingsBackup {
   theme: string;

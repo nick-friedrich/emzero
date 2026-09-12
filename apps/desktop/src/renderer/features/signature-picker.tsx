@@ -1,5 +1,6 @@
+import { useSyncExternalStore } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { storedSignatures } from './signatures';
+import { storedSignatures, subscribeSignatures } from './signatures';
 
 export function SignaturePicker({
   value,
@@ -10,7 +11,7 @@ export function SignaturePicker({
   disabled: boolean;
   onChange: (signatureId: string) => void;
 }) {
-  const signatures = storedSignatures();
+  const signatures = useSyncExternalStore(subscribeSignatures, storedSignatures);
 
   return (
     <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">

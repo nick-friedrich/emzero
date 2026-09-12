@@ -50,7 +50,7 @@ import { AttachmentPicker } from './attachment-picker';
 import { AiDraftAssistant } from './ai-draft-assistant';
 import { useDraftAutosave } from './draft-autosave';
 import { SignaturePicker } from './signature-picker';
-import { formatSignature, replaceSignature, signatureBody, signatureBodyForId, signatureIdForAccount } from './signatures';
+import { formatSignature, replaceSignature, signatureBody, signatureBodyForId, signatureIdForAccount, signatureSuffix } from './signatures';
 
 export interface DraftSavedEvent {
   accountId: string;
@@ -253,9 +253,9 @@ export function ComposeDialog({
       ? defaultAccountId!
       : (accounts[0]?.id ?? '');
     const assignedSignatureId = signatureIdForAccount(initialAccountId);
-    const assignedSignatureBody = signatureBodyForId(assignedSignatureId);
-    const hasAssignedSignature = initialDraft?.text.endsWith(formatSignature(assignedSignatureBody)) ||
-      (assignedSignatureBody && initialDraft?.text.endsWith(`\n\n-- \n${assignedSignatureBody}`));
+    const hasAssignedSignature = Boolean(
+      initialDraft && signatureSuffix(initialDraft.text, assignedSignatureId),
+    );
     return (!initialDraft && composerKind !== 'draft') || hasAssignedSignature
       ? assignedSignatureId
       : '';
@@ -301,19 +301,11 @@ export function ComposeDialog({
     initialDraftReference,
   );
 
-  const formattedSignature = formatSignature(signatureBodyForId(signatureId));
-  const legacySignature = signatureId
-    ? `\n\n-- \n${signatureBodyForId(signatureId)}`
-    : '';
-  const currentSignature = formattedSignature && body.endsWith(formattedSignature)
-    ? formattedSignature
-    : legacySignature && body.endsWith(legacySignature)
-      ? legacySignature
-      : '';
+  const currentSignature = signatureSuffix(body, signatureId);
   const bodyWithoutSignature = currentSignature
     ? body.slice(0, -currentSignature.length)
     : body;
-  const preservedSignature = currentSignature || formattedSignature;
+  const preservedSignature = currentSignature || formatSignature(signatureBodyForId(signatureId));
 
   useEffect(() => {
     if (variant !== 'window') return;

@@ -49,6 +49,11 @@ import {
   type AttachmentSelectionResult,
 } from '../shared/accounts.js';
 import type { EmzeroMessageColor } from '../shared/message-keywords.js';
+import {
+  SIGNATURE_CHANNELS,
+  type MailSignature,
+  type SignatureListResult,
+} from '../shared/signatures.js';
 
 export interface EmzeroDesktopApi {
   platform: NodeJS.Platform;
@@ -84,6 +89,10 @@ export interface EmzeroDesktopApi {
     exportBackup: (request: AccountBackupExportRequest) => Promise<AccountBackupResult>;
     selectBackup: () => Promise<AccountBackupSelectionResult>;
     importBackup: (request: AccountBackupImportRequest) => Promise<AccountBackupResult>;
+  };
+  signatures: {
+    list: () => Promise<SignatureListResult>;
+    save: (signatures: MailSignature[]) => Promise<boolean>;
   };
   folders: {
     list: (accountId: string, refresh?: boolean) => Promise<FolderListResult>;
@@ -233,6 +242,10 @@ contextBridge.exposeInMainWorld('emzero', {
     exportBackup: (request) => ipcRenderer.invoke(ACCOUNT_CHANNELS.exportBackup, request),
     selectBackup: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.selectBackup),
     importBackup: (request) => ipcRenderer.invoke(ACCOUNT_CHANNELS.importBackup, request),
+  },
+  signatures: {
+    list: () => ipcRenderer.invoke(SIGNATURE_CHANNELS.list),
+    save: (signatures) => ipcRenderer.invoke(SIGNATURE_CHANNELS.save, signatures),
   },
   folders: {
     list: (accountId, refresh = false) =>

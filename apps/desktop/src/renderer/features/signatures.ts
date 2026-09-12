@@ -1,30 +1,104 @@
-export interface MailSignature {
-  id: string;
-  name: string;
-  body: string;
-  accountIds: string[];
+import {
+  SIGNATURE_LIMITS,
+  validMailSignature,
+  type MailSignature,
+} from '../../shared/signatures';
+
+export type { MailSignature };
+
+/** Where releases before main-process storage kept signatures, scoped to the window's origin. */
+export const signaturesStorageKey = 'emzero-signatures';
+const settingsEventsChannel = 'emzero-settings-events';
+/** RFC 3676 delimiter, so other mail clients can detect and collapse the signature. */
+export const signatureSeparator = '\n\n-- \n';
+
+let signatures: MailSignature[] = [];
+let watching = false;
+const listeners = new Set<() => void>();
+
+function publish(next: MailSignature[]): void {
+  signatures = next;
+  for (const listener of listeners) listener();
 }
 
-export const signaturesStorageKey = 'emzero-signatures';
-
 export function storedSignatures(): MailSignature[] {
+  return signatures;
+}
+
+export function subscribeSignatures(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function legacySignatures(): MailSignature[] {
   try {
     const value: unknown = JSON.parse(window.localStorage.getItem(signaturesStorageKey) ?? '[]');
     if (!Array.isArray(value)) return [];
-    return value.filter((item): item is MailSignature => {
-      if (!item || typeof item !== 'object') return false;
-      const signature = item as Partial<MailSignature>;
-      return typeof signature.id === 'string' && typeof signature.name === 'string' &&
-        typeof signature.body === 'string' && Array.isArray(signature.accountIds) &&
-        signature.accountIds.every((accountId) => typeof accountId === 'string');
-    });
+    return value
+      .filter((entry): entry is MailSignature => validMailSignature(entry))
+      .slice(0, SIGNATURE_LIMITS.count);
   } catch {
     return [];
   }
 }
 
-export function saveSignatures(signatures: MailSignature[]): void {
-  window.localStorage.setItem(signaturesStorageKey, JSON.stringify(signatures));
+function notifySignaturesChanged(): void {
+  const channel = new BroadcastChannel(settingsEventsChannel);
+  channel.postMessage({ type: 'signatures-changed' });
+  channel.close();
+}
+
+function watchSignatureChanges(): void {
+  if (watching) return;
+  watching = true;
+  const channel = new BroadcastChannel(settingsEventsChannel);
+  channel.onmessage = (event: MessageEvent<{ type?: string } | null>) => {
+    if (event.data?.type !== 'signatures-changed') return;
+    void window.emzero.signatures
+      .list()
+      .then((result) => publish(result.signatures))
+      .catch(() => {
+        // Keep serving the cached signatures when the refresh fails.
+      });
+  };
+}
+
+/**
+ * Hydrates the cache before the first render so every composer can read signatures synchronously.
+ *
+ * Signatures used to live in browser storage, which is scoped to the window origin: the packaged
+ * app (`file://`) and a development server never saw each other's copies. The one-time migration
+ * below moves an existing copy into the main process, and deliberately leaves the original in
+ * place so a failed or partial run can be repeated.
+ */
+export async function loadSignatures(): Promise<void> {
+  watchSignatureChanges();
+  try {
+    const result = await window.emzero.signatures.list();
+    if (result.initialized) {
+      publish(result.signatures);
+      return;
+    }
+    const legacy = legacySignatures();
+    publish(legacy.length > 0 ? legacy : result.signatures);
+    if (legacy.length > 0) await window.emzero.signatures.save(legacy);
+  } catch {
+    // Main-process storage is unavailable. Serve the legacy copy for this session and leave it
+    // untouched, so a later launch can still migrate it.
+    publish(legacySignatures());
+  }
+}
+
+export function saveSignatures(next: MailSignature[]): void {
+  publish(next);
+  void window.emzero.signatures
+    .save(next)
+    .then(() => notifySignaturesChanged())
+    .catch(() => {
+      // The in-memory cache still reflects the edit for this session.
+    });
 }
 
 export function signatureForAccount(accountId: string): string {
@@ -40,21 +114,35 @@ export function signatureBodyForId(signatureId: string): string {
 }
 
 export function formatSignature(signature: string): string {
-  return signature ? `\n\n${signature}` : '';
+  return signature ? `${signatureSeparator}${signature}` : '';
 }
 
 export function signatureBody(accountId: string): string {
   return formatSignature(signatureForAccount(accountId));
 }
 
-export function replaceSignature(message: string, previousSignatureId: string, nextSignatureId: string): string {
-  const previousBody = signatureBodyForId(previousSignatureId);
-  const previous = formatSignature(previousBody);
-  const legacyPrevious = previousBody ? `\n\n-- \n${previousBody}` : '';
+function signatureVariants(signatureId: string): string[] {
+  const body = signatureBodyForId(signatureId);
+  if (!body) return [];
+  // Releases between the delimiter's removal and its return appended signatures without it.
+  return [`${signatureSeparator}${body}`, `\n\n${body}`];
+}
+
+/** The trailing signature a message currently carries, in either format, or an empty string. */
+export function signatureSuffix(message: string, signatureId: string): string {
+  return signatureVariants(signatureId).find((variant) => message.endsWith(variant)) ?? '';
+}
+
+export function withoutSignature(message: string, signatureId: string): string {
+  const suffix = signatureSuffix(message, signatureId);
+  return suffix ? message.slice(0, -suffix.length) : message;
+}
+
+export function replaceSignature(
+  message: string,
+  previousSignatureId: string,
+  nextSignatureId: string,
+): string {
   const next = formatSignature(signatureBodyForId(nextSignatureId));
-  if (previous && message.endsWith(previous)) return `${message.slice(0, -previous.length)}${next}`;
-  if (legacyPrevious && message.endsWith(legacyPrevious)) {
-    return `${message.slice(0, -legacyPrevious.length)}${next}`;
-  }
-  return `${message}${next}`;
+  return `${withoutSignature(message, previousSignatureId)}${next}`;
 }

@@ -10,6 +10,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { dialog, safeStorage } from 'electron';
 import type { AccountBackupResult, AppSettingsBackup } from '../shared/accounts.js';
+import { validMailSignatures } from '../shared/signatures.js';
 import { readAccounts, toAccountSummary, writeAccounts, type StoredAccount } from './account-storage.js';
 
 const scrypt = promisify(scryptCallback);
@@ -93,12 +94,7 @@ export function validAppSettingsBackup(value: unknown): value is AppSettingsBack
     typeof settings.markReadOnOpen === 'boolean' &&
     typeof settings.selectNextOnDelete === 'boolean' &&
     (settings.desktopNotifications === undefined || typeof settings.desktopNotifications === 'boolean') &&
-    Array.isArray(settings.signatures) && settings.signatures.length <= 100 &&
-    settings.signatures.every((signature) => signature && typeof signature === 'object' &&
-      typeof signature.id === 'string' && typeof signature.name === 'string' &&
-      typeof signature.body === 'string' && signature.body.length <= 100_000 &&
-      Array.isArray(signature.accountIds) &&
-      signature.accountIds.every((accountId) => typeof accountId === 'string'));
+    validMailSignatures(settings.signatures);
 }
 
 function secureStorageAvailable(): boolean {

@@ -37,6 +37,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/assets/` — renderer and native package branding assets, including the macOS `.icns` application icon.
 - `apps/desktop/src/main/accounts.ts` — trusted IPC validation and handler registration; delegates privileged work to focused main-process services.
 - `apps/desktop/src/main/account-storage.ts` — persisted, user-ordered account records and conversion to renderer-safe account summaries.
+- `apps/desktop/src/main/signature-storage.ts` — mail signatures persisted in the user data directory, validated and reduced to signature fields on every read and write.
 - `apps/desktop/src/main/ai-assistant.ts` — encrypted OpenAI-compatible provider settings and prompt-driven reply, new-message, and saved-draft generation.
 - `apps/desktop/src/main/ai-stream.ts` — incremental OpenAI-compatible SSE parsing for streamed AI draft generation.
 - `apps/desktop/src/main/account-backup.ts` — backward-compatible password-encrypted backup export/import for accounts, optional app settings and signatures, destination-machine credential re-wrapping, and signature account-ID remapping.
@@ -64,6 +65,7 @@ This index records where application responsibilities live. Read it before makin
 
 - `apps/desktop/src/shared/accounts.ts` — IPC contracts, account/folder/message types, folder-tree operations, bulk-job types, and account validation.
 - `apps/desktop/src/shared/ai.ts` — AI provider/draft IPC contracts, defaults, and renderer-to-main input validation.
+- `apps/desktop/src/shared/signatures.ts` — signature IPC contract, size limits, and the validation shared by main-process storage, backups, and the renderer.
 - `apps/desktop/src/shared/conversations.ts` — conversation grouping and quoted-text splitting.
 - `apps/desktop/src/shared/replies.ts` — reply construction, address parsing, and outgoing-draft validation.
 - `apps/desktop/src/shared/message-keywords.ts` — Emzero-private IMAP importance and due-date keyword encoding, parsing, and capability rules.
@@ -87,7 +89,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/account-setup.tsx` — provider detection, password/app-password setup, and personal Microsoft device-code connection flow.
 - `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior, accounts, signatures, and encrypted backup/restore.
 - `features/appearance-switcher.tsx` — global keyboard shortcut and accessible quick theme/font picker, shared by all renderer windows; owns the settings shortcut label.
-- `features/signatures.ts` — persisted account-to-signature assignments and outgoing-message signature formatting.
+- `features/signatures.ts` — main-process-backed signature cache and cross-window refresh, the one-time migration off origin-scoped browser storage, account-to-signature assignments, and delimiter-aware outgoing-message formatting.
 - `features/signature-picker.tsx` — compose-time signature selection shared by new-message and reply composers.
 - `features/compose-dialog.tsx` — reusable docked, full-area, inline-draft, and standalone composer with recipient suggestions, attachments, validation, confirmation, and sending.
 - `features/ai-draft-assistant.tsx` — reusable configured-provider prompt panel for AI drafting in reply, new-message, and saved-draft composers.
@@ -115,7 +117,7 @@ All paths in this section are relative to `apps/desktop/src/renderer/`.
 ## Tests
 
 - Tests live beside their implementation as `*.test.ts` or `*.test.tsx`.
-- `apps/desktop/src/main/` tests cover cache, HTML sanitization, provider discovery, folder subscriptions, folder input rules, message parsing helpers, message-action rules, draft-folder discovery, and bulk-job validation/progress.
+- `apps/desktop/src/main/` tests cover cache, HTML sanitization, provider discovery, folder subscriptions, folder input rules, message parsing helpers, message-action rules, draft-folder discovery, signature storage, and bulk-job validation/progress.
 - `apps/desktop/src/shared/` tests cover domain helpers and contracts.
 - `apps/desktop/src/renderer/` tests cover renderer utilities and theming.
 - `apps/desktop/e2e/` — Playwright smoke coverage for production Electron builds using the privacy-safe demo dataset.

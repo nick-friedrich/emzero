@@ -30,6 +30,7 @@ import {
   type MessageListResult,
   type MessageOperationResult,
 } from '../shared/accounts.js';
+import { SIGNATURE_CHANNELS, validMailSignatures } from '../shared/signatures.js';
 import { verifyConnections, verifyMicrosoftConnections } from './account-connection.js';
 import {
   draftAiMessage,
@@ -39,6 +40,7 @@ import {
   saveAiSettings,
 } from './ai-assistant.js';
 import { exportAccountBackup, importAccountBackup, selectAccountBackup, validAppSettingsBackup } from './account-backup.js';
+import { readSignatures, writeSignatures } from './signature-storage.js';
 import {
   openMessageAttachment,
   prepareDraftAttachments,
@@ -231,6 +233,18 @@ export function registerAccountHandlers(): void {
         event.sender.send(AI_CHANNELS.draftMessageProgress, { requestId, text });
       }
     });
+  });
+
+  ipcMain.handle(SIGNATURE_CHANNELS.list, async (event) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    return readSignatures();
+  });
+
+  ipcMain.handle(SIGNATURE_CHANNELS.save, async (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (!validMailSignatures(value)) return false;
+    await writeSignatures(value);
+    return true;
   });
 
   ipcMain.handle(ACCOUNT_CHANNELS.openExternalLink, async (event, value: unknown) => {
