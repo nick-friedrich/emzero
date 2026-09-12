@@ -64,7 +64,9 @@ export async function sendMessage(
     try {
       const result = await smtp.sendMail({
         raw: compiled.message,
-        envelope: compiled.envelope,
+        // The compiled envelope always carries this account's address, but nodemailer types a
+        // sender as `string | false`, `false` being the null reverse-path that sending rejects.
+        envelope: { ...compiled.envelope, from: compiled.envelope.from || undefined },
       });
       smtpMessageId = result.messageId || smtpMessageId;
       releaseOutgoingAttachments(draft.attachments);
