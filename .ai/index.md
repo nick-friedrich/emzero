@@ -34,8 +34,8 @@ This index records where application responsibilities live. Read it before makin
 ## Desktop process boundaries
 
 - `apps/desktop/src/main/index.ts` — Electron main-process startup, window creation, and lifecycle.
-- `apps/desktop/assets/` — renderer and native package branding assets, including the macOS `.icns` application icon.
-- `media/` — source Icon Composer project and exported logo; the exported PNG supplies the desktop PNG, 192-pixel header WebP, and macOS `.icns` assets.
+- `apps/desktop/assets/` — renderer and native package branding assets. `emzero-logo-macos.png` supplies the runtime Dock icon and macOS `.icns`: 824-pixel artwork centered on a transparent 1024-pixel canvas. The Linux PNG and 192-pixel header WebP use the unpadded artwork.
+- `media/` — source Icon Composer project and exported logo used to generate the desktop branding assets.
 - `apps/desktop/src/main/accounts.ts` — trusted IPC validation and handler registration; delegates privileged work to focused main-process services.
 - `apps/desktop/src/main/account-storage.ts` — persisted, user-ordered account records and conversion to renderer-safe account summaries.
 - `apps/desktop/src/main/signature-storage.ts` — mail signatures persisted in the user data directory, validated and reduced to signature fields on every read and write.

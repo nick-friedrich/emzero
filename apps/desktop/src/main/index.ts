@@ -68,7 +68,7 @@ const createWindow = (): void => {
 
 void app.whenReady().then(() => {
   if (process.platform === 'darwin') {
-    app.dock?.setIcon(appAsset('emzero-logo.png'));
+    app.dock?.setIcon(appAsset('emzero-logo-macos.png'));
     const applicationMenu = Menu.getApplicationMenu();
     if (applicationMenu?.items[0]) {
       applicationMenu.items[0].label = app.name;
