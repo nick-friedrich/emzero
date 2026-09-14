@@ -579,6 +579,7 @@ export const ACCOUNT_CHANNELS = {
   syncStatus: 'sync:status',
   syncNow: 'sync:now',
   syncChanged: 'sync:changed',
+  syncMailboxChanged: 'sync:mailbox-changed',
   setNotificationsEnabled: 'notifications:set-enabled',
 } as const;
 

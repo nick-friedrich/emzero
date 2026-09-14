@@ -284,14 +284,20 @@ export function App() {
 
   useEffect(() => {
     if (demoMode) return;
+    const refreshMailboxes = () => {
+      setSyncRevision((current) => current + 1);
+      setFolderRevision((current) => current + 1);
+    };
     void window.emzero.sync.status().then(setSyncStatus).catch(() => undefined);
-    return window.emzero.sync.onStatus((status) => {
+    const unsubscribeStatus = window.emzero.sync.onStatus((status) => {
       setSyncStatus(status);
-      if (status.state !== 'syncing') {
-        setSyncRevision((current) => current + 1);
-        setFolderRevision((current) => current + 1);
-      }
+      if (status.state !== 'syncing') refreshMailboxes();
     });
+    const unsubscribeMailbox = window.emzero.sync.onMailboxChanged(refreshMailboxes);
+    return () => {
+      unsubscribeStatus();
+      unsubscribeMailbox();
+    };
   }, [demoMode]);
 
   useEffect(() => {

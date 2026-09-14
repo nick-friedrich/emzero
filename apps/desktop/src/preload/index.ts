@@ -182,6 +182,7 @@ export interface EmzeroDesktopApi {
     status: () => Promise<MailSyncStatus>;
     now: () => Promise<MailSyncStatus>;
     onStatus: (listener: (status: MailSyncStatus) => void) => () => void;
+    onMailboxChanged: (listener: () => void) => () => void;
   };
   notifications: {
     setEnabled: (enabled: boolean) => Promise<boolean>;
@@ -335,6 +336,11 @@ contextBridge.exposeInMainWorld('emzero', {
       const handler = (_event: Electron.IpcRendererEvent, status: MailSyncStatus) => listener(status);
       ipcRenderer.on(ACCOUNT_CHANNELS.syncChanged, handler);
       return () => ipcRenderer.removeListener(ACCOUNT_CHANNELS.syncChanged, handler);
+    },
+    onMailboxChanged: (listener) => {
+      const handler = () => listener();
+      ipcRenderer.on(ACCOUNT_CHANNELS.syncMailboxChanged, handler);
+      return () => ipcRenderer.removeListener(ACCOUNT_CHANNELS.syncMailboxChanged, handler);
     },
   },
   notifications: {

@@ -20,6 +20,12 @@ function publishSyncStatus(status: MailSyncStatus): void {
   }
 }
 
+function publishMailboxChanged(): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send(ACCOUNT_CHANNELS.syncMailboxChanged);
+  }
+}
+
 async function syncAccount(account: StoredAccount): Promise<void> {
   const folderResult = await listAccountFolders(account, true);
   if (!folderResult.ok || folderResult.source === 'cache') {
@@ -41,16 +47,17 @@ async function syncAccount(account: StoredAccount): Promise<void> {
     }
     if (beforeSync) {
       const afterSync = mailCache().getFolderSyncState(account.id, folder.path);
-      showNewMailNotification(
-        account.name,
-        newlyArrivedUnreadMessages(
-          beforeSync.messages,
-          beforeSync.syncedAt,
-          beforeSync.uidValidity,
-          result.messages,
-          afterSync.uidValidity,
-        ),
+      const arrived = newlyArrivedUnreadMessages(
+        beforeSync.messages,
+        beforeSync.syncedAt,
+        beforeSync.uidValidity,
+        result.messages,
+        afterSync.uidValidity,
       );
+      // The full sync can keep running for other accounts and folders; refresh
+      // lists now so a notification never points at mail the list lacks.
+      if (arrived.length > 0) publishMailboxChanged();
+      showNewMailNotification(account.name, arrived);
     }
   }
 }
