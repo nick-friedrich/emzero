@@ -347,6 +347,18 @@ export class MailCache {
         PRAGMA user_version = 8;
         COMMIT;
       `);
+      version = 8;
+    }
+
+    if (version < 9) {
+      this.#database.exec(`
+        BEGIN;
+        -- Background colors, borders and radii used to be removed during HTML
+        -- sanitization, leaving white-on-white email buttons. Re-fetch bodies.
+        DELETE FROM message_bodies;
+        PRAGMA user_version = 9;
+        COMMIT;
+      `);
     }
   }
 

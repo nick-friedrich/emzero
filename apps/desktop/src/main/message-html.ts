@@ -1,7 +1,14 @@
 import sanitizeHtml from 'sanitize-html';
 
-const safeColor = /^(?:#[\da-f]{3,8}|(?:rgb|hsl)a?\([\d.%\s,]+\)|[a-z]+)$/i;
-const safeLength = /^(?:auto|0|\d+(?:\.\d+)?(?:px|em|rem|%|pt))$/i;
+const color = String.raw`(?:#[\da-f]{3,8}|(?:rgb|hsl)a?\([\d.%\s,/]+\)|[a-z]+)`;
+const length = String.raw`(?:auto|0|\d+(?:\.\d+)?(?:px|em|rem|%|pt))`;
+const safeColor = new RegExp(`^${color}$`, 'i');
+const safeLength = new RegExp(`^${length}$`, 'i');
+const safeBorder = new RegExp(
+  String.raw`^(?:none|0|[\d.]+(?:px|pt)?\s+(?:none|solid|dashed|dotted|double)(?:\s+${color})?)$`,
+  'i',
+);
+const safeBorderRadius = new RegExp(String.raw`^${length}(?:\s+${length}){0,3}$`, 'i');
 
 function restoreEscapedLegacyFormatting(value: string): string {
   // Some webmail clients double-escape the legacy <font>/<br> fragment they
@@ -30,9 +37,10 @@ export function sanitizedMessageHtml(value: string | false): string | null {
       blockquote: ['type', 'class'],
       div: ['class', 'id'],
       img: ['src', 'alt', 'width', 'height'],
-      table: ['cellpadding', 'cellspacing', 'width'],
-      td: ['colspan', 'rowspan', 'width', 'height'],
-      th: ['colspan', 'rowspan', 'width', 'height'],
+      table: ['cellpadding', 'cellspacing', 'width', 'align', 'bgcolor'],
+      tr: ['align', 'valign', 'bgcolor'],
+      td: ['colspan', 'rowspan', 'width', 'height', 'align', 'valign', 'bgcolor'],
+      th: ['colspan', 'rowspan', 'width', 'height', 'align', 'valign', 'bgcolor'],
     },
     // Keep remote image URLs in the sanitized document so the renderer can
     // offer an explicit "load images" action. Its CSP blocks them by default.
@@ -44,6 +52,9 @@ export function sanitizedMessageHtml(value: string | false): string | null {
     allowedStyles: {
       '*': {
         color: [safeColor],
+        // Only the color form of the shorthand: email buttons commonly use
+        // `background:#111827`, while url() values stay blocked.
+        background: [safeColor],
         'background-color': [safeColor],
         'font-family': [/^[\w\s,'"-]+$/],
         'font-size': [safeLength],
@@ -67,7 +78,13 @@ export function sanitizedMessageHtml(value: string | false): string | null {
         'padding-right': [safeLength],
         'padding-bottom': [safeLength],
         'padding-left': [safeLength],
-        border: [/^[\d.]+(?:px|pt)?\s+(?:none|solid|dashed|dotted)\s+(?:#[\da-f]{3,8}|[a-z]+)$/i],
+        border: [safeBorder],
+        'border-top': [safeBorder],
+        'border-right': [safeBorder],
+        'border-bottom': [safeBorder],
+        'border-left': [safeBorder],
+        'border-color': [safeColor],
+        'border-radius': [safeBorderRadius],
         'border-collapse': [/^(?:collapse|separate)$/],
       },
     },

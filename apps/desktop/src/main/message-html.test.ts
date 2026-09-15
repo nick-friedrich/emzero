@@ -41,6 +41,22 @@ describe('sanitizedMessageHtml', () => {
     expect(result).not.toMatch(/position|background-image|tracker/i);
   });
 
+  it('keeps email button backgrounds, borders and legacy table colors', () => {
+    const result = sanitizedMessageHtml(`
+      <table align="center"><tr><td bgcolor="#111827" align="center" valign="middle">
+        <a href="https://example.com" style="display:inline-block;background:#111827;color:#ffffff;border-radius:8px;border:1px solid rgb(17, 24, 39);padding:12px 22px">Button</a>
+      </td></tr></table>
+      <p style="background:url(https://tracker.example/bg.png);border-bottom:1px solid url(https://tracker.example)">Tracked</p>
+    `);
+
+    expect(result).toContain('background:#111827');
+    expect(result).toContain('border-radius:8px');
+    expect(result).toContain('border:1px solid rgb(17, 24, 39)');
+    expect(result).toContain('bgcolor="#111827"');
+    expect(result).toContain('align="center"');
+    expect(result).not.toContain('tracker');
+  });
+
   it('repairs double-escaped legacy webmail formatting', () => {
     const result = sanitizedMessageHtml(
       '&lt;font color=&quot;#6d6e71&quot;&gt;Customer: 123&lt;br /&gt;Reference: 456&lt;/font&gt;',
