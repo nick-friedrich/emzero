@@ -68,7 +68,9 @@ const createWindow = (): void => {
 
 void app.whenReady().then(() => {
   if (process.platform === 'darwin') {
-    app.dock?.setIcon(appAsset('emzero-logo-macos.png'));
+    // A runtime Dock icon is a static image that overrides the bundle's Icon
+    // Composer icon and its appearance variants, so only set it in development.
+    if (!app.isPackaged) app.dock?.setIcon(appAsset('emzero-logo-macos.png'));
     const applicationMenu = Menu.getApplicationMenu();
     if (applicationMenu?.items[0]) {
       applicationMenu.items[0].label = app.name;

@@ -7,6 +7,10 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 
 const appIcon = path.resolve(import.meta.dirname, 'assets/emzero-logo.png');
 const macAppIcon = path.resolve(import.meta.dirname, 'assets/emzero-logo.icns');
+// Icon Composer source. Packager compiles it into Assets.car (via Xcode 26+
+// actool) so macOS 26 can render the dark, clear, and tinted icon appearances;
+// the .icns stays as the fallback for older macOS releases.
+const macComposerIcon = path.resolve(import.meta.dirname, '../../media/icon_composer.icon');
 const entitlements = path.resolve(import.meta.dirname, 'entitlements.plist');
 
 // Signing/notarization only activate when the Apple identity is present, so
@@ -37,9 +41,11 @@ const config: ForgeConfig = {
       path.resolve(import.meta.dirname, '../../LICENSE'),
       path.resolve(import.meta.dirname, 'assets'),
     ],
-    executableName: 'emzero',
+    // On macOS the executable name also becomes CFBundleDisplayName, which Finder,
+    // Spotlight, and Launchpad show, so keep the capitalized product name there.
+    executableName: process.platform === 'darwin' ? undefined : 'emzero',
     appBundleId: 'email.emzero.desktop',
-    icon: process.platform === 'darwin' ? macAppIcon : appIcon,
+    icon: process.platform === 'darwin' ? [macAppIcon, macComposerIcon] : appIcon,
     osxSign,
     osxNotarize,
   },

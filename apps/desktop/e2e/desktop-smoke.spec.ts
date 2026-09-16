@@ -5,7 +5,7 @@ import { _electron as electron, expect, test } from '@playwright/test';
 function packagedExecutable(): string | undefined {
   const bundle = path.resolve(`out/Emzero-${process.platform}-${process.arch}`);
   const candidates = process.platform === 'darwin'
-    ? [path.join(bundle, 'Emzero.app', 'Contents', 'MacOS', 'emzero')]
+    ? [path.join(bundle, 'Emzero.app', 'Contents', 'MacOS', 'Emzero')]
     : process.platform === 'win32'
       ? [path.join(bundle, 'emzero.exe'), path.join(bundle, 'Emzero.exe')]
       : [path.join(bundle, 'emzero')];
