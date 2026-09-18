@@ -348,7 +348,9 @@ export function App() {
     ? `${selection.account.id}:${selection.folder.path}`
     : selection.kind === 'search'
       ? `search:${selection.query}`
-      : `unified:${selection.mailbox ?? 'inbox'}`;
+      : selection.kind === 'smart'
+        ? `smart:${selection.inboxId}`
+        : `unified:${selection.mailbox ?? 'inbox'}`;
   const changeDemoMode = (enabled: boolean) => {
     setDemoMode(enabled);
     setSelection({ kind: 'unified' });
@@ -657,6 +659,22 @@ export function App() {
           sidebarPinned={sidebarPinned}
           onToggleSidebar={() => setSidebarPinned((current) => !current)}
           onFoldersChanged={refreshFolders}
+        />
+      ) : selection.kind === 'smart' ? (
+        <UnifiedInbox
+          key={`smart:${selection.inboxId}`}
+          syncRevision={syncRevision}
+          accounts={accounts}
+          mailbox="inbox"
+          smartInboxId={selection.inboxId}
+          onStartBulkOperation={startBulkOperation}
+          mailLayout={mailLayout}
+          onMailLayoutChange={setMailLayout}
+          sidebarPinned={sidebarPinned}
+          onToggleSidebar={() => setSidebarPinned((current) => !current)}
+          onFoldersChanged={refreshFolders}
+          draftSavedEvent={draftSavedEvent}
+          draftDeletedEvent={draftDeletedEvent}
         />
       ) : (
         <UnifiedInbox

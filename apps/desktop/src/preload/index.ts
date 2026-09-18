@@ -54,6 +54,13 @@ import {
   type MailSignature,
   type SignatureListResult,
 } from '../shared/signatures.js';
+import {
+  SMART_INBOX_CHANNELS,
+  type MailInsightsStatus,
+  type SmartInboxDraft,
+  type SmartInboxOperationResult,
+  type SmartInboxSettings,
+} from '../shared/mail-insights.js';
 
 export interface EmzeroDesktopApi {
   platform: NodeJS.Platform;
@@ -183,6 +190,17 @@ export interface EmzeroDesktopApi {
     now: () => Promise<MailSyncStatus>;
     onStatus: (listener: (status: MailSyncStatus) => void) => () => void;
     onMailboxChanged: (listener: () => void) => () => void;
+  };
+  smartInboxes: {
+    getSettings: () => Promise<SmartInboxSettings>;
+    status: () => Promise<MailInsightsStatus>;
+    unreadCounts: () => Promise<Record<string, number>>;
+    setEnabled: (enabled: boolean) => Promise<SmartInboxOperationResult>;
+    create: (draft: SmartInboxDraft) => Promise<SmartInboxOperationResult>;
+    update: (inboxId: string, draft: SmartInboxDraft) => Promise<SmartInboxOperationResult>;
+    remove: (inboxId: string) => Promise<SmartInboxOperationResult>;
+    excludeSender: (inboxId: string, address: string) => Promise<SmartInboxOperationResult>;
+    onChanged: (listener: () => void) => () => void;
   };
   notifications: {
     setEnabled: (enabled: boolean) => Promise<boolean>;
@@ -341,6 +359,22 @@ contextBridge.exposeInMainWorld('emzero', {
       const handler = () => listener();
       ipcRenderer.on(ACCOUNT_CHANNELS.syncMailboxChanged, handler);
       return () => ipcRenderer.removeListener(ACCOUNT_CHANNELS.syncMailboxChanged, handler);
+    },
+  },
+  smartInboxes: {
+    getSettings: () => ipcRenderer.invoke(SMART_INBOX_CHANNELS.getSettings),
+    status: () => ipcRenderer.invoke(SMART_INBOX_CHANNELS.status),
+    unreadCounts: () => ipcRenderer.invoke(SMART_INBOX_CHANNELS.unreadCounts),
+    setEnabled: (enabled) => ipcRenderer.invoke(SMART_INBOX_CHANNELS.setEnabled, enabled),
+    create: (draft) => ipcRenderer.invoke(SMART_INBOX_CHANNELS.create, draft),
+    update: (inboxId, draft) => ipcRenderer.invoke(SMART_INBOX_CHANNELS.update, inboxId, draft),
+    remove: (inboxId) => ipcRenderer.invoke(SMART_INBOX_CHANNELS.remove, inboxId),
+    excludeSender: (inboxId, address) =>
+      ipcRenderer.invoke(SMART_INBOX_CHANNELS.excludeSender, inboxId, address),
+    onChanged: (listener) => {
+      const handler = () => listener();
+      ipcRenderer.on(SMART_INBOX_CHANNELS.changed, handler);
+      return () => ipcRenderer.removeListener(SMART_INBOX_CHANNELS.changed, handler);
     },
   },
   notifications: {

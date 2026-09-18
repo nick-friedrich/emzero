@@ -9,6 +9,7 @@ import { interfaceFonts, themes, useTheme, type InterfaceFont, type Theme } from
 import { appearanceShortcutLabel } from '@/features/appearance-switcher';
 import type { Status } from './app-shared';
 import { saveSignatures, storedSignatures, type MailSignature } from './signatures';
+import { SmartInboxSettingsSection } from './smart-inboxes';
 
 type SettingsTab = 'general' | 'accounts' | 'ai' | 'signatures' | 'backup';
 const tabs: { id: SettingsTab; label: string }[] = [
@@ -37,7 +38,7 @@ export function SettingsWindow() {
     <div className="min-w-0 flex-1 overflow-y-auto p-8"><div className="mx-auto max-w-2xl">
       {tab === 'general' && <GeneralSettings />}
       {tab === 'accounts' && <AccountsSettings accounts={accounts} onChange={setAccounts} />}
-      {tab === 'ai' && <AiSettings />}
+      {tab === 'ai' && <><AiSettings /><SmartInboxSettingsSection /></>}
       {tab === 'signatures' && <SignatureSettings accounts={accounts} />}
       {tab === 'backup' && <BackupSettings onImported={setAccounts} />}
     </div></div>

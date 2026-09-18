@@ -474,4 +474,65 @@ describe('MailCache', () => {
     });
     expect(cache.listFolders('account-2')[0]).toMatchObject({ unreadCount: 1 });
   });
+
+  it('attaches AI insights and smart-inbox scores to listed messages', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox]);
+    cache.replaceRecentMessages('account-1', 'INBOX', [message(1), message(2)], 2);
+    const base = {
+      category: 'newsletter' as const,
+      categoryConfidence: 0.98,
+      needsReply: 0.1,
+      urgency: 0.2,
+      urgencyConfidence: 0.9,
+    };
+
+    expect(cache.insightCandidates('account-1', 'INBOX', ['news'], 10)).toEqual([
+      expect.objectContaining({ uid: 2, needsBaseInsights: true, missingInboxIds: ['news'] }),
+      expect.objectContaining({ uid: 1, needsBaseInsights: true, missingInboxIds: ['news'] }),
+    ]);
+
+    cache.putMessageInsights('account-1', 'INBOX', 2, '<2@example.com>', base, { news: 0.91 });
+    cache.putMessageInsights('account-1', 'INBOX', 1, '<1@example.com>', base, {});
+
+    const [second, first] = cache.listMessages('account-1', 'INBOX').messages;
+    expect(second.insights).toEqual({ ...base, ruleScores: { news: 0.91 } });
+    expect(first.insights).toEqual({ ...base, ruleScores: {} });
+    expect(cache.insightCandidates('account-1', 'INBOX', ['news'], 10)).toEqual([
+      expect.objectContaining({ uid: 1, needsBaseInsights: false, missingInboxIds: ['news'] }),
+    ]);
+
+    cache.deleteSmartInboxScores('news');
+    expect(cache.listMessages('account-1', 'INBOX').messages[0].insights?.ruleScores).toEqual({});
+
+    cache.clearInsights();
+    expect(cache.listMessages('account-1', 'INBOX').messages.every(({ insights }) => !insights))
+      .toBe(true);
+  });
+
+  it('never shows an insight on a different message that reused the UID', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox]);
+    cache.replaceRecentMessages('account-1', 'INBOX', [message(1)], 1);
+    cache.putMessageInsights('account-1', 'INBOX', 1, '<1@example.com>', {
+      category: 'personal',
+      categoryConfidence: 1,
+      needsReply: 0.9,
+      urgency: 1,
+      urgencyConfidence: 0.9,
+    }, { news: 0.2 });
+
+    cache.replaceRecentMessages(
+      'account-1',
+      'INBOX',
+      [{ ...message(1), messageId: '<other@example.com>' }],
+      1,
+    );
+    expect(cache.listMessages('account-1', 'INBOX').messages[0].insights).toBeUndefined();
+
+    cache.pruneInsights();
+    expect(cache.insightCandidates('account-1', 'INBOX', ['news'], 10)).toEqual([
+      expect.objectContaining({ uid: 1, needsBaseInsights: true, missingInboxIds: ['news'] }),
+    ]);
+  });
 });

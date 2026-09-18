@@ -65,6 +65,7 @@ import {
 } from '../../shared/accounts';
 import emzeroLogoUrl from '../../../assets/emzero-logo-header.webp';
 import { Field } from './form-field';
+import { SmartInboxNav } from './smart-inboxes';
 import {
   FolderIcon,
   CountBadge,
@@ -624,6 +625,18 @@ export function Sidebar({
           <Trash2 className="size-4" />
           Trash
         </Button>
+        {!demoMode && (
+          <SmartInboxNav
+            selectedInboxId={selection.kind === 'smart' ? selection.inboxId : null}
+            syncRevision={syncRevision}
+            onSelect={(inboxId) => onSelect({ kind: 'smart', inboxId })}
+            onDeleted={(inboxId) => {
+              if (selection.kind === 'smart' && selection.inboxId === inboxId) {
+                onSelect({ kind: 'unified' });
+              }
+            }}
+          />
+        )}
         {accounts.length > 0 && (
           <div className="pt-5">
             <p className="mb-2 px-3 text-[0.68rem] font-semibold uppercase tracking-wider text-muted-foreground">

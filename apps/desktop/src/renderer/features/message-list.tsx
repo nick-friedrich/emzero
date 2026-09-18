@@ -77,6 +77,7 @@ import {
   useInboxViewOptions,
 } from './inbox-view-options';
 import { tomorrowDateKey, type EmzeroMessageColor } from '../../shared/message-keywords';
+import { conversationInsightMessage, MessageInsightTags } from './smart-inboxes';
 
 export function MessageList({
   accounts,
@@ -1178,6 +1179,10 @@ export function MessageList({
                         ({conversation.messages.length})
                       </span>
                     )}
+                    <MessageInsightTags
+                      message={conversationInsightMessage(conversation, selection.folder.path)}
+                      className="ml-2 hidden align-middle sm:inline-flex"
+                    />
                   </p>
                   <div className={cn(
                     'flex items-center gap-2 text-xs text-muted-foreground',

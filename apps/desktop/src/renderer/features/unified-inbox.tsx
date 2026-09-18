@@ -27,6 +27,7 @@ import {
 import {
   type AccountSummary,
   type BulkMessageJobRequest,
+  type MailMessageSummary,
   type MessageMoveDestination,
   findArchiveFolder,
   findInboxFolder,
@@ -80,6 +81,13 @@ import {
   useInboxViewOptions,
 } from './inbox-view-options';
 import { tomorrowDateKey, type EmzeroMessageColor } from '../../shared/message-keywords';
+import { smartInboxContains, skipsUnifiedInbox } from '../../shared/mail-insights';
+import {
+  conversationInsightMessage,
+  MessageInsightTags,
+  RemoveFromSmartInboxButton,
+  useSmartInboxes,
+} from './smart-inboxes';
 
 function demoLoadState(demo: DemoMailboxSnapshot): UnifiedInboxLoadState {
   const messageCount = demo.items.reduce(
@@ -120,9 +128,12 @@ export function UnifiedInbox({
   draftSavedEvent,
   draftDeletedEvent,
   demo,
+  smartInboxId,
 }: {
   accounts: AccountSummary[];
   mailbox: 'inbox' | 'starred' | 'drafts' | 'trash';
+  /** Show only Inbox mail that AI filed into this smart inbox. */
+  smartInboxId?: string;
   onStartBulkOperation: StartBulkOperation;
   mailLayout: MailLayout;
   onMailLayoutChange: (layout: MailLayout) => void;
@@ -135,7 +146,22 @@ export function UnifiedInbox({
   demo?: DemoMailboxSnapshot;
 }) {
   const { selectNextOnDelete } = useTheme();
-  const title = demo?.title ?? {
+  const smart = useSmartInboxes(Boolean(demo));
+  const smartInbox = smartInboxId
+    ? smart.settings.inboxes.find((candidate) => candidate.id === smartInboxId)
+    : undefined;
+  const messageFilter = useMemo<((message: MailMessageSummary) => boolean) | null>(() => {
+    const { enabled, inboxes } = smart.settings;
+    if (smartInboxId) {
+      const target = inboxes.find((candidate) => candidate.id === smartInboxId);
+      return (message) => Boolean(enabled && target && smartInboxContains(target, message));
+    }
+    if (mailbox === 'inbox' && enabled && inboxes.some((candidate) => candidate.skipInbox)) {
+      return (message) => !skipsUnifiedInbox(inboxes, message);
+    }
+    return null;
+  }, [mailbox, smart.settings, smartInboxId]);
+  const title = smartInbox?.name ?? demo?.title ?? {
     inbox: 'Inbox',
     starred: 'Starred',
     drafts: 'Drafts',
@@ -166,7 +192,7 @@ export function UnifiedInbox({
   const inboxView = useInboxViewOptions();
 
   useEffect(() => {
-    if (demo) return;
+    if (demo || !smart.loaded) return;
     let active = true;
     void Promise.all(
       accounts.map(async (account) => {
@@ -233,17 +259,19 @@ export function UnifiedInbox({
             };
           }
 
-          const loadedSources = sourceResults.map(({ folder, result }) => ({
-            folder,
-            supportsEmzeroKeywords: Boolean(result.supportsEmzeroKeywords),
-            messages: result.messages
+          const loadedSources = sourceResults.map(({ folder, result }) => {
+            const messages = result.messages
               .filter((message) => mailbox !== 'starred' || message.flagged)
-              .map((message) => ({ ...message, folderPath: folder.path })),
-            total: mailbox === 'starred'
-              ? result.messages.filter((message) => message.flagged).length
-              : result.total,
-            notice: result.message,
-          }));
+              .filter((message) => !messageFilter || messageFilter(message))
+              .map((message) => ({ ...message, folderPath: folder.path }));
+            return {
+              folder,
+              supportsEmzeroKeywords: Boolean(result.supportsEmzeroKeywords),
+              messages,
+              total: mailbox === 'starred' || messageFilter ? messages.length : result.total,
+              notice: result.message,
+            };
+          });
           const relatedMessages = relatedResults.flatMap(({ folder, result }) =>
             result.ok
               ? result.messages.map((message) => ({
@@ -310,7 +338,7 @@ export function UnifiedInbox({
     return () => {
       active = false;
     };
-  }, [accounts, demo, mailbox, refreshKey, syncRevision, title]);
+  }, [accounts, demo, mailbox, messageFilter, refreshKey, smart.loaded, syncRevision, title]);
 
   const refresh = () => {
     setSelectedItem(null);
@@ -1085,7 +1113,9 @@ export function UnifiedInbox({
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold tracking-tight">{title}</h1>
           <p className="truncate text-xs text-muted-foreground">
-            {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
+            {smartInbox
+              ? smartInbox.rule
+              : `${accounts.length} ${accounts.length === 1 ? 'account' : 'accounts'}`}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -1442,6 +1472,10 @@ export function UnifiedInbox({
                       </span>
                     )}
                   </p>
+                  <MessageInsightTags
+                    message={conversationInsightMessage(conversation, selection.folder.path)}
+                    className="hidden sm:flex"
+                  />
                 </div>
                 <div className={cn(
                   'flex items-center gap-2 text-xs text-muted-foreground',
@@ -1493,6 +1527,15 @@ export function UnifiedInbox({
                     onSetColor={(nextColor) => void runAction(item, nextColor ? 'set-color' : 'clear-color', undefined, { color: nextColor })}
                     onMove={(destination) => void runAction(item, 'move', destination)}
                     onDelete={() => void runAction(item, 'delete')}
+                    leadingAction={smartInbox && (
+                      <RemoveFromSmartInboxButton
+                        inbox={smartInbox}
+                        sender={
+                          conversationInsightMessage(conversation, selection.folder.path)
+                            ?.from[0]?.address?.toLowerCase() ?? null
+                        }
+                      />
+                    )}
                     deleteButtonRef={(node) => {
                       const key = itemKey(item);
                       if (node) unifiedDeleteButtonRefs.current.set(key, node);

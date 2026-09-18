@@ -39,6 +39,7 @@ import {
   removeAiSettings,
   saveAiSettings,
 } from './ai-assistant.js';
+import { registerSmartInboxHandlers, scheduleMailInsights } from './mail-insights.js';
 import { exportAccountBackup, importAccountBackup, selectAccountBackup, validAppSettingsBackup } from './account-backup.js';
 import { readSignatures, writeSignatures } from './signature-storage.js';
 import {
@@ -188,6 +189,8 @@ function validDraftReference(value: unknown): value is MailDraftReference {
 }
 
 export function registerAccountHandlers(): void {
+  registerSmartInboxHandlers(isTrustedSender);
+
   ipcMain.handle(AI_CHANNELS.getSettings, async (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return getAiSettings();
@@ -477,7 +480,9 @@ export function registerAccountHandlers(): void {
       if (!account) {
         return { ok: false, messages: [], total: 0, message: 'Account not found.' } satisfies MessageListResult;
       }
-      return listFolderMessages(account, folderPath, refresh === true);
+      const result = await listFolderMessages(account, folderPath, refresh === true);
+      if (result.source === 'server') scheduleMailInsights();
+      return result;
     },
   );
 

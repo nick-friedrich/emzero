@@ -257,6 +257,8 @@ export interface MailMessageSummary {
   dueDate: string | null;
   color: import('./message-keywords.js').EmzeroMessageColor | null;
   size: number | null;
+  /** Local AI classification; present only while smart inboxes are enabled. */
+  insights?: import('./mail-insights.js').MessageInsights;
 }
 
 export interface MessageListResult {

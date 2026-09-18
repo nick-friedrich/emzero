@@ -41,6 +41,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/signature-storage.ts` — mail signatures persisted in the user data directory, validated and reduced to signature fields on every read and write.
 - `apps/desktop/src/main/ai-assistant.ts` — encrypted OpenAI-compatible provider settings and prompt-driven reply, new-message, and saved-draft generation.
 - `apps/desktop/src/main/ai-stream.ts` — incremental OpenAI-compatible SSE parsing for streamed AI draft generation.
+- `apps/desktop/src/main/mail-insights.ts` — smart-inbox settings storage and IPC, plus the background classifier that sends new Inbox mail previews to TypeSafe Jev through OpenRouter's Decisions API and stores tags and rule scores in the mail cache.
 - `apps/desktop/src/main/account-backup.ts` — backward-compatible password-encrypted backup export/import for accounts, optional app settings and signatures, destination-machine credential re-wrapping, and signature account-ID remapping.
 - `apps/desktop/src/main/account-connection.ts` — IMAP/SMTP account connectivity verification.
 - `apps/desktop/src/main/microsoft-oauth.ts` — personal Microsoft device-code authorization, token exchange, and refresh-token renewal.
@@ -54,7 +55,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/attachment-files.ts` — native file selection, opaque outgoing-file authorization, attachment limits, retained-draft attachment authorization, and received-attachment saving.
 - `apps/desktop/src/main/message-actions.ts` — read/unread, star/unstar, delete, same-account move, and cross-account message-transfer operations.
 - `apps/desktop/src/main/bulk-message-jobs.ts` — bulk-action request validation, execution, cancellation, and progress publication.
-- `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache and search.
+- `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache, search, and AI insight/smart-inbox score storage joined onto listed messages.
 - `apps/desktop/src/main/message-html.ts` — sanitization and quoted-content detection for message HTML.
 - `apps/desktop/src/main/mail-windows.ts` — validated creation of standalone message, composer, and single-instance settings windows.
 - `apps/desktop/src/main/provider-discovery.ts` — provider catalog lookup and domain/MX discovery.
@@ -66,6 +67,7 @@ This index records where application responsibilities live. Read it before makin
 
 - `apps/desktop/src/shared/accounts.ts` — IPC contracts, account/folder/message types, folder-tree operations, bulk-job types, and account validation.
 - `apps/desktop/src/shared/ai.ts` — AI provider/draft IPC contracts, defaults, and renderer-to-main input validation.
+- `apps/desktop/src/shared/mail-insights.ts` — every Jev question and threshold, tag derivation, smart-inbox templates, membership rules, settings validation, and IPC contract.
 - `apps/desktop/src/shared/signatures.ts` — signature IPC contract, size limits, and the validation shared by main-process storage, backups, and the renderer.
 - `apps/desktop/src/shared/conversations.ts` — conversation grouping and quoted-text splitting.
 - `apps/desktop/src/shared/replies.ts` — reply construction, address parsing, and outgoing-draft validation.
@@ -94,9 +96,10 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/signature-picker.tsx` — compose-time signature selection shared by new-message and reply composers.
 - `features/compose-dialog.tsx` — reusable docked, full-area, inline-draft, and standalone composer with recipient suggestions, attachments, validation, confirmation, and sending.
 - `features/ai-draft-assistant.tsx` — reusable configured-provider prompt panel for AI drafting in reply, new-message, and saved-draft composers.
+- `features/smart-inboxes.tsx` — smart-inbox sidebar section and create/edit dialog, AI tag chips, the remove-sender row action, the settings toggle, and the shared settings hook.
 - `features/mail-search.tsx` — search form/results and selected-result reader.
 - `features/message-list.tsx` — one account-folder conversation list, selection, and folder-scoped actions.
-- `features/unified-inbox.tsx` — multi-account Inbox, Starred, and Trash aggregation, selection, and actions.
+- `features/unified-inbox.tsx` — multi-account Inbox, Starred, Trash, and smart-inbox aggregation (including hiding skip-Inbox matches), selection, and actions.
 - `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: action controls, selection toolbar, and mail-view types/helpers.
 - `features/inbox-view-options.tsx` — persisted icon filters and Starred/Unread inbox grouping shared by account and unified inboxes.
 - `features/mail-split-layout.tsx` — persisted, pointer- and keyboard-resizable list/reader layout shared by three-column mail views.

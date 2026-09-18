@@ -9,6 +9,7 @@ import type {
   RecipientSuggestion,
 } from '../shared/accounts.js';
 import type { EmzeroMessageColor } from '../shared/message-keywords.js';
+import { isMailCategory, type MessageInsights } from '../shared/mail-insights.js';
 
 interface FolderRow {
   path: string;
@@ -43,6 +44,12 @@ interface MessageRow {
   due_date: string | null;
   color: string | null;
   size: number | null;
+  insight_category?: string | null;
+  insight_category_confidence?: number | null;
+  insight_needs_reply?: number | null;
+  insight_urgency?: number | null;
+  insight_urgency_confidence?: number | null;
+  insight_rule_scores?: string | null;
 }
 
 interface MessageBodyRow {
@@ -86,6 +93,18 @@ export interface CachedFolderMessages {
   supportsEmzeroKeywords?: boolean;
 }
 
+export interface InsightCandidate {
+  uid: number;
+  messageId: string | null;
+  subject: string;
+  from: MailAddressSummary[];
+  to: MailAddressSummary[];
+  needsBaseInsights: boolean;
+  missingInboxIds: string[];
+}
+
+export type BaseMessageInsights = Omit<MessageInsights, 'ruleScores'>;
+
 export interface FolderSyncState extends CachedFolderMessages {
   uidValidity: string | null;
   uidNext: number | null;
@@ -100,6 +119,78 @@ function parseJsonArray<T>(value: string): T[] {
     return [];
   }
 }
+
+function parseRuleScores(value: string | null | undefined): Record<string, number> {
+  if (!value) return {};
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, number] => typeof entry[1] === 'number'),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function messageInsights(row: MessageRow): MessageInsights | undefined {
+  if (row.insight_needs_reply == null) return undefined;
+  return {
+    category: isMailCategory(row.insight_category) ? row.insight_category : null,
+    categoryConfidence: row.insight_category_confidence ?? 0,
+    needsReply: row.insight_needs_reply,
+    urgency: row.insight_urgency ?? 0,
+    urgencyConfidence: row.insight_urgency_confidence ?? 0,
+    ruleScores: parseRuleScores(row.insight_rule_scores),
+  };
+}
+
+function messageSummary(row: MessageRow): MailMessageSummary {
+  const insights = messageInsights(row);
+  return {
+    folderPath: row.folder_path,
+    uid: row.uid,
+    messageId: row.message_id,
+    inReplyTo: row.in_reply_to,
+    references: parseJsonArray<string>(row.reference_ids),
+    subject: row.subject,
+    from: parseJsonArray<MailAddressSummary>(row.sender_addresses),
+    to: parseJsonArray<MailAddressSummary>(row.recipient_addresses),
+    sentAt: row.sent_at,
+    receivedAt: row.received_at,
+    unread: Boolean(row.unread),
+    flagged: Boolean(row.flagged),
+    important: Boolean(row.important),
+    dueDate: row.due_date,
+    color: row.color as EmzeroMessageColor | null,
+    size: row.size,
+    ...(insights ? { insights } : {}),
+  };
+}
+
+// Insight rows are keyed by UID but also carry the Message-ID, so a UID reused
+// after a UIDVALIDITY reset never inherits another message's classification.
+const insightColumns = `
+  message_insights.category AS insight_category,
+  message_insights.category_confidence AS insight_category_confidence,
+  message_insights.needs_reply AS insight_needs_reply,
+  message_insights.urgency AS insight_urgency,
+  message_insights.urgency_confidence AS insight_urgency_confidence,
+  (
+    SELECT json_group_object(smart_inbox_scores.inbox_id, smart_inbox_scores.score)
+    FROM smart_inbox_scores
+    WHERE smart_inbox_scores.account_id = messages.account_id
+      AND smart_inbox_scores.folder_path = messages.folder_path
+      AND smart_inbox_scores.uid = messages.uid
+      AND smart_inbox_scores.message_id IS messages.message_id
+  ) AS insight_rule_scores`;
+
+const insightJoin = `
+  LEFT JOIN message_insights
+    ON message_insights.account_id = messages.account_id
+   AND message_insights.folder_path = messages.folder_path
+   AND message_insights.uid = messages.uid
+   AND message_insights.message_id IS messages.message_id`;
 
 export class MailCache {
   readonly #database: DatabaseSync;
@@ -359,6 +450,40 @@ export class MailCache {
         PRAGMA user_version = 9;
         COMMIT;
       `);
+      version = 9;
+    }
+
+    if (version < 10) {
+      this.#database.exec(`
+        BEGIN;
+        CREATE TABLE message_insights (
+          account_id TEXT NOT NULL,
+          folder_path TEXT NOT NULL,
+          uid INTEGER NOT NULL,
+          message_id TEXT,
+          category TEXT,
+          category_confidence REAL NOT NULL,
+          needs_reply REAL NOT NULL,
+          urgency REAL NOT NULL,
+          urgency_confidence REAL NOT NULL,
+          classified_at TEXT NOT NULL,
+          PRIMARY KEY (account_id, folder_path, uid)
+        ) STRICT;
+
+        CREATE TABLE smart_inbox_scores (
+          account_id TEXT NOT NULL,
+          folder_path TEXT NOT NULL,
+          uid INTEGER NOT NULL,
+          inbox_id TEXT NOT NULL,
+          message_id TEXT,
+          score REAL NOT NULL,
+          PRIMARY KEY (account_id, folder_path, uid, inbox_id)
+        ) STRICT;
+        CREATE INDEX smart_inbox_scores_by_inbox ON smart_inbox_scores (inbox_id);
+
+        PRAGMA user_version = 10;
+        COMMIT;
+      `);
     }
   }
 
@@ -368,6 +493,8 @@ export class MailCache {
 
   deleteAccount(accountId: string): void {
     this.#database.prepare('DELETE FROM folders WHERE account_id = ?').run(accountId);
+    this.#database.prepare('DELETE FROM message_insights WHERE account_id = ?').run(accountId);
+    this.#database.prepare('DELETE FROM smart_inbox_scores WHERE account_id = ?').run(accountId);
   }
 
   replaceFolders(accountId: string, folders: MailFolderSummary[]): void {
@@ -569,34 +696,20 @@ export class MailCache {
       .get(accountId, folderPath) as Pick<FolderRow, 'message_count' | 'synced_at' | 'supports_emzero_keywords'> | undefined;
     const rows = this.#database
       .prepare(`
-        SELECT folder_path, uid, message_id, in_reply_to, reference_ids, subject,
-               sender_addresses, recipient_addresses, sent_at, received_at,
-               unread, flagged, important, due_date, color, size
+        SELECT messages.folder_path, messages.uid, messages.message_id, messages.in_reply_to,
+               messages.reference_ids, messages.subject, messages.sender_addresses,
+               messages.recipient_addresses, messages.sent_at, messages.received_at,
+               messages.unread, messages.flagged, messages.important, messages.due_date,
+               messages.color, messages.size, ${insightColumns}
         FROM messages
-        WHERE account_id = ? AND folder_path = ?
-        ORDER BY COALESCE(received_at, sent_at) DESC, uid DESC
+        ${insightJoin}
+        WHERE messages.account_id = ? AND messages.folder_path = ?
+        ORDER BY COALESCE(messages.received_at, messages.sent_at) DESC, messages.uid DESC
       `)
       .all(accountId, folderPath) as unknown as MessageRow[];
 
     return {
-      messages: rows.map((row) => ({
-        folderPath: row.folder_path,
-        uid: row.uid,
-        messageId: row.message_id,
-        inReplyTo: row.in_reply_to,
-        references: parseJsonArray<string>(row.reference_ids),
-        subject: row.subject,
-        from: parseJsonArray<MailAddressSummary>(row.sender_addresses),
-        to: parseJsonArray<MailAddressSummary>(row.recipient_addresses),
-        sentAt: row.sent_at,
-        receivedAt: row.received_at,
-        unread: Boolean(row.unread),
-        flagged: Boolean(row.flagged),
-        important: Boolean(row.important),
-        dueDate: row.due_date,
-        color: row.color as EmzeroMessageColor | null,
-        size: row.size,
-      })),
+      messages: rows.map(messageSummary),
       total: folder?.message_count ?? 0,
       syncedAt: folder?.synced_at ?? null,
       ...(folder?.supports_emzero_keywords == null
@@ -678,24 +791,7 @@ export class MailCache {
         unreadCount: row.folder_unread_count,
         supportsEmzeroKeywords: row.folder_supports_emzero_keywords === 1,
       },
-      message: {
-        folderPath: row.folder_path,
-        uid: row.uid,
-        messageId: row.message_id,
-        inReplyTo: row.in_reply_to,
-        references: parseJsonArray<string>(row.reference_ids),
-        subject: row.subject,
-        from: parseJsonArray<MailAddressSummary>(row.sender_addresses),
-        to: parseJsonArray<MailAddressSummary>(row.recipient_addresses),
-        sentAt: row.sent_at,
-        receivedAt: row.received_at,
-        unread: Boolean(row.unread),
-        flagged: Boolean(row.flagged),
-        important: Boolean(row.important),
-        dueDate: row.due_date,
-        color: row.color as EmzeroMessageColor | null,
-        size: row.size,
-      },
+      message: messageSummary(row),
       snippet: row.snippet,
     }));
   }
@@ -1107,6 +1203,134 @@ export class MailCache {
     } catch (error) {
       this.#database.exec('ROLLBACK');
       throw error;
+    }
+  }
+
+  insightCandidates(
+    accountId: string,
+    folderPath: string,
+    inboxIds: readonly string[],
+    limit: number,
+  ): InsightCandidate[] {
+    const rows = this.#database
+      .prepare(`
+        SELECT messages.uid, messages.message_id, messages.subject, messages.sender_addresses,
+               messages.recipient_addresses, message_insights.uid IS NOT NULL AS has_insights,
+               (
+                 SELECT json_group_array(smart_inbox_scores.inbox_id)
+                 FROM smart_inbox_scores
+                 WHERE smart_inbox_scores.account_id = messages.account_id
+                   AND smart_inbox_scores.folder_path = messages.folder_path
+                   AND smart_inbox_scores.uid = messages.uid
+                   AND smart_inbox_scores.message_id IS messages.message_id
+               ) AS scored_inbox_ids
+        FROM messages
+        ${insightJoin}
+        WHERE messages.account_id = ? AND messages.folder_path = ?
+        ORDER BY COALESCE(messages.received_at, messages.sent_at) DESC, messages.uid DESC
+        LIMIT ?
+      `)
+      .all(accountId, folderPath, limit) as unknown as Array<{
+        uid: number;
+        message_id: string | null;
+        subject: string;
+        sender_addresses: string;
+        recipient_addresses: string;
+        has_insights: number;
+        scored_inbox_ids: string;
+      }>;
+    return rows.flatMap((row) => {
+      const scored = new Set(parseJsonArray<string>(row.scored_inbox_ids));
+      const missingInboxIds = inboxIds.filter((id) => !scored.has(id));
+      if (row.has_insights && missingInboxIds.length === 0) return [];
+      return [{
+        uid: row.uid,
+        messageId: row.message_id,
+        subject: row.subject,
+        from: parseJsonArray<MailAddressSummary>(row.sender_addresses),
+        to: parseJsonArray<MailAddressSummary>(row.recipient_addresses),
+        needsBaseInsights: !row.has_insights,
+        missingInboxIds,
+      }];
+    });
+  }
+
+  putMessageInsights(
+    accountId: string,
+    folderPath: string,
+    uid: number,
+    messageId: string | null,
+    base: BaseMessageInsights | null,
+    ruleScores: Record<string, number>,
+  ): void {
+    const upsertBase = this.#database.prepare(`
+      INSERT INTO message_insights (
+        account_id, folder_path, uid, message_id, category, category_confidence, needs_reply,
+        urgency, urgency_confidence, classified_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (account_id, folder_path, uid) DO UPDATE SET
+        message_id = excluded.message_id,
+        category = excluded.category,
+        category_confidence = excluded.category_confidence,
+        needs_reply = excluded.needs_reply,
+        urgency = excluded.urgency,
+        urgency_confidence = excluded.urgency_confidence,
+        classified_at = excluded.classified_at
+    `);
+    const upsertScore = this.#database.prepare(`
+      INSERT INTO smart_inbox_scores (account_id, folder_path, uid, inbox_id, message_id, score)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT (account_id, folder_path, uid, inbox_id) DO UPDATE SET
+        message_id = excluded.message_id,
+        score = excluded.score
+    `);
+    this.#database.exec('BEGIN');
+    try {
+      if (base) {
+        upsertBase.run(
+          accountId,
+          folderPath,
+          uid,
+          messageId,
+          base.category,
+          base.categoryConfidence,
+          base.needsReply,
+          base.urgency,
+          base.urgencyConfidence,
+          new Date().toISOString(),
+        );
+      }
+      for (const [inboxId, score] of Object.entries(ruleScores)) {
+        upsertScore.run(accountId, folderPath, uid, inboxId, messageId, score);
+      }
+      this.#database.exec('COMMIT');
+    } catch (error) {
+      this.#database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  deleteSmartInboxScores(inboxId: string): void {
+    this.#database.prepare('DELETE FROM smart_inbox_scores WHERE inbox_id = ?').run(inboxId);
+  }
+
+  clearInsights(): void {
+    this.#database.exec('DELETE FROM message_insights; DELETE FROM smart_inbox_scores;');
+  }
+
+  /** Drops classifications whose message left the cache (moved, deleted, or UID reset). */
+  pruneInsights(): void {
+    for (const table of ['message_insights', 'smart_inbox_scores']) {
+      this.#database.exec(`
+        DELETE FROM ${table}
+        WHERE NOT EXISTS (
+          SELECT 1 FROM messages
+          WHERE messages.account_id = ${table}.account_id
+            AND messages.folder_path = ${table}.folder_path
+            AND messages.uid = ${table}.uid
+            AND messages.message_id IS ${table}.message_id
+        )
+      `);
     }
   }
 

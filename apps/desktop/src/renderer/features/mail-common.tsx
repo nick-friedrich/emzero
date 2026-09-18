@@ -2,6 +2,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type ReactNode,
   type Ref,
 } from 'react';
 import {
@@ -74,6 +75,7 @@ import { MoveToDialog } from './message-move';
 export type MailboxSelection =
   | { kind: 'unified'; mailbox?: 'inbox' | 'starred' | 'drafts' | 'trash' }
   | { kind: 'search'; query: string }
+  | { kind: 'smart'; inboxId: string }
   | { kind: 'folder'; account: AccountSummary; folder: MailFolderSummary };
 
 export type MailLayout = 'list' | 'split';
@@ -590,6 +592,7 @@ export function ConversationActions({
   onMove,
   onDelete,
   deleteButtonRef,
+  leadingAction,
 }: {
   accounts: AccountSummary[];
   sourceAccountId: string;
@@ -611,6 +614,7 @@ export function ConversationActions({
   onMove: (destination: MessageMoveDestination) => void;
   onDelete: () => void;
   deleteButtonRef?: Ref<HTMLButtonElement>;
+  leadingAction?: ReactNode;
 }) {
   const [dueDialogOpen, setDueDialogOpen] = useState(false);
   const [colorDialogOpen, setColorDialogOpen] = useState(false);
@@ -658,6 +662,7 @@ export function ConversationActions({
   );
   return (
     <div className="flex shrink-0 items-center gap-1" aria-label="Conversation actions">
+      {leadingAction}
       <Button
         variant="ghost"
         className="size-8 px-0"

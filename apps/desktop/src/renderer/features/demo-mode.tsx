@@ -157,6 +157,9 @@ export function demoMailboxSnapshot(selection: MailboxSelection): DemoMailboxSna
         )
       : summaries;
     title = selection.query ? `Search: ${selection.query}` : 'Search mail';
+  } else if (selection.kind === 'smart') {
+    // Smart inboxes are hidden in demo mode; fall back to the demo Inbox.
+    selected = summaries.filter((message) => message.folderPath === 'Inbox');
   } else if (selection.mailbox === 'starred') {
     selected = summaries.filter((message) => message.flagged);
     title = 'Starred';

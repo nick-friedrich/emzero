@@ -6,6 +6,7 @@ import { startBackgroundSync, stopBackgroundSync } from './background-sync.js';
 import { closeMailCache, disconnectPooledImapConnections } from './mail-runtime.js';
 import { registerMailWindowHandlers } from './mail-windows.js';
 import { setMailNotificationActivationHandler } from './mail-notifications.js';
+import { scheduleMailInsights } from './mail-insights.js';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -87,6 +88,7 @@ void app.whenReady().then(() => {
   });
   createWindow();
   startBackgroundSync();
+  scheduleMailInsights(5_000);
   powerMonitor.on('suspend', disconnectPooledImapConnections);
 
   app.on('activate', () => {

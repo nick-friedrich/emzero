@@ -4,6 +4,7 @@ import { listAccountFolders } from './account-folders.js';
 import { readAccounts, type StoredAccount } from './account-storage.js';
 import { errorMessage, mailCache } from './mail-runtime.js';
 import { listFolderMessages } from './message-reader.js';
+import { scheduleMailInsights } from './mail-insights.js';
 import {
   newlyArrivedUnreadMessages,
   showNewMailNotification,
@@ -82,6 +83,7 @@ export function runBackgroundSync(): Promise<MailSyncStatus> {
       ? { state: 'error', lastSyncedAt: syncStatus.lastSyncedAt, message: failures.join(' · ') }
       : { state: 'idle', lastSyncedAt: completedAt };
     publishSyncStatus(nextStatus);
+    scheduleMailInsights();
     return nextStatus;
   })().finally(() => {
     activeSync = null;

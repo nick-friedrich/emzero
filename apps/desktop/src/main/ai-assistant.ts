@@ -71,6 +71,18 @@ async function secureStorageAvailable(): Promise<boolean> {
   );
 }
 
+/** The stored OpenRouter key, or null when another provider (or none) is configured. */
+export async function readOpenRouterApiKey(): Promise<string | null> {
+  const settings = await readAiSettings();
+  if (!settings || settings.provider !== 'openrouter' || !(await secureStorageAvailable())) {
+    return null;
+  }
+  const { result } = await safeStorage.decryptStringAsync(
+    Buffer.from(settings.encryptedApiKey, 'base64'),
+  );
+  return result || null;
+}
+
 export async function getAiSettings(): Promise<AiSettingsSummary> {
   return settingsSummary(await readAiSettings());
 }
