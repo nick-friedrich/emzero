@@ -116,6 +116,7 @@ export function UnifiedInbox({
   sidebarPinned,
   onToggleSidebar,
   onFoldersChanged,
+  syncRevision = 0,
   draftSavedEvent,
   draftDeletedEvent,
   demo,
@@ -128,6 +129,7 @@ export function UnifiedInbox({
   sidebarPinned: boolean;
   onToggleSidebar: () => void;
   onFoldersChanged?: () => void;
+  syncRevision?: number;
   draftSavedEvent?: DraftSavedEvent | null;
   draftDeletedEvent?: DraftDeletedEvent | null;
   demo?: DemoMailboxSnapshot;
@@ -308,7 +310,7 @@ export function UnifiedInbox({
     return () => {
       active = false;
     };
-  }, [accounts, demo, mailbox, refreshKey, title]);
+  }, [accounts, demo, mailbox, refreshKey, syncRevision, title]);
 
   const refresh = () => {
     setSelectedItem(null);

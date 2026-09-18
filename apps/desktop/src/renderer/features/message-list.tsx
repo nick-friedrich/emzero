@@ -87,6 +87,7 @@ export function MessageList({
   sidebarPinned,
   onToggleSidebar,
   onFoldersChanged,
+  syncRevision = 0,
   draftSavedEvent,
   draftDeletedEvent,
 }: {
@@ -98,6 +99,7 @@ export function MessageList({
   sidebarPinned: boolean;
   onToggleSidebar: () => void;
   onFoldersChanged: () => void;
+  syncRevision?: number;
   draftSavedEvent?: DraftSavedEvent | null;
   draftDeletedEvent?: DraftDeletedEvent | null;
 }) {
@@ -209,7 +211,7 @@ export function MessageList({
     return () => {
       active = false;
     };
-  }, [refreshKey, selection.account.id, selection.folder.path, selection.folder.specialUse]);
+  }, [refreshKey, selection.account.id, selection.folder.path, selection.folder.specialUse, syncRevision]);
 
   const refresh = () => {
     setSelectedConversationIds(new Set());

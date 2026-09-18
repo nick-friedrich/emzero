@@ -44,6 +44,7 @@ import {
   validateSendDraft,
 } from '../../shared/replies';
 import { sendShortcutLabel, skipSendConfirmationStorageKey, storedSkipSendConfirmation, useSendShortcut, type Status } from './app-shared';
+import type { AiConversationMessage } from '../../shared/ai';
 import { Field } from './form-field';
 import { addressDetails } from './mail-common';
 import { AttachmentPicker } from './attachment-picker';
@@ -217,6 +218,7 @@ export function ComposeDialog({
   initialDraft,
   initialDraftReference,
   composerKind = 'new',
+  loadConversation,
   variant = 'floating',
   onDraftSaved,
   onDeleted,
@@ -229,6 +231,7 @@ export function ComposeDialog({
   initialDraft?: MailSendDraft;
   initialDraftReference?: MailDraftReference;
   composerKind?: MailComposerKind;
+  loadConversation?: () => Promise<AiConversationMessage[]>;
   variant?: 'floating' | 'inline' | 'window';
   onDraftSaved?: (event: DraftSavedEvent) => void;
   onDeleted?: (event: DraftDeletedEvent) => void;
@@ -381,7 +384,7 @@ export function ComposeDialog({
     });
   };
 
-  const generateAiDraft = (instruction: string, onProgress: (text: string) => void) => {
+  const generateAiDraft = async (instruction: string, onProgress: (text: string) => void) => {
     const account = accounts.find((candidate) => candidate.id === accountId);
     if (!account) throw new Error('Choose a sending account first.');
     return window.emzero.ai.draftMessage({
@@ -392,7 +395,7 @@ export function ComposeDialog({
       to: currentDraft.to,
       cc: currentDraft.cc,
       existingDraft: bodyWithoutSignature.trim(),
-      conversation: [],
+      conversation: await loadConversation?.() ?? [],
     }, onProgress);
   };
 
@@ -568,7 +571,7 @@ export function ComposeDialog({
             accountId={accountId}
             value={to}
             placeholder="Start typing a name or email address"
-            autoFocus
+            autoFocus={composerKind !== 'reply'}
             disabled={busy || aiBusy}
             onChange={(value) => {
               setTo(value);
@@ -613,6 +616,7 @@ export function ComposeDialog({
           <Field label="Message">
             <textarea
               className="field min-h-52 resize-y leading-6"
+              autoFocus={composerKind === 'reply'}
               value={body}
               disabled={busy || aiBusy}
               onChange={(event) => {
@@ -628,7 +632,9 @@ export function ComposeDialog({
             placeholder={composerKind === 'draft'
               ? 'For example: Make this warmer and more concise.'
               : 'For example: Ask for a project update and suggest a call next week.'}
-            privacyDescription="Your recipients, subject, existing draft, and instruction will be sent to your configured AI provider."
+            privacyDescription={loadConversation
+              ? "The conversation, your existing text, and your instruction will be sent to your configured AI provider."
+              : "Your recipients, subject, existing draft, and instruction will be sent to your configured AI provider."}
             onGenerate={generateAiDraft}
             onApply={(draft) => {
               setBody(`${draft}${preservedSignature}`);

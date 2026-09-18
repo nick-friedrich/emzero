@@ -104,10 +104,11 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/reader-selection.test.ts` — renderer tests for post-delete reader selection.
 - `features/mail-common.test.ts` — renderer tests for isolated HTML-email document generation and remote-image privacy controls.
 - `features/message-move.tsx` — account-and-folder destination picker for single and bulk message moves.
-- `features/conversation-reader.tsx` — conversation reader, message body/thread cards, received-attachment saving, quoted-content display, and inline reply composer.
+- `features/conversation-reader.tsx` — conversation reader, message body/thread cards, received-attachment saving, quoted-content display, and reply entry points.
+- `features/reply-composer.tsx` — replies in the shared bottom-right composer, preserving reply headers and loading conversation context for AI drafting.
 - `features/message-prefetch.ts` — bounded idle, hover, and keyboard-focus message-body prefetching shared by folder, unified, and search lists.
 - `features/attachment-picker.tsx` — reusable outgoing-attachment selection and removal UI for compose and reply.
-- `features/draft-autosave.ts` — debounced, sequential IMAP autosave state shared by compose and inline reply.
+- `features/draft-autosave.ts` — debounced, sequential IMAP autosave shared by compose and reply, including pending-edit flushing on editor unmount.
 - `features/bulk-operation.tsx` — persistent progress/status bar for background bulk message jobs.
 - `features/undoable-delete.tsx` — shared delayed-action controller and Undo bar for optimistic conversation deletion, archiving, and moves.
 - `features/app-shared.ts` — small cross-feature status and send-shortcut preferences/hooks.
@@ -121,6 +122,6 @@ All paths in this section are relative to `apps/desktop/src/renderer/`.
 - `apps/desktop/src/main/` tests cover cache, HTML sanitization, provider discovery, folder subscriptions, folder input rules, message parsing helpers, message-action rules, draft-folder discovery, signature storage, and bulk-job validation/progress.
 - `apps/desktop/src/shared/` tests cover domain helpers and contracts.
 - `apps/desktop/src/renderer/` tests cover renderer utilities and theming.
-- `apps/desktop/e2e/` — Playwright smoke coverage for production Electron builds using the privacy-safe demo dataset.
+- `apps/desktop/e2e/` — Playwright smoke coverage for production Electron builds using the privacy-safe demo dataset, plus isolated mock-mail regression coverage for reply preservation across background sync, navigation, and discard.
 - `apps/desktop/playwright.config.ts` — production Electron smoke-test configuration.
 - Run the complete suite with `pnpm check` from the repository root.

@@ -3,7 +3,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type FormEvent,
 } from 'react';
 import {
   ArrowLeft,
@@ -13,12 +12,9 @@ import {
   ExternalLink,
   FolderOpen,
   LoaderCircle,
-  Maximize2,
-  Minimize2,
   Paperclip,
   Reply,
   RefreshCw,
-  Send,
   Trash2,
   X,
 } from 'lucide-react';
@@ -41,27 +37,17 @@ import type {
   MailMessageDetail,
   MailMessageSummary,
   MailOutgoingAttachment,
-  MailSendDraft,
   MessageMoveDestination,
 } from '../../shared/accounts';
 import { displayFolderName } from '../../shared/accounts';
-import type { AiConversationMessage } from '../../shared/ai';
 import {
   splitQuotedText,
   type MailConversation,
 } from '../../shared/conversations';
 import {
-  createReplyDraft,
   replyRecipients,
-  validateReplyDraft,
 } from '../../shared/replies';
-import {
-  sendShortcutLabel,
-  skipSendConfirmationStorageKey,
-  storedSkipSendConfirmation,
-  useSendShortcut,
-  type Status,
-} from './app-shared';
+import type { Status } from './app-shared';
 import {
   ConversationActions,
   addressLabel,
@@ -75,16 +61,13 @@ import {
   type FolderSelection,
   type MessageDetailLoadState,
 } from './mail-common';
-import { AttachmentPicker } from './attachment-picker';
-import { AiDraftAssistant } from './ai-draft-assistant';
-import { useDraftAutosave } from './draft-autosave';
 import {
   ComposeDialog,
   type DraftDeletedEvent,
   type DraftSavedEvent,
 } from './compose-dialog';
-import { SignaturePicker } from './signature-picker';
-import { formatSignature, replaceSignature, signatureBody, signatureBodyForId, signatureIdForAccount, withoutSignature } from './signatures';
+
+import { ReplyComposer } from './reply-composer';
 
 function MessageBody({
   accountId,
@@ -357,485 +340,6 @@ function MessageBody({
           )}
         </section>
       )}
-    </>
-  );
-}
-
-function ReplyComposer({
-  account,
-  summary,
-  message,
-  threadMessages,
-  open,
-  onOpenChange,
-  onSent,
-  onDraftSaved,
-  onDraftDeleted,
-}: {
-  account: AccountSummary;
-  summary: MailMessageSummary;
-  message: MailMessageDetail;
-  threadMessages: MailMessageSummary[];
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSent: (message: MailMessageSummary) => void;
-  onDraftSaved?: (event: DraftSavedEvent) => void;
-  onDraftDeleted?: (event: DraftDeletedEvent) => void;
-}) {
-  const recipients = replyRecipients(account, message);
-  const [expanded, setExpanded] = useState(false);
-  const [text, setText] = useState(() => signatureBody(account.id));
-  const [signatureId, setSignatureId] = useState(() => signatureIdForAccount(account.id));
-  const [attachments, setAttachments] = useState<MailOutgoingAttachment[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [aiBusy, setAiBusy] = useState(false);
-  const [status, setStatus] = useState<Status | null>(null);
-  const [confirmationOpen, setConfirmationOpen] = useState(false);
-  const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
-  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
-  const [dontShowAgain, setDontShowAgain] = useState(false);
-  const [pendingDraft, setPendingDraft] = useState<MailSendDraft | null>(null);
-  const confirmationActionRef = useRef<HTMLButtonElement>(null);
-  const currentDraft = { ...createReplyDraft(account, summary, message, text), attachments };
-  const {
-    status: draftStatus,
-    savedDraftReference,
-    handoffSavedDraft,
-    discardSavedDraft,
-    discardSavedDraftInBackground,
-  } = useDraftAutosave(
-    account.id,
-    currentDraft,
-    open && Boolean(text.trim() || attachments.length),
-  );
-
-  const resetReply = () => {
-    onOpenChange(false);
-    setExpanded(false);
-    setText('');
-    setAttachments([]);
-    setStatus(null);
-  };
-
-  const keepReplyDraft = () => {
-    setBusy(true);
-    void handoffSavedDraft().then((reference) => {
-      if (!reference && (text.trim() || attachments.length > 0)) {
-        setCloseConfirmationOpen(false);
-        return;
-      }
-      if (reference) onDraftSaved?.({ accountId: account.id, reference });
-      setCloseConfirmationOpen(false);
-      onOpenChange(false);
-      setExpanded(false);
-    }).finally(() => setBusy(false));
-  };
-
-  const deleteReplyDraft = () => {
-    const deletion = discardSavedDraftInBackground();
-    const reference = deletion.reference ?? savedDraftReference;
-    if (reference) {
-      onDraftDeleted?.({ accountId: account.id, references: [reference] });
-    }
-    setCloseConfirmationOpen(false);
-    setDeleteConfirmationOpen(false);
-    resetReply();
-    void deletion.completion.then((result) => {
-      if (!result.ok && result.reference) {
-        onDraftSaved?.({ accountId: account.id, reference: result.reference });
-      }
-    });
-  };
-
-  const closeReply = () => {
-    if (busy || aiBusy) return;
-    if (!text.trim() && attachments.length === 0 && !savedDraftReference) {
-      resetReply();
-      return;
-    }
-    setCloseConfirmationOpen(true);
-  };
-
-  const generateAiReply = async (instruction: string, onProgress: (text: string) => void) => {
-    setStatus(null);
-    try {
-      const loadedConversation = await Promise.all(
-        threadMessages.slice(0, 100).reverse().map(async (threadSummary) => {
-          const current =
-            threadSummary.folderPath === summary.folderPath && threadSummary.uid === summary.uid;
-          const detail = current
-            ? message
-            : await window.emzero.messages
-                .get(account.id, threadSummary.folderPath, threadSummary.uid)
-                .then((result) => {
-                  if (!result.ok || !result.messageDetail) {
-                    throw new Error(result.message ?? 'Could not load a message in this conversation.');
-                  }
-                  return result.messageDetail;
-                });
-          return {
-            sentAt: detail.sentAt ?? threadSummary.sentAt ?? threadSummary.receivedAt,
-            from: detail.from,
-            to: detail.to,
-            text: detail.text,
-          };
-        }),
-      );
-      const conversation: AiConversationMessage[] = [];
-      let remainingTextLength = 1_000_000;
-      for (let index = loadedConversation.length - 1; index >= 0; index -= 1) {
-        if (remainingTextLength <= 0) break;
-        const item = loadedConversation[index];
-        const text = item.text.slice(0, Math.min(200_000, remainingTextLength));
-        conversation.unshift({ ...item, text });
-        remainingTextLength -= text.length;
-      }
-      return await window.emzero.ai.draftMessage({
-        kind: 'reply',
-        prompt: instruction,
-        accountEmail: account.email,
-        subject: message.subject,
-        to: currentDraft.to,
-        cc: currentDraft.cc,
-        existingDraft: withoutSignature(text, signatureId).trim(),
-        conversation,
-      }, onProgress);
-    } catch {
-      throw new Error('Could not load the full conversation. Try again.');
-    }
-  };
-
-  const deliver = async (draft: MailSendDraft) => {
-    setBusy(true);
-    setStatus(null);
-    try {
-      const result = await window.emzero.messages.sendReply(account.id, draft);
-      setStatus({
-        kind: result.ok ? 'success' : 'error',
-        message: result.message ?? (result.ok ? 'Reply sent.' : 'Could not send reply.'),
-      });
-      if (result.ok) {
-        const reference = savedDraftReference;
-        const discarded = await discardSavedDraft();
-        if (discarded && reference) {
-          onDraftDeleted?.({ accountId: account.id, references: [reference] });
-        }
-        if (result.sentMessage) onSent(result.sentMessage);
-        setText('');
-        setAttachments([]);
-        onOpenChange(false);
-      }
-    } catch {
-      setStatus({ kind: 'error', message: 'Could not send reply.' });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const requestSend = () => {
-    const draft = currentDraft;
-    const validationError = validateReplyDraft(draft);
-    if (validationError) {
-      setStatus({ kind: 'error', message: validationError });
-      return;
-    }
-    if (storedSkipSendConfirmation()) {
-      void deliver(draft);
-      return;
-    }
-    setPendingDraft(draft);
-    setDontShowAgain(false);
-    setConfirmationOpen(true);
-  };
-
-  useSendShortcut(open && !busy && !aiBusy && !confirmationOpen, requestSend);
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    requestSend();
-  };
-
-  if (!open) {
-    return status ? (
-      <p
-        className={cn(
-          'mt-3 text-xs',
-          status.kind === 'success' ? 'text-success' : 'text-danger',
-        )}
-        role="status"
-      >
-        {status.message}
-      </p>
-    ) : null;
-  }
-
-  return (
-    <>
-      <form
-        className={cn(
-          'mt-6 border-t border-border pt-5',
-          expanded && 'fixed inset-y-0 right-0 z-50 overflow-y-auto bg-background p-6 shadow-2xl lg:left-[var(--sidebar-width)] lg:p-10',
-        )}
-        onSubmit={submit}
-      >
-        <div className="mb-3 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-        <Reply className="size-4 shrink-0" />
-        <span className="shrink-0">Reply to</span>
-        <span className="truncate font-medium text-foreground">{addressDetails(recipients)}</span>
-        <div className="ml-auto flex shrink-0 items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            className="size-8 px-0 text-danger hover:text-danger"
-            disabled={busy || aiBusy}
-            aria-label="Delete reply draft"
-            title="Delete reply draft"
-            onClick={() => setDeleteConfirmationOpen(true)}
-          >
-            <Trash2 className="size-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className="size-8 px-0"
-            aria-label={expanded ? 'Return reply to conversation' : 'Expand reply to message area'}
-            title={expanded ? 'Return reply to conversation' : 'Expand reply to message area'}
-            onClick={() => setExpanded((current) => !current)}
-          >
-            {expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className="size-8 px-0"
-            aria-label="Open reply in new window"
-            title="Open reply in new window"
-            onClick={() => {
-              void handoffSavedDraft().then((reference) => {
-                if (reference) onDraftSaved?.({ accountId: account.id, reference });
-                return window.emzero.openMailWindow({
-                  kind: 'composer',
-                  composerKind: 'reply',
-                  accountId: account.id,
-                  draft: currentDraft,
-                  ...(reference ? { draftReference: reference } : {}),
-                });
-              }).then((opened) => { if (opened) onOpenChange(false); });
-            }}
-          >
-            <ExternalLink className="size-4" />
-          </Button>
-        </div>
-        </div>
-        <textarea
-          className="field min-h-36 resize-y leading-6"
-          value={text}
-          placeholder="Write a reply…"
-          aria-label="Reply message"
-          autoFocus
-          disabled={busy || aiBusy}
-          onChange={(event) => {
-            setText(event.target.value);
-            setStatus(null);
-          }}
-        />
-        <AiDraftAssistant
-          className="mt-3"
-          disabled={busy}
-          currentText={withoutSignature(text, signatureId)}
-          actionLabel="Draft reply"
-          placeholder="For example: Kein Interesse — freundlich und professionell absagen."
-          privacyDescription="The conversation, your existing text, and your instruction will be sent to your configured AI provider."
-          onGenerate={generateAiReply}
-          onApply={(draft) => {
-            const signature = formatSignature(signatureBodyForId(signatureId));
-            setText(`${draft}${signature}`);
-            setStatus(null);
-          }}
-          onBusyChange={setAiBusy}
-        />
-        <div className="mt-2">
-          <SignaturePicker
-            value={signatureId}
-            disabled={busy || aiBusy}
-            onChange={(nextSignatureId) => {
-              setText((current) => replaceSignature(current, signatureId, nextSignatureId));
-              setSignatureId(nextSignatureId);
-              setStatus(null);
-            }}
-          />
-        </div>
-        <div className="mt-2">
-          <AttachmentPicker
-            attachments={attachments}
-            disabled={busy || aiBusy}
-            onChange={(nextAttachments) => {
-              setAttachments(nextAttachments);
-              setStatus(null);
-            }}
-            onError={(errorMessage) => setStatus({ kind: 'error', message: errorMessage })}
-          />
-        </div>
-        {draftStatus.state !== 'idle' && (
-          <p
-            className={draftStatus.state === 'error' ? 'mt-2 text-xs text-danger' : 'mt-2 text-xs text-muted-foreground'}
-            role="status"
-          >
-            {draftStatus.state === 'saving' ? 'Saving draft…' : draftStatus.message}
-          </p>
-        )}
-        {status && (
-          <p className={cn('mt-2 text-xs', status.kind === 'success' ? 'text-success' : 'text-danger')} role="status">
-            {status.message}
-          </p>
-        )}
-        <div className="mt-3 flex justify-end gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={busy || aiBusy}
-            onClick={closeReply}
-          >
-            Close
-          </Button>
-          <Button
-            type="submit"
-            disabled={busy || aiBusy || !text.trim()}
-            title="Send reply (Ctrl+Enter)"
-            aria-keyshortcuts="Control+Enter Meta+Enter"
-          >
-            {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
-            Send reply
-          </Button>
-        </div>
-        <p className="mt-2 text-right text-[0.68rem] text-muted-foreground">
-          Send with {sendShortcutLabel()}
-        </p>
-      </form>
-      <AlertDialog
-        open={confirmationOpen}
-        onOpenChange={(nextOpen) => {
-          setConfirmationOpen(nextOpen);
-          if (!nextOpen) setPendingDraft(null);
-        }}
-      >
-        <AlertDialogContent
-          onOpenAutoFocus={(event) => {
-            event.preventDefault();
-            confirmationActionRef.current?.focus();
-          }}
-          onKeyDownCapture={(event) => {
-            if (event.key === 'Enter' && !event.repeat) {
-              event.preventDefault();
-              event.stopPropagation();
-              confirmationActionRef.current?.click();
-            }
-          }}
-        >
-          <AlertDialogHeader>
-            <AlertDialogTitle>Send this reply?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will send the reply immediately and cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {pendingDraft && (
-            <div className="rounded-lg border border-border bg-background px-4 py-3 text-sm">
-              <p className="truncate">
-                <span className="text-muted-foreground">From: </span>
-                {account.email}
-              </p>
-              <p className="mt-1 truncate">
-                <span className="text-muted-foreground">To: </span>
-                {addressDetails(pendingDraft.to)}
-              </p>
-              <p className="mt-1 truncate">
-                <span className="text-muted-foreground">Subject: </span>
-                {pendingDraft.subject}
-              </p>
-              {pendingDraft.attachments.length > 0 && (
-                <p className="mt-1 truncate">
-                  <span className="text-muted-foreground">Attachments: </span>
-                  {pendingDraft.attachments.length}
-                </p>
-              )}
-            </div>
-          )}
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              className="size-4 accent-primary"
-              type="checkbox"
-              checked={dontShowAgain}
-              onChange={(event) => setDontShowAgain(event.target.checked)}
-            />
-            Don’t show this confirmation again
-          </label>
-          <p className="text-xs text-muted-foreground">
-            Press <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5">Enter</kbd>{' '}
-            to send or <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5">Esc</kbd>{' '}
-            to cancel. Open this dialog with {sendShortcutLabel()}.
-          </p>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              ref={confirmationActionRef}
-              variant="default"
-              onClick={() => {
-                if (!pendingDraft) return;
-                const draft = pendingDraft;
-                if (dontShowAgain) {
-                  try {
-                    window.localStorage.setItem(skipSendConfirmationStorageKey, 'true');
-                  } catch {
-                    // Sending should still work if preferences cannot be persisted.
-                  }
-                }
-                setPendingDraft(null);
-                void deliver(draft);
-              }}
-            >
-              <Send className="size-4" />
-              Send reply
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={deleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this reply draft?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The draft will be permanently removed and this reply will close.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={busy} onClick={deleteReplyDraft}>
-              <Trash2 className="size-4" />
-              Delete draft
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={closeConfirmationOpen} onOpenChange={setCloseConfirmationOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Keep this reply draft?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Keep it in Drafts so you can continue later, or delete it permanently.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Continue editing</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={busy} onClick={deleteReplyDraft}>
-              <Trash2 className="size-4" />
-              Delete draft
-            </AlertDialogAction>
-            <AlertDialogAction variant="default" disabled={busy} onClick={keepReplyDraft}>
-              Keep draft
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

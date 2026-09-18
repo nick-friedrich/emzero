@@ -38,22 +38,25 @@ export function useDraftAutosave(
   const queue = useRef<Promise<void>>(Promise.resolve());
   const timer = useRef<number | null>(null);
   const generation = useRef(0);
+  const pendingSave = useRef<(() => void) | null>(null);
   const fingerprint = useMemo(() => JSON.stringify(draft), [draft]);
   const lastSavedFingerprint = useRef<string | null>(initialReference ? fingerprint : null);
 
   useEffect(() => {
     if (timer.current !== null) window.clearTimeout(timer.current);
+    pendingSave.current = null;
     if (!accountId || !enabled) return;
     if (lastSavedFingerprint.current === fingerprint) return;
     const saveGeneration = generation.current;
     const snapshot = JSON.parse(fingerprint) as MailSendDraft;
-    timer.current = window.setTimeout(() => {
+    const save = () => {
+      pendingSave.current = null;
       timer.current = null;
       setStatus({ state: 'saving' });
       queue.current = queue.current
         .catch(() => undefined)
         .then(async () => {
-          if (generation.current !== saveGeneration) return;
+          if (generation.current !== saveGeneration || lastSavedFingerprint.current === fingerprint) return;
           const previous =
             savedDraft.current?.accountId === accountId
               ? savedDraft.current.reference
@@ -69,15 +72,28 @@ export function useDraftAutosave(
           if (generation.current !== saveGeneration) return;
           setSavedDraftReference(result.draft);
           setStatus({ state: 'saved', message: result.message ?? 'Draft saved.' });
+        }).catch(() => {
+          if (generation.current === saveGeneration) {
+            setStatus({ state: 'error', message: 'Could not save draft.' });
+          }
         });
-    }, 1_200);
+    };
+    pendingSave.current = save;
+    timer.current = window.setTimeout(save, 1_200);
     return () => {
       if (timer.current !== null) window.clearTimeout(timer.current);
       timer.current = null;
     };
   }, [accountId, enabled, fingerprint]);
 
+  // Navigation can unmount an editor before the debounce expires. Flush the
+  // latest snapshot behind any in-flight save instead of dropping those edits.
+  useEffect(() => () => {
+    pendingSave.current?.();
+  }, []);
+
   const discardSavedDraft = useCallback(async () => {
+    pendingSave.current = null;
     generation.current += 1;
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
@@ -98,6 +114,7 @@ export function useDraftAutosave(
   }, []);
 
   const discardSavedDraftInBackground = useCallback((): BackgroundDraftDeletion => {
+    pendingSave.current = null;
     generation.current += 1;
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
@@ -145,6 +162,7 @@ export function useDraftAutosave(
   }, []);
 
   const handoffSavedDraft = useCallback(async () => {
+    pendingSave.current = null;
     let saveFailed = false;
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
@@ -175,7 +193,10 @@ export function useDraftAutosave(
           }
         });
     }
-    await queue.current.catch(() => undefined);
+    await queue.current.catch(() => {
+      saveFailed = true;
+      setStatus({ state: 'error', message: 'Could not save draft.' });
+    });
     return saveFailed ? undefined : savedDraft.current?.reference;
   }, [accountId, draft, enabled, fingerprint]);
 

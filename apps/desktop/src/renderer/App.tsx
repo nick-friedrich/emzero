@@ -635,7 +635,8 @@ export function App() {
         />
       ) : selection.kind === 'folder' ? (
         <MessageList
-          key={`${selection.account.id}:${selection.folder.path}:${syncRevision}`}
+          key={`${selection.account.id}:${selection.folder.path}`}
+          syncRevision={syncRevision}
           accounts={accounts}
           selection={selection}
           onStartBulkOperation={startBulkOperation}
@@ -659,7 +660,8 @@ export function App() {
         />
       ) : (
         <UnifiedInbox
-          key={`${selection.mailbox ?? 'inbox'}:${syncRevision}`}
+          key={selection.mailbox ?? 'inbox'}
+          syncRevision={syncRevision}
           accounts={accounts}
           mailbox={selection.mailbox ?? 'inbox'}
           onStartBulkOperation={startBulkOperation}

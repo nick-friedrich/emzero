@@ -132,3 +132,133 @@ test('navigates the desktop app and reads sample mail', async () => {
     await application.close();
   }
 });
+
+for (const mailbox of ['unified', 'folder'] as const) {
+  test(`preserves docked replies across sync and navigation in ${mailbox} inbox`, async () => {
+    const executablePath = packagedExecutable();
+    expect(executablePath).toBeDefined();
+    const launchEnv = { ...process.env };
+    delete launchEnv.ELECTRON_RUN_AS_NODE;
+    const application = await electron.launch({
+      executablePath,
+      args: [
+        `--user-data-dir=${test.info().outputPath('reply-profile')}`,
+        ...(process.platform === 'linux' ? ['--no-sandbox'] : []),
+      ],
+      env: { ...launchEnv, ELECTRON_DISABLE_SECURITY_WARNINGS: 'true' },
+    });
+    try {
+      // Replace mail IPC only in this isolated test process; no server is contacted.
+      await application.evaluate(({ ipcMain }) => {
+        const account = {
+          id: 'reply-test', name: 'Reply Test', email: 'me@example.test',
+          username: 'me@example.test', authentication: 'password', createdAt: '',
+          imap: { host: 'example.test', port: 993, secure: true },
+          smtp: { host: 'example.test', port: 465, secure: true },
+        };
+        const folders = [
+          { path: 'INBOX', name: 'Inbox', specialUse: '\\Inbox' },
+          { path: 'Drafts', name: 'Drafts', specialUse: '\\Drafts' },
+        ].map((folder) => ({
+          ...folder, parentPath: '', delimiter: '/', selectable: true, unreadCount: 0,
+        }));
+        const message = {
+          folderPath: 'INBOX', uid: 1, messageId: '<reply-test@example.test>',
+          inReplyTo: null, references: [], subject: 'Reply persistence test',
+          from: [{ name: 'Sender', address: 'sender@example.test' }],
+          to: [{ address: account.email }], sentAt: '2026-09-18T10:00:00Z',
+          receivedAt: '2026-09-18T10:00:00Z', unread: false, flagged: false,
+          important: false, dueDate: null, color: null, size: 100,
+        };
+        const state = {
+          saves: [] as { text: string; previous: unknown }[],
+          completed: 0, deleted: 0, lists: 0,
+        };
+        Object.assign(globalThis, { replyTestState: state });
+        const handlers: Record<string, Parameters<typeof ipcMain.handle>[1]> = {
+          'accounts:list': () => [account],
+          'folders:list': () => ({ ok: true, folders }),
+          'messages:list': (_event, _account, folder) => {
+            state.lists += 1;
+            return { ok: true, messages: folder === 'INBOX' ? [message] : [], total: 1 };
+          },
+          'messages:get': () => ({ ok: true, messageDetail: {
+            ...message, cc: [], replyTo: [], text: 'Please reply.', html: null,
+            htmlHasQuotedText: false, attachments: [],
+          } }),
+          'drafts:save': async (_event, _account, draft, previous) => {
+            state.saves.push({ text: draft.text, previous });
+            const uid = state.saves.length;
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            state.completed += 1;
+            return { ok: true, draft: { folderPath: 'Drafts', uid } };
+          },
+          'drafts:delete': () => { state.deleted += 1; return { ok: true }; },
+        };
+        for (const [channel, handler] of Object.entries(handlers)) {
+          ipcMain.removeHandler(channel);
+          ipcMain.handle(channel, handler);
+        }
+      });
+      const page = await application.firstWindow();
+      await page.reload();
+      await page.setViewportSize({ width: 1280, height: 800 });
+      if (mailbox === 'folder') {
+        await page.getByRole('button', { name: 'R Reply Test me@example.test', exact: true }).click();
+      }
+      const readState = () => application.evaluate(() =>
+        (globalThis as unknown as { replyTestState: {
+          saves: { text: string; previous?: { uid: number } }[];
+          completed: number; deleted: number; lists: number;
+        } }).replyTestState,
+      );
+      const openReply = async () => {
+        await page.getByRole('button', { name: /Sender.*Reply persistence test/ }).click();
+        await page.getByRole('button', { name: 'Reply', exact: true }).click();
+      };
+      await openReply();
+      const editor = page.getByRole('region', { name: 'Reply composer' }).getByRole('textbox', { name: 'Message', exact: true });
+      const composer = page.getByRole('region', { name: 'Reply composer' });
+      await expect(composer).toHaveCSS('position', 'fixed');
+      await expect(composer).toHaveCSS('right', '16px');
+      await expect(composer).toHaveCSS('bottom', '16px');
+      await editor.fill('First part');
+      const listsBeforeSync = (await readState()).lists;
+      await application.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0].webContents.send('sync:mailbox-changed', {});
+        BrowserWindow.getAllWindows()[0].webContents.send('sync:changed', {
+          state: 'idle', lastSyncedAt: null,
+        });
+      });
+      await expect.poll(async () => (await readState()).lists).toBeGreaterThan(listsBeforeSync);
+      await expect(editor).toHaveValue('First part');
+      await expect.poll(async () => (await readState()).saves.length).toBe(1);
+      // Leave with new text before the debounce, while the first save is in flight.
+      await editor.fill('First part\nThe complete final paragraph.');
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
+      await expect.poll(async () => (await readState()).completed).toBe(2);
+      const saved = (await readState()).saves;
+      expect(saved[1].text).toContain('First part\nThe complete final paragraph.');
+      expect(saved[1].previous?.uid).toBe(1);
+
+      await openReply();
+      await editor.fill('A reply written before the first autosave.');
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
+      await expect.poll(async () => (await readState()).completed).toBe(3);
+      expect((await readState()).saves[2].text).toContain(
+        'A reply written before the first autosave.',
+      );
+
+      await openReply();
+      await editor.fill('Discard this draft');
+      await page.getByRole('button', { name: 'Delete draft', exact: true }).click();
+      await page.getByRole('alertdialog').getByRole('button', { name: /Delete/ }).click();
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
+      // Give a wrongly retained debounce a chance to run after discard/unmount.
+      await page.waitForTimeout(1_400);
+      expect((await readState()).saves).toHaveLength(3);
+    } finally {
+      await application.close();
+    }
+  });
+}
