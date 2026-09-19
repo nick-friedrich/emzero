@@ -36,7 +36,7 @@ There is no Arch Linux package yet, and building yourself is also the way to run
 
 ## Development
 
-Requirements: Node.js 24 and pnpm 11.22.
+Requirements: Node.js and pnpm 11.22. pnpm runs the project's scripts with Node.js 24 whatever your system version is, downloading it if needed (`devEngines` in `package.json`); packaging fails silently on newer Node releases.
 
 ```sh
 corepack enable

@@ -6,7 +6,9 @@ case for the second, since Electron Forge has no pacman maker.
 
 ## Requirements
 
-- Node.js 24 (the version in [`.nvmrc`](../.nvmrc))
+- Node.js 24 (the version in [`.nvmrc`](../.nvmrc)); pnpm downloads and uses it
+  for project scripts when your system Node differs, because packaging stops
+  silently on newer releases
 - pnpm 11.22, most easily via `corepack enable`
 - On Linux, a keyring service such as `gnome-keyring` or `kwallet`
 
