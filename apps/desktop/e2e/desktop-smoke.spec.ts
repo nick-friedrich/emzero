@@ -55,7 +55,7 @@ test('navigates the desktop app and reads sample mail', async () => {
     await page.keyboard.press('Tab');
     await expect(appearance.getByRole('radio', { name: 'Inter', exact: true })).toBeFocused();
     await page.keyboard.press('ArrowDown');
-    await expect(page.locator('html')).toHaveAttribute('data-font', 'jetbrains-mono');
+    await expect(page.locator('html')).toHaveAttribute('data-font', 'system');
     await page.keyboard.press('Escape');
     await expect(appearance).toBeHidden();
     await page.keyboard.press(appearanceShortcut);
