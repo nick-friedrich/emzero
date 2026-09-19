@@ -7,6 +7,7 @@ vi.mock('electron', () => ({
 }));
 
 import { decryptBackup, encryptBackup, validAppSettingsBackup } from './account-backup.js';
+import { INTERFACE_FONT_VALUES, THEME_VALUES } from '../shared/appearance.js';
 
 const settings = {
   theme: 'dark',
@@ -53,5 +54,14 @@ describe('account backup app settings', () => {
     })).toBe(true);
     expect(validAppSettingsBackup({ ...settings, theme: 'unknown-theme' })).toBe(false);
     expect(validAppSettingsBackup({ ...settings, signatures: [{ body: 42 }] })).toBe(false);
+  });
+
+  it('restores every theme and interface font the app offers', () => {
+    for (const value of THEME_VALUES) {
+      expect(validAppSettingsBackup({ ...settings, theme: value }), value).toBe(true);
+    }
+    for (const value of INTERFACE_FONT_VALUES) {
+      expect(validAppSettingsBackup({ ...settings, interfaceFont: value }), value).toBe(true);
+    }
   });
 });

@@ -5,6 +5,9 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import type { InterfaceFont, Theme } from '../shared/appearance';
+
+export type { InterfaceFont, Theme };
 
 export const themes = [
   { value: 'light', label: 'Light' },
@@ -14,17 +17,21 @@ export const themes = [
   { value: 'nord', label: 'Nord' },
   { value: 'tokyo-night', label: 'Tokyo Night' },
   { value: 'solarized-dark', label: 'Solarized Dark' },
-] as const;
+  { value: 'gruvbox-dark', label: 'Gruvbox Dark' },
+  { value: 'rose-pine-dawn', label: 'Rosé Pine Dawn' },
+] as const satisfies readonly { value: Theme; label: string }[];
 
-export type Theme = (typeof themes)[number]['value'];
+// SF Pro may not be redistributed, so the system option uses the OS font:
+// SF Pro on macOS, Segoe UI on Windows, and the desktop font on Linux.
+const systemFontLabel =
+  typeof window !== 'undefined' && window.emzero?.platform === 'darwin' ? 'SF Pro' : 'System';
 
 export const interfaceFonts = [
   { value: 'inter', label: 'Inter' },
+  { value: 'system', label: systemFontLabel },
   { value: 'jetbrains-mono', label: 'JetBrains Mono' },
   { value: 'source-serif', label: 'Source Serif 4' },
-] as const;
-
-export type InterfaceFont = (typeof interfaceFonts)[number]['value'];
+] as const satisfies readonly { value: InterfaceFont; label: string }[];
 
 const themeStorageKey = 'emzero-theme';
 const fontStorageKey = 'emzero-interface-font';
@@ -217,6 +224,8 @@ export const messageThemeColors: Record<
   nord: { background: '#2e3440', foreground: '#d8dee9', primary: '#88c0d0' },
   'tokyo-night': { background: '#1a1b26', foreground: '#c0caf5', primary: '#7aa2f7' },
   'solarized-dark': { background: '#002b36', foreground: '#93a1a1', primary: '#2aa198' },
+  'gruvbox-dark': { background: '#282828', foreground: '#ebdbb2', primary: '#fabd2f' },
+  'rose-pine-dawn': { background: '#faf4ed', foreground: '#575279', primary: '#286983' },
 };
 
 export const themeColorSchemes: Record<Theme, 'light' | 'dark'> = {
@@ -227,4 +236,6 @@ export const themeColorSchemes: Record<Theme, 'light' | 'dark'> = {
   nord: 'dark',
   'tokyo-night': 'dark',
   'solarized-dark': 'dark',
+  'gruvbox-dark': 'dark',
+  'rose-pine-dawn': 'light',
 };

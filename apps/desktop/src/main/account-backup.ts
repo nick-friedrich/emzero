@@ -11,6 +11,7 @@ import { promisify } from 'node:util';
 import { dialog, safeStorage } from 'electron';
 import type { AccountBackupResult, AppSettingsBackup } from '../shared/accounts.js';
 import { validMailSignatures } from '../shared/signatures.js';
+import { INTERFACE_FONT_VALUES, THEME_VALUES } from '../shared/appearance.js';
 import { readAccounts, toAccountSummary, writeAccounts, type StoredAccount } from './account-storage.js';
 
 const scrypt = promisify(scryptCallback);
@@ -88,8 +89,8 @@ export async function decryptBackup(contents: string, password: string): Promise
 export function validAppSettingsBackup(value: unknown): value is AppSettingsBackup {
   if (!value || typeof value !== 'object') return false;
   const settings = value as Partial<AppSettingsBackup>;
-  return ['light', 'dark', 'catppuccin', 'catppuccin-latte', 'nord', 'tokyo-night', 'solarized-dark'].includes(settings.theme ?? '') &&
-    ['inter', 'jetbrains-mono', 'source-serif'].includes(settings.interfaceFont ?? '') &&
+  return (THEME_VALUES as readonly string[]).includes(settings.theme ?? '') &&
+    (INTERFACE_FONT_VALUES as readonly string[]).includes(settings.interfaceFont ?? '') &&
     typeof settings.alwaysLoadRemoteImages === 'boolean' &&
     typeof settings.markReadOnOpen === 'boolean' &&
     typeof settings.selectNextOnDelete === 'boolean' &&

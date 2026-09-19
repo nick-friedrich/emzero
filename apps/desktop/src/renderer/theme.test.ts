@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   applyInterfaceFont,
+  interfaceFonts,
   storedAlwaysLoadRemoteImages,
   storedInterfaceFont,
   themeColorSchemes,
   themes,
 } from './theme';
+import { INTERFACE_FONT_VALUES, THEME_VALUES } from '../shared/appearance';
 
 function stubBrowser(storedFont: string | null) {
   const dataset: Record<string, string> = {};
@@ -70,5 +72,12 @@ describe('Catppuccin themes', () => {
   it('uses the correct browser color schemes', () => {
     expect(themeColorSchemes.catppuccin).toBe('dark');
     expect(themeColorSchemes['catppuccin-latte']).toBe('light');
+  });
+});
+
+describe('appearance options', () => {
+  it('offers exactly the themes and fonts that backups accept', () => {
+    expect(themes.map(({ value }) => value)).toEqual([...THEME_VALUES]);
+    expect(interfaceFonts.map(({ value }) => value)).toEqual([...INTERFACE_FONT_VALUES]);
   });
 });

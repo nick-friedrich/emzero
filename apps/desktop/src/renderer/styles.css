@@ -45,6 +45,11 @@
   --account: oklch(0.9 0.06 250);
 }
 
+:root[data-font="system"] {
+  --font-interface: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI",
+    Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif;
+}
+
 :root[data-font="jetbrains-mono"] {
   --font-interface: "JetBrains Mono Variable", ui-monospace, SFMono-Regular,
     Consolas, "Liberation Mono", monospace;
@@ -173,6 +178,46 @@
   --success: #859900;
   --danger: #dc322f;
   --account: #0e4a58;
+}
+
+:root[data-theme="gruvbox-dark"] {
+  color-scheme: dark;
+  --background: #282828;
+  --foreground: #ebdbb2;
+  --card: #32302f;
+  --primary: #fabd2f;
+  --primary-foreground: #282828;
+  --secondary: #3c3836;
+  --secondary-foreground: #ebdbb2;
+  --muted-foreground: #a89984;
+  --accent: #45403d;
+  --accent-foreground: #fbf1c7;
+  --border: #504945;
+  --ring: #d79921;
+  --sidebar: #1d2021;
+  --success: #b8bb26;
+  --danger: #fb4934;
+  --account: #4a3f24;
+}
+
+:root[data-theme="rose-pine-dawn"] {
+  color-scheme: light;
+  --background: #faf4ed;
+  --foreground: #575279;
+  --card: #fffaf3;
+  --primary: #286983;
+  --primary-foreground: #faf4ed;
+  --secondary: #f2e9e1;
+  --secondary-foreground: #575279;
+  --muted-foreground: #797593;
+  --accent: #ebe2d9;
+  --accent-foreground: #464261;
+  --border: #dfdad9;
+  --ring: #56949f;
+  --sidebar: #f2e9e1;
+  --success: #3e7f6c;
+  --danger: #b4637a;
+  --account: #e4dcef;
 }
 
 * {

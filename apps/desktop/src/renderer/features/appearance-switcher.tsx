@@ -44,7 +44,7 @@ export function AppearanceSwitcher() {
         <DialogTitle>Quick appearance</DialogTitle>
         <DialogDescription>Changes apply instantly. Use arrow keys to switch and Tab to move between groups.</DialogDescription>
       </DialogHeader>
-      <fieldset className="space-y-1">
+      <fieldset className="grid grid-cols-2 gap-1">
         <legend className="mb-2 text-xs font-medium text-muted-foreground">Color theme</legend>
         {themes.map(({ value, label }) => <label key={value} className={cn('relative flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring', theme === value && 'bg-accent')}>
           <input ref={theme === value ? selectedTheme : undefined} className="sr-only" type="radio" name="quick-theme" value={value} checked={theme === value} onChange={() => setTheme(value)} />

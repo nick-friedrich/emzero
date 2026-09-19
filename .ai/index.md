@@ -68,6 +68,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/shared/accounts.ts` — IPC contracts, account/folder/message types, account color palette and default assignment, folder-tree operations, bulk-job types, and account validation.
 - `apps/desktop/src/shared/ai.ts` — AI provider/draft IPC contracts, defaults, and renderer-to-main input validation.
 - `apps/desktop/src/shared/mail-insights.ts` — every Jev question and threshold, tag derivation, smart-inbox templates, membership rules, settings validation, and IPC contract.
+- `apps/desktop/src/shared/appearance.ts` — theme and interface-font identifiers shared by the renderer theme provider and backup validation.
 - `apps/desktop/src/shared/signatures.ts` — signature IPC contract, size limits, and the validation shared by main-process storage, backups, and the renderer.
 - `apps/desktop/src/shared/conversations.ts` — conversation grouping and quoted-text splitting.
 - `apps/desktop/src/shared/replies.ts` — reply construction, address parsing, and outgoing-draft validation.
