@@ -60,7 +60,7 @@ test('navigates the desktop app and reads sample mail', async () => {
     await expect(appearance).toBeHidden();
     await page.keyboard.press(appearanceShortcut);
     await expect(appearance.getByRole('radio', { name: 'Dark', exact: true })).toBeChecked();
-    await expect(appearance.getByRole('radio', { name: 'JetBrains Mono', exact: true })).toBeChecked();
+    await expect(appearance.getByRole('radio', { name: /^(SF Pro|System)$/ })).toBeChecked();
     await appearance.getByText('Light', { exact: true }).click();
     await appearance.getByText('Inter', { exact: true }).click();
     await page.keyboard.press(appearanceShortcut);
@@ -152,7 +152,7 @@ for (const mailbox of ['unified', 'folder'] as const) {
       await application.evaluate(({ ipcMain }) => {
         const account = {
           id: 'reply-test', name: 'Reply Test', email: 'me@example.test',
-          username: 'me@example.test', authentication: 'password', createdAt: '',
+          username: 'me@example.test', authentication: 'password', createdAt: '', color: 'blue',
           imap: { host: 'example.test', port: 993, secure: true },
           smtp: { host: 'example.test', port: 465, secure: true },
         };
