@@ -23,6 +23,7 @@ const account: AccountSummary = {
   smtp: { host: 'smtp.example.com', port: 465, secure: true },
   authentication: 'password',
   createdAt: '2026-01-01T00:00:00.000Z',
+  color: 'blue',
 };
 
 const detail: MailMessageDetail = {

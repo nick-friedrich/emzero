@@ -43,6 +43,7 @@ import {
 import { tomorrowDateKey, type EmzeroMessageColor } from '../../shared/message-keywords';
 import { MailSplitLayout } from './mail-split-layout';
 import { ConversationReader } from './conversation-reader';
+import { accountColorDotClass } from './account-colors';
 import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableAction } from './undoable-delete';
 import { useTheme } from '@/theme';
@@ -552,6 +553,12 @@ export function MailSearch({
                       ? 'col-span-2 col-start-1 row-start-3 pl-3.5'
                       : 'col-span-2 pl-3.5 lg:col-span-1 lg:col-start-1 lg:pl-0',
                   )}>
+                    {account && (
+                      <span
+                        className={cn('mr-1.5 inline-block size-2 rounded-full align-middle', accountColorDotClass(account.color))}
+                        aria-hidden="true"
+                      />
+                    )}
                     {account?.name ?? 'Unknown account'} /{' '}
                     <span className={cn(
                       isSpamFolder && 'rounded-sm bg-yellow-400/40 px-1 py-0.5 text-foreground',

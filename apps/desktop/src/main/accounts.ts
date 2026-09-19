@@ -9,11 +9,13 @@ import {
 } from '../shared/ai.js';
 import {
   ACCOUNT_CHANNELS,
+  isAccountColor,
+  withAccountColors,
   MICROSOFT_CLIENT_ID,
   type AccountDraft,
   type AccountBackupResult,
   type AppSettingsBackup,
-  type AccountNameUpdate,
+  type AccountUpdate,
   type AccountOperationResult,
   type AccountReorderResult,
   type FolderCreateRequest,
@@ -115,6 +117,7 @@ async function saveConnectedAccount(
     smtp: { ...draft.smtp, host: draft.smtp.host.trim() },
     authentication,
     createdAt: new Date().toISOString(),
+    color: withAccountColors([...accounts, { createdAt: new Date().toISOString() }]).at(-1)!.color,
     encryptedSecret: (await safeStorage.encryptStringAsync(secret)).toString('base64'),
     ...(authentication === 'microsoft-oauth' ? { oauthClientId: MICROSOFT_CLIENT_ID } : {}),
   };
@@ -329,28 +332,34 @@ export function registerAccountHandlers(): void {
 
   ipcMain.handle(
     ACCOUNT_CHANNELS.update,
-    async (event, accountId: unknown, update: AccountNameUpdate) => {
+    async (event, accountId: unknown, update: AccountUpdate) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-      if (
-        typeof accountId !== 'string' ||
-        !update ||
-        typeof update !== 'object' ||
-        typeof update.name !== 'string' ||
-        !update.name.trim()
-      ) {
+      if (typeof accountId !== 'string' || !update || typeof update !== 'object') {
+        return { ok: false, message: 'Invalid account update.' } satisfies AccountOperationResult;
+      }
+      if (update.name !== undefined && (typeof update.name !== 'string' || !update.name.trim())) {
         return { ok: false, message: 'Enter a name for this account.' } satisfies AccountOperationResult;
+      }
+      if (update.color !== undefined && !isAccountColor(update.color)) {
+        return { ok: false, message: 'Choose a color from the palette.' } satisfies AccountOperationResult;
       }
       const accounts = await readAccounts();
       const index = accounts.findIndex((candidate) => candidate.id === accountId);
       if (index < 0) {
         return { ok: false, message: 'Account not found.' } satisfies AccountOperationResult;
       }
-      const account = { ...accounts[index], name: update.name.trim() };
+      const account = {
+        ...accounts[index],
+        ...(update.name !== undefined ? { name: update.name.trim() } : {}),
+        ...(update.color !== undefined ? { color: update.color } : {}),
+      };
       accounts[index] = account;
       await writeAccounts(accounts);
       return {
         ok: true,
-        message: 'Account name updated.',
+        message: update.color !== undefined && update.name === undefined
+          ? 'Account color updated.'
+          : 'Account name updated.',
         account: toAccountSummary(account),
       } satisfies AccountOperationResult;
     },

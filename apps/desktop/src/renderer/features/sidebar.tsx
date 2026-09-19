@@ -66,6 +66,7 @@ import {
 import emzeroLogoUrl from '../../../assets/emzero-logo-header.webp';
 import { Field } from './form-field';
 import { SmartInboxNav } from './smart-inboxes';
+import { accountColorDotClass } from './account-colors';
 import {
   FolderIcon,
   CountBadge,
@@ -701,7 +702,7 @@ export function Sidebar({
                     ) : (
                       <ChevronRight className="size-3.5 text-muted-foreground" />
                     )}
-                    <span className="grid size-6 shrink-0 place-items-center rounded-md bg-account text-xs font-semibold text-primary">
+                    <span className={cn('grid size-6 shrink-0 place-items-center rounded-md text-xs font-semibold text-white shadow-sm', accountColorDotClass(account.color))}>
                       {account.name.charAt(0).toUpperCase()}
                     </span>
                     <span className="min-w-0 flex-1 text-left">

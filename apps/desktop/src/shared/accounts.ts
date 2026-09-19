@@ -28,6 +28,52 @@ export interface AccountSummary {
   smtp: MailServerSettings;
   authentication: 'password' | 'microsoft-oauth';
   createdAt: string;
+  /** Identifies the account in mixed-account views such as the unified inbox. */
+  color: AccountColor;
+}
+
+export const ACCOUNT_COLORS = [
+  'blue',
+  'violet',
+  'pink',
+  'orange',
+  'emerald',
+  'amber',
+  'sky',
+  'rose',
+  'teal',
+  'indigo',
+] as const;
+
+export type AccountColor = (typeof ACCOUNT_COLORS)[number];
+
+export function isAccountColor(value: unknown): value is AccountColor {
+  return typeof value === 'string' && (ACCOUNT_COLORS as readonly string[]).includes(value);
+}
+
+/**
+ * Gives every account without a valid color the first palette color not yet
+ * in use, oldest account first, so defaults stay distinct and stable.
+ */
+export function withAccountColors<T extends { createdAt: string; color?: unknown }>(
+  accounts: T[],
+): (T & { color: AccountColor })[] {
+  const used = new Set(accounts.map(({ color }) => color).filter(isAccountColor));
+  const assigned = new Map<T, AccountColor>();
+  const uncolored = accounts
+    .filter(({ color }) => !isAccountColor(color))
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  uncolored.forEach((account, index) => {
+    const color =
+      ACCOUNT_COLORS.find((candidate) => !used.has(candidate)) ??
+      ACCOUNT_COLORS[(accounts.length + index) % ACCOUNT_COLORS.length];
+    used.add(color);
+    assigned.set(account, color);
+  });
+  return accounts.map((account) => ({
+    ...account,
+    color: isAccountColor(account.color) ? account.color : assigned.get(account)!,
+  }));
 }
 
 export interface MailFolderSummary {
@@ -494,8 +540,9 @@ export interface AccountBackupResult {
   appSettings?: AppSettingsBackup;
 }
 
-export interface AccountNameUpdate {
-  name: string;
+export interface AccountUpdate {
+  name?: string;
+  color?: AccountColor;
 }
 
 export interface MicrosoftAuthStartResult {

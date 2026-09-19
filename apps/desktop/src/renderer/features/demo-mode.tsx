@@ -15,14 +15,14 @@ export const demoAccounts: AccountSummary[] = [
     username: 'hello@northstar.studio', authentication: 'password',
     imap: { host: 'mail.example.com', port: 993, secure: true },
     smtp: { host: 'mail.example.com', port: 465, secure: true },
-    createdAt: '2026-01-10T09:00:00.000Z',
+    createdAt: '2026-01-10T09:00:00.000Z', color: 'blue',
   },
   {
     id: 'demo-personal', name: 'Personal', email: 'alex@example.com',
     username: 'alex@example.com', authentication: 'password',
     imap: { host: 'mail.example.com', port: 993, secure: true },
     smtp: { host: 'mail.example.com', port: 465, secure: true },
-    createdAt: '2026-01-11T09:00:00.000Z',
+    createdAt: '2026-01-11T09:00:00.000Z', color: 'orange',
   },
 ];
 

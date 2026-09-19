@@ -19,7 +19,7 @@ import {
   type AccountBackupSelectionResult,
   type AccountOperationResult,
   type AccountReorderResult,
-  type AccountNameUpdate,
+  type AccountUpdate,
   type AccountSummary,
   type BulkMessageJobProgress,
   type BulkMessageJobRequest,
@@ -90,7 +90,7 @@ export interface EmzeroDesktopApi {
     ) => Promise<AccountOperationResult>;
     cancelMicrosoftAuth: (sessionId: string) => Promise<boolean>;
     openGmailAppPasswordHelp: () => Promise<void>;
-    update: (accountId: string, update: AccountNameUpdate) => Promise<AccountOperationResult>;
+    update: (accountId: string, update: AccountUpdate) => Promise<AccountOperationResult>;
     reorder: (accountIds: string[]) => Promise<AccountReorderResult>;
     remove: (accountId: string) => Promise<AccountOperationResult>;
     exportBackup: (request: AccountBackupExportRequest) => Promise<AccountBackupResult>;

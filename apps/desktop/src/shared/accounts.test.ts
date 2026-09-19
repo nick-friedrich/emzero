@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   accountUnreadCount,
+  ACCOUNT_COLORS,
+  withAccountColors,
   chunkMessageUids,
   defaultAccountName,
   displayFolderName,
@@ -264,5 +266,31 @@ describe('chunkMessageUids', () => {
 
   it('rejects invalid chunk sizes', () => {
     expect(() => chunkMessageUids([1], 0)).toThrow(RangeError);
+  });
+});
+
+describe('account colors', () => {
+  it('keeps chosen colors and gives the rest distinct defaults, oldest first', () => {
+    const accounts = withAccountColors([
+      { id: 'new', createdAt: '2026-03-01T00:00:00.000Z' },
+      { id: 'chosen', createdAt: '2026-02-01T00:00:00.000Z', color: 'blue' },
+      { id: 'old', createdAt: '2026-01-01T00:00:00.000Z', color: 'not-a-color' },
+    ]);
+    expect(accounts.map(({ id, color }) => [id, color])).toEqual([
+      ['new', 'pink'],
+      ['chosen', 'blue'],
+      ['old', 'violet'],
+    ]);
+  });
+
+  it('reuses palette colors once every color is taken', () => {
+    const accounts = withAccountColors(
+      Array.from({ length: ACCOUNT_COLORS.length + 2 }, (_, index) => ({
+        createdAt: `2026-01-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`,
+      })),
+    );
+    expect(new Set(accounts.slice(0, ACCOUNT_COLORS.length).map(({ color }) => color)).size)
+      .toBe(ACCOUNT_COLORS.length);
+    expect(accounts.every(({ color }) => ACCOUNT_COLORS.includes(color))).toBe(true);
   });
 });

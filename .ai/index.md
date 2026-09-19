@@ -65,7 +65,7 @@ This index records where application responsibilities live. Read it before makin
 
 ## Shared contracts and domain logic
 
-- `apps/desktop/src/shared/accounts.ts` — IPC contracts, account/folder/message types, folder-tree operations, bulk-job types, and account validation.
+- `apps/desktop/src/shared/accounts.ts` — IPC contracts, account/folder/message types, account color palette and default assignment, folder-tree operations, bulk-job types, and account validation.
 - `apps/desktop/src/shared/ai.ts` — AI provider/draft IPC contracts, defaults, and renderer-to-main input validation.
 - `apps/desktop/src/shared/mail-insights.ts` — every Jev question and threshold, tag derivation, smart-inbox templates, membership rules, settings validation, and IPC contract.
 - `apps/desktop/src/shared/signatures.ts` — signature IPC contract, size limits, and the validation shared by main-process storage, backups, and the renderer.
@@ -90,7 +90,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/sidebar.tsx` — desktop/mobile navigation with a fixed brand header and action footer, scrollable mailbox/account navigation, drag-to-reorder accounts, folder CRUD, drag-and-drop folder moves, and sync status.
 - `features/demo-mode.tsx` — persistent, privacy-safe show-off dataset injected into the existing mailbox and conversation UI for screenshots.
 - `features/account-setup.tsx` — provider detection, password/app-password setup, and personal Microsoft device-code connection flow.
-- `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior, accounts, signatures, and encrypted backup/restore.
+- `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior, account names/colors, signatures, and encrypted backup/restore.
 - `features/appearance-switcher.tsx` — global keyboard shortcut and accessible quick theme/font picker, shared by all renderer windows; owns the settings shortcut label.
 - `features/signatures.ts` — main-process-backed signature cache and cross-window refresh, the one-time migration off origin-scoped browser storage, account-to-signature assignments, and delimiter-aware outgoing-message formatting.
 - `features/signature-picker.tsx` — compose-time signature selection shared by new-message and reply composers.
@@ -100,6 +100,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/mail-search.tsx` — search form/results and selected-result reader.
 - `features/message-list.tsx` — one account-folder conversation list, selection, and folder-scoped actions.
 - `features/unified-inbox.tsx` — multi-account Inbox, Starred, Trash, and smart-inbox aggregation (including hiding skip-Inbox matches), selection, and actions.
+- `features/account-colors.tsx` — account color palette classes, the hover-labelled account dot shown on unified-inbox avatars, and the settings color picker.
 - `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: action controls, selection toolbar, replied-last detection and badge, and mail-view types/helpers.
 - `features/inbox-view-options.tsx` — persisted icon filters and Starred/Unread inbox grouping shared by account and unified inboxes.
 - `features/mail-split-layout.tsx` — persisted, pointer- and keyboard-resizable list/reader layout shared by three-column mail views.

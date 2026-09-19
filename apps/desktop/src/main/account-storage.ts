@@ -1,7 +1,7 @@
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { app } from 'electron';
-import type { AccountSummary } from '../shared/accounts.js';
+import { withAccountColors, type AccountSummary } from '../shared/accounts.js';
 
 export interface StoredAccount extends AccountSummary {
   encryptedSecret: string;
@@ -14,7 +14,7 @@ export async function readAccounts(): Promise<StoredAccount[]> {
   try {
     const value: unknown = JSON.parse(await readFile(accountsPath(), 'utf8'));
     if (!Array.isArray(value)) return [];
-    return value.map((entry) => {
+    return withAccountColors(value.map((entry) => {
       const account = entry as StoredAccount & { encryptedPassword?: string };
       return {
         id: account.id,
@@ -26,10 +26,11 @@ export async function readAccounts(): Promise<StoredAccount[]> {
         authentication:
           account.authentication === 'microsoft-oauth' ? 'microsoft-oauth' : 'password',
         createdAt: account.createdAt,
+        color: account.color,
         encryptedSecret: account.encryptedSecret ?? account.encryptedPassword ?? '',
         ...(account.oauthClientId ? { oauthClientId: account.oauthClientId } : {}),
       };
-    });
+    }));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
@@ -53,5 +54,6 @@ export function toAccountSummary(account: StoredAccount): AccountSummary {
     smtp: account.smtp,
     authentication: account.authentication,
     createdAt: account.createdAt,
+    color: account.color,
   };
 }

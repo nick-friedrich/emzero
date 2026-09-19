@@ -82,6 +82,7 @@ import {
   InboxViewOptions,
   useInboxViewOptions,
 } from './inbox-view-options';
+import { AccountColorDot } from './account-colors';
 import { tomorrowDateKey, type EmzeroMessageColor } from '../../shared/message-keywords';
 import { smartInboxContains, skipsUnifiedInbox } from '../../shared/mail-insights';
 import {
@@ -1348,6 +1349,10 @@ export function UnifiedInbox({
                         : 'opacity-100 group-hover:opacity-0 group-focus-within:opacity-0',
                     )}
                   />
+                  <AccountColorDot
+                    account={selection.account}
+                    className="absolute -bottom-0.5 -right-0.5 z-10"
+                  />
                   <SelectionCheckbox
                     checked={selectedItemKeys.has(itemKey(item))}
                     className={cn(
@@ -1461,9 +1466,6 @@ export function UnifiedInbox({
                     ? 'col-span-2 col-start-1 row-start-2 pl-3.5'
                     : 'col-span-2 col-start-1 row-start-2 pl-3.5 lg:col-auto lg:row-auto lg:pl-0',
                 )}>
-                  <span className="shrink-0 rounded bg-account px-1.5 py-0.5 text-[0.65rem] font-medium text-primary">
-                    {selection.account.name}
-                  </span>
                   <p className={`truncate text-sm ${unread ? 'font-semibold' : ''}`}>
                     {hasDraft && (
                       <span className="mr-2 font-medium text-danger">Draft</span>
