@@ -24,6 +24,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Palette,
+  Reply,
 } from 'lucide-react';
 import {
   Button,
@@ -312,6 +313,43 @@ export function conversationOpponent(
     message.from.length > 0 ? message.from : message.to,
   );
   return addressLabel(fallback);
+}
+
+/**
+ * True when the newest non-draft message in the conversation was sent by the
+ * account and answers someone else, so the user is waiting on the other side.
+ * A newer incoming reply becomes the latest message and clears this state.
+ */
+export function conversationRepliedByMe(
+  messages: MailMessageSummary[],
+  account: AccountSummary,
+  draftFolderPaths: ReadonlySet<string>,
+): boolean {
+  const ownAddresses = new Set(
+    [account.email, account.username]
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const isOwn = (message: MailMessageSummary) =>
+    message.from.some(({ address }) => Boolean(address && ownAddresses.has(address.trim().toLowerCase())));
+  const sent = messages.filter((message) => !draftFolderPaths.has(message.folderPath));
+  const latest = sent[0];
+  return Boolean(latest && isOwn(latest) && sent.some((message) => !isOwn(message)));
+}
+
+export function RepliedBadge({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5 align-middle text-[0.65rem] font-medium text-secondary-foreground',
+        className,
+      )}
+      title="You replied last"
+    >
+      <Reply className="size-3" aria-hidden="true" />
+      Replied
+    </span>
+  );
 }
 
 export function fileSize(bytes: number): string {

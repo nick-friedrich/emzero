@@ -100,12 +100,12 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/mail-search.tsx` — search form/results and selected-result reader.
 - `features/message-list.tsx` — one account-folder conversation list, selection, and folder-scoped actions.
 - `features/unified-inbox.tsx` — multi-account Inbox, Starred, Trash, and smart-inbox aggregation (including hiding skip-Inbox matches), selection, and actions.
-- `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: action controls, selection toolbar, and mail-view types/helpers.
+- `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: action controls, selection toolbar, replied-last detection and badge, and mail-view types/helpers.
 - `features/inbox-view-options.tsx` — persisted icon filters and Starred/Unread inbox grouping shared by account and unified inboxes.
 - `features/mail-split-layout.tsx` — persisted, pointer- and keyboard-resizable list/reader layout shared by three-column mail views.
 - `features/reader-selection.ts` — decides which conversation the reader keeps after a delete or move, so unopened rows are never opened (and auto-marked read) behind the user.
 - `features/reader-selection.test.ts` — renderer tests for post-delete reader selection.
-- `features/mail-common.test.ts` — renderer tests for isolated HTML-email document generation and remote-image privacy controls.
+- `features/mail-common.test.ts` — renderer tests for isolated HTML-email document generation, remote-image privacy controls, and replied-conversation detection.
 - `features/message-move.tsx` — account-and-folder destination picker for single and bulk message moves.
 - `features/conversation-reader.tsx` — conversation reader, message body/thread cards, received-attachment saving, quoted-content display, and reply entry points.
 - `features/reply-composer.tsx` — replies in the shared bottom-right composer, preserving reply headers and loading conversation context for AI drafting.

@@ -42,11 +42,13 @@ import {
   ConversationActions,
   SelectionCheckbox,
   conversationOpponent,
+  conversationRepliedByMe,
   conversationWithMessage,
   conversationWithFlaggedValues,
   conversationWithImportanceValues,
   conversationWithUnreadValues,
   dueDateLabel,
+  RepliedBadge,
   dueDateRowClass,
   messageColorBackgroundClass,
   isEditableTarget,
@@ -1304,6 +1306,7 @@ export function UnifiedInbox({
                 .map((folder) => folder.path),
             );
             const hasDraft = conversation.messages.some((message) => draftFolderPaths.has(message.folderPath));
+            const replied = conversationRepliedByMe(conversation.messages, selection.account, draftFolderPaths);
             const importantMessage = conversation.messages.find(
               (message) => message.folderPath === selection.folder.path && message.important,
             );
@@ -1465,6 +1468,7 @@ export function UnifiedInbox({
                     {hasDraft && (
                       <span className="mr-2 font-medium text-danger">Draft</span>
                     )}
+                    {replied && <RepliedBadge className="mr-2" />}
                     {conversation.subject}
                     {conversation.messages.length > 1 && (
                       <span className="ml-2 font-normal text-muted-foreground">

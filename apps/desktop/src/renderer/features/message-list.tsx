@@ -40,10 +40,12 @@ import {
   ConversationActions,
   SelectionCheckbox,
   conversationOpponent,
+  conversationRepliedByMe,
   conversationWithMessage,
   conversationWithFlaggedValues,
   conversationWithImportanceValues,
   dueDateLabel,
+  RepliedBadge,
   dueDateRowClass,
   messageColorBackgroundClass,
   conversationWithUnreadValues,
@@ -1019,6 +1021,7 @@ export function MessageList({
             );
             const flagged = conversation.messages.some((message) => message.flagged);
             const hasDraft = conversation.messages.some((message) => draftFolderPaths.has(message.folderPath));
+            const replied = conversationRepliedByMe(conversation.messages, selection.account, draftFolderPaths);
             const importantMessage = conversation.messages.find(
               (message) => message.folderPath === selection.folder.path && message.important,
             );
@@ -1173,6 +1176,7 @@ export function MessageList({
                     {hasDraft && (
                       <span className="mr-2 font-medium text-danger">Draft</span>
                     )}
+                    {replied && <RepliedBadge className="mr-2" />}
                     {conversation.subject}
                     {conversation.messages.length > 1 && (
                       <span className="ml-2 font-normal text-muted-foreground">
