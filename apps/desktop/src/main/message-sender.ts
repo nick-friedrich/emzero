@@ -1,5 +1,6 @@
 import { ImapFlow } from 'imapflow';
 import nodemailer from 'nodemailer';
+import { simpleParser } from 'mailparser';
 import type {
   MailMessageSummary,
   MailSendDraft,
@@ -8,6 +9,8 @@ import type {
 import { validateReplyDraft, validateSendDraft } from '../shared/replies.js';
 import type { StoredAccount } from './account-storage.js';
 import { releaseOutgoingAttachments, resolveOutgoingAttachments } from './attachment-files.js';
+import { outgoingHtml } from './outgoing-html.js';
+import { hasQuotedHtml, sanitizedMessageHtml } from './message-html.js';
 import {
   closeImap,
   createImapClient,
@@ -38,6 +41,8 @@ export async function sendMessage(
       bcc: draft.bcc.map(({ name, address }) => ({ name: name ?? '', address: address! })),
       subject: draft.subject.trim(),
       text: draft.text.trim(),
+      html: outgoingHtml(draft.html),
+      attachDataUrls: true,
       date: sentAt,
       inReplyTo: draft.inReplyTo ?? undefined,
       references: draft.references,
@@ -135,6 +140,7 @@ export async function sendMessage(
         sentMessage &&
         mailCache().listFolders(account.id).some((folder) => folder.path === sentFolder.path)
       ) {
+        const parsedSent = await simpleParser(compiled.message);
         const cached = mailCache().listMessages(account.id, sentFolder.path);
         const alreadyCached = cached.messages.some((message) => message.uid === sentMessage.uid);
         mailCache().replaceRecentMessages(
@@ -153,13 +159,13 @@ export async function sendMessage(
           replyTo: [],
           sentAt: sentMessage.sentAt,
           text: draft.text.trim(),
-          html: null,
-          htmlHasQuotedText: false,
-          attachments: draft.attachments.map((attachment) => ({
-            filename: attachment.filename,
-            contentType: 'application/octet-stream',
+          html: sanitizedMessageHtml(parsedSent.html),
+          htmlHasQuotedText: hasQuotedHtml(parsedSent.html),
+          attachments: parsedSent.attachments.map((attachment) => ({
+            filename: attachment.filename || 'Unnamed attachment',
+            contentType: attachment.contentType,
             size: attachment.size,
-            related: false,
+            related: attachment.related,
           })),
         });
       }

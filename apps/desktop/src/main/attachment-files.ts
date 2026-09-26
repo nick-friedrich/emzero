@@ -12,6 +12,7 @@ import type {
 } from '../shared/accounts.js';
 import type { StoredAccount } from './account-storage.js';
 import { closeImap, createImapClient, errorMessage, resolveMailSecret } from './mail-runtime.js';
+import { outgoingHtml } from './outgoing-html.js';
 
 interface SelectedAttachment extends MailOutgoingAttachment {
   path?: string;
@@ -113,6 +114,12 @@ export async function prepareDraftAttachments(
     if (!fetched || !fetched.source) throw new Error('This draft is no longer available.');
     const parsed = await simpleParser(fetched.source);
     const sourceAttachments = parsed.attachments.filter((attachment) => !attachment.related);
+    const inlineImages = new Map(parsed.attachments
+      .filter((attachment) => attachment.related && attachment.cid && /^image\/(?:png|jpeg|gif|webp)$/i.test(attachment.contentType) && attachment.size <= 5 * 1024 * 1024)
+      .map((attachment) => [attachment.cid!, `data:${attachment.contentType};base64,${attachment.content.toString('base64')}`]));
+    const restoredHtml = typeof parsed.html === 'string'
+      ? parsed.html.replace(/cid:([^"'\s>]+)/gi, (original, cid: string) => inlineImages.get(cid) ?? original)
+      : undefined;
     if (sourceAttachments.length > maximumAttachmentCount) throw new Error('This draft has too many attachments.');
     if (sourceAttachments.some((attachment) => attachment.size > maximumAttachmentSize)) {
       throw new Error('This draft contains an attachment larger than 25 MB.');
@@ -135,6 +142,7 @@ export async function prepareDraftAttachments(
     return {
       ok: true,
       attachments: attachments.map(({ id, filename, size }) => ({ id, filename, size })),
+      html: restoredHtml ? outgoingHtml(restoredHtml) : undefined,
     };
   } catch (error) {
     return {

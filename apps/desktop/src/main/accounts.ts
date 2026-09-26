@@ -150,6 +150,7 @@ function validSendDraft(value: unknown): value is MailSendDraft {
     validAddresses(draft.bcc) &&
     typeof draft.subject === 'string' &&
     typeof draft.text === 'string' &&
+    (draft.html === undefined || (typeof draft.html === 'string' && draft.html.length <= 30 * 1024 * 1024)) &&
     (draft.inReplyTo === null || typeof draft.inReplyTo === 'string') &&
     Array.isArray(draft.references) &&
     draft.references.every((reference) => typeof reference === 'string') &&

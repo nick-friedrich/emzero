@@ -8,6 +8,7 @@ import type {
 } from '../shared/accounts.js';
 import type { StoredAccount } from './account-storage.js';
 import { resolveOutgoingAttachments } from './attachment-files.js';
+import { outgoingHtml } from './outgoing-html.js';
 import { closeImap, createImapClient, errorMessage, mailCache, resolveMailSecret } from './mail-runtime.js';
 
 export function findDraftsFolder(
@@ -37,6 +38,8 @@ export async function saveMailDraft(
       bcc: draft.bcc.map(({ name, address }) => ({ name: name ?? '', address: address! })),
       subject: draft.subject.trim(),
       text: draft.text,
+      html: outgoingHtml(draft.html),
+      attachDataUrls: true,
       inReplyTo: draft.inReplyTo ?? undefined,
       references: draft.references,
       attachments,

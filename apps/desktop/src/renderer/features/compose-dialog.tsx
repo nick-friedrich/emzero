@@ -51,6 +51,7 @@ import { AttachmentPicker } from './attachment-picker';
 import { AiDraftAssistant } from './ai-draft-assistant';
 import { useDraftAutosave } from './draft-autosave';
 import { SignaturePicker } from './signature-picker';
+import { RichTextEditor, htmlFromText } from './rich-text-editor';
 import { formatSignature, replaceSignature, signatureBody, signatureBodyForId, signatureIdForAccount, signatureSuffix } from './signatures';
 
 export interface DraftSavedEvent {
@@ -251,6 +252,11 @@ export function ComposeDialog({
       accounts.some((account) => account.id === defaultAccountId) ? defaultAccountId! : (accounts[0]?.id ?? ''),
     );
   });
+  const [bodyHtml, setBodyHtml] = useState(() => initialDraft?.html ?? htmlFromText(initialDraft?.text || (
+    composerKind === 'draft' ? '' : signatureBody(
+      accounts.some((account) => account.id === defaultAccountId) ? defaultAccountId! : (accounts[0]?.id ?? ''),
+    )
+  )));
   const [signatureId, setSignatureId] = useState(() => {
     const initialAccountId = accounts.some((account) => account.id === defaultAccountId)
       ? defaultAccountId!
@@ -284,12 +290,13 @@ export function ComposeDialog({
     bcc: parseAddressList(bcc),
     subject,
     text: body,
+    html: bodyHtml,
     inReplyTo: initialDraft?.inReplyTo ?? null,
     references: initialDraft?.references ?? [],
     attachments,
   };
   const hasDraftContent = Boolean(
-    to.trim() || cc.trim() || bcc.trim() || subject.trim() || body.trim() || attachments.length,
+    to.trim() || cc.trim() || bcc.trim() || subject.trim() || body.trim() || /<img\b/i.test(bodyHtml) || attachments.length,
   );
   const {
     status: draftStatus,
@@ -309,6 +316,23 @@ export function ComposeDialog({
     ? body.slice(0, -currentSignature.length)
     : body;
   const preservedSignature = currentSignature || formatSignature(signatureBodyForId(signatureId));
+
+  const replaceBody = (text: string) => {
+    setBody(text);
+    setBodyHtml(htmlFromText(text));
+  };
+
+  const changeSignature = (nextSignatureId: string) => {
+    const oldSuffix = signatureSuffix(body, signatureId);
+    const nextSuffix = formatSignature(signatureBodyForId(nextSignatureId));
+    const oldMarkup = htmlFromText(oldSuffix);
+    const nextText = replaceSignature(body, signatureId, nextSignatureId);
+    setBody(nextText);
+    setBodyHtml(oldSuffix && bodyHtml.endsWith(oldMarkup)
+      ? `${bodyHtml.slice(0, -oldMarkup.length)}${htmlFromText(nextSuffix)}`
+      : oldSuffix ? htmlFromText(nextText) : `${bodyHtml}${htmlFromText(nextSuffix)}`);
+    setSignatureId(nextSignatureId);
+  };
 
   useEffect(() => {
     if (variant !== 'window') return;
@@ -344,7 +368,7 @@ export function ComposeDialog({
     setCc('');
     setBcc('');
     setSubject('');
-    setBody('');
+    replaceBody('');
     setAttachments([]);
     setExpanded(variant === 'window');
   };
@@ -551,8 +575,7 @@ export function ComposeDialog({
                 onChange={(event) => {
                   const nextAccountId = event.target.value;
                   const nextSignatureId = signatureIdForAccount(nextAccountId);
-                  setBody((current) => replaceSignature(current, signatureId, nextSignatureId));
-                  setSignatureId(nextSignatureId);
+                  changeSignature(nextSignatureId);
                   setAccountId(nextAccountId);
                   setStatus(null);
                 }}
@@ -614,15 +637,16 @@ export function ComposeDialog({
             />
           </Field>
           <Field label="Message">
-            <textarea
-              className="field min-h-52 resize-y leading-6"
+            <RichTextEditor
+              html={bodyHtml}
               autoFocus={composerKind === 'reply'}
-              value={body}
               disabled={busy || aiBusy}
-              onChange={(event) => {
-                setBody(event.target.value);
+              onChange={(html, text) => {
+                setBodyHtml(html);
+                setBody(text);
                 setStatus(null);
               }}
+              onError={(message) => setStatus({ kind: 'error', message })}
             />
           </Field>
           <AiDraftAssistant
@@ -637,7 +661,7 @@ export function ComposeDialog({
               : "Your recipients, subject, existing draft, and instruction will be sent to your configured AI provider."}
             onGenerate={generateAiDraft}
             onApply={(draft) => {
-              setBody(`${draft}${preservedSignature}`);
+              replaceBody(`${draft}${preservedSignature}`);
               setStatus(null);
             }}
             onBusyChange={setAiBusy}
@@ -646,8 +670,7 @@ export function ComposeDialog({
             value={signatureId}
             disabled={busy || aiBusy}
             onChange={(nextSignatureId) => {
-              setBody((current) => replaceSignature(current, signatureId, nextSignatureId));
-              setSignatureId(nextSignatureId);
+              changeSignature(nextSignatureId);
               setStatus(null);
             }}
           />

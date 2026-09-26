@@ -405,6 +405,7 @@ export interface AttachmentSelectionResult {
   ok: boolean;
   attachments: MailOutgoingAttachment[];
   message?: string;
+  html?: string;
 }
 
 export interface AttachmentSaveResult extends MessageOperationResult {
@@ -445,6 +446,7 @@ export interface MailSendDraft {
   bcc: MailAddressSummary[];
   subject: string;
   text: string;
+  html?: string;
   inReplyTo: string | null;
   references: string[];
   attachments: MailOutgoingAttachment[];

@@ -57,6 +57,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/bulk-message-jobs.ts` — bulk-action request validation, execution, cancellation, and progress publication.
 - `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache, search, and AI insight/smart-inbox score storage joined onto listed messages.
 - `apps/desktop/src/main/message-html.ts` — sanitization and quoted-content detection for message HTML.
+- `apps/desktop/src/main/outgoing-html.ts` — safe outgoing rich-text HTML and pasted-image size validation before MIME compilation.
 - `apps/desktop/src/main/mail-windows.ts` — validated creation of standalone message, composer, and single-instance settings windows.
 - `apps/desktop/src/main/provider-discovery.ts` — provider catalog lookup and domain/MX discovery.
 - `apps/desktop/src/main/folder-subscriptions.ts` — IMAP folder subscription and deletion helpers.
@@ -96,6 +97,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/signatures.ts` — main-process-backed signature cache and cross-window refresh, the one-time migration off origin-scoped browser storage, account-to-signature assignments, and delimiter-aware outgoing-message formatting.
 - `features/signature-picker.tsx` — compose-time signature selection shared by new-message and reply composers.
 - `features/compose-dialog.tsx` — reusable docked, full-area, inline-draft, and standalone composer with recipient suggestions, attachments, validation, confirmation, and sending.
+- `features/rich-text-editor.tsx` — composer formatting controls and clipboard image insertion, with a plain-text copy for AI drafting and multipart email.
 - `features/ai-draft-assistant.tsx` — reusable configured-provider prompt panel for AI drafting in reply, new-message, and saved-draft composers.
 - `features/smart-inboxes.tsx` — smart-inbox sidebar section and create/edit dialog, AI tag chips, the remove-sender row action, the settings toggle, and the shared settings hook.
 - `features/mail-search.tsx` — search form/results and selected-result reader.
@@ -110,6 +112,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/mail-common.test.ts` — renderer tests for isolated HTML-email document generation, remote-image privacy controls, and replied-conversation detection.
 - `features/message-move.tsx` — account-and-folder destination picker for single and bulk message moves.
 - `features/conversation-reader.tsx` — conversation reader, message body/thread cards, received-attachment saving, quoted-content display, and reply entry points.
+- `features/conversation-copy.ts` — plain-text formatting for copying every message in a conversation to the clipboard.
 - `features/reply-composer.tsx` — replies in the shared bottom-right composer, preserving reply headers and loading conversation context for AI drafting.
 - `features/message-prefetch.ts` — bounded idle, hover, and keyboard-focus message-body prefetching shared by folder, unified, and search lists.
 - `features/attachment-picker.tsx` — reusable outgoing-attachment selection and removal UI for compose and reply.

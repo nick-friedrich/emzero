@@ -90,7 +90,7 @@ export function validateSendDraft(draft: MailSendDraft): string | null {
     }
   }
   if (!draft.subject.trim() || /[\r\n]/.test(draft.subject)) return 'Enter a valid subject.';
-  if (!draft.text.trim()) return 'Write a message before sending.';
+  if (!draft.text.trim() && !/<img\b/i.test(draft.html ?? '')) return 'Write a message before sending.';
   if (draft.inReplyTo && /[\r\n]/.test(draft.inReplyTo)) return 'The message headers are invalid.';
   if (draft.references.some((reference) => /[\r\n]/.test(reference))) {
     return 'The message headers are invalid.';

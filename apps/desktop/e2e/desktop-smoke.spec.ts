@@ -231,7 +231,7 @@ for (const mailbox of ['unified', 'folder'] as const) {
         });
       });
       await expect.poll(async () => (await readState()).lists).toBeGreaterThan(listsBeforeSync);
-      await expect(editor).toHaveValue('First part');
+      await expect(editor).toHaveText('First part');
       await expect.poll(async () => (await readState()).saves.length).toBe(1);
       // Leave with new text before the debounce, while the first save is in flight.
       await editor.fill('First part\nThe complete final paragraph.');

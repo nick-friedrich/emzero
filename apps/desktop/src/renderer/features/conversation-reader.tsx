@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronRight,
+  Copy,
   Download,
   ExternalLink,
   FolderOpen,
@@ -68,6 +69,7 @@ import {
 } from './compose-dialog';
 
 import { ReplyComposer } from './reply-composer';
+import { formatConversationForCopy } from './conversation-copy';
 
 function MessageBody({
   accountId,
@@ -379,10 +381,9 @@ function ThreadMessageCard({
   );
   const [refreshKey, setRefreshKey] = useState(0);
   const [draftAttachments, setDraftAttachments] = useState<MailOutgoingAttachment[] | null>(
-    isSavedDraft && (!demoDetail || demoDetail.attachments.some((attachment) => !attachment.related))
-      ? null
-      : [],
+    isSavedDraft && !demoDetail ? null : [],
   );
+  const [draftHtml, setDraftHtml] = useState<string | undefined>(demoDetail?.html ?? undefined);
   const [draftAttachmentError, setDraftAttachmentError] = useState<string | null>(null);
   const [deleteDraftConfirmationOpen, setDeleteDraftConfirmationOpen] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
@@ -404,12 +405,6 @@ function ThreadMessageCard({
         if (!active) return;
         if (result.ok && result.messageDetail) {
           setState({ status: 'loaded', message: result.messageDetail });
-          if (
-            isSavedDraft &&
-            !result.messageDetail.attachments.some((attachment) => !attachment.related)
-          ) {
-            setDraftAttachments([]);
-          }
         } else {
           setState({ status: 'error', message: result.message ?? 'Could not load message.' });
         }
@@ -438,6 +433,7 @@ function ThreadMessageCard({
     ).then((result) => {
       if (!active) return;
       setDraftAttachments(result.attachments);
+      setDraftHtml(result.html);
       setDraftAttachmentError(result.ok ? null : (result.message ?? 'Could not load draft attachments.'));
     }).catch(() => {
       if (!active) return;
@@ -554,7 +550,10 @@ function ThreadMessageCard({
                     cc: state.message.cc,
                     bcc: [],
                     subject: state.message.subject,
-                    text: state.message.text,
+                    text: draftHtml && state.message.text === 'This message has no readable text content.'
+                      ? ''
+                      : state.message.text,
+                    html: draftHtml,
                     inReplyTo: summary.inReplyTo,
                     references: summary.references,
                     attachments: draftAttachments ?? [],
@@ -721,6 +720,38 @@ export function ConversationReader({
     folders.filter((folder) => folder.specialUse === '\\Drafts').map((folder) => folder.path),
   );
   const [activeDraftKey, setActiveDraftKey] = useState<string | null>(null);
+  const [copying, setCopying] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<Status | null>(null);
+
+  const copyConversation = async () => {
+    setCopying(true);
+    setCopyStatus(null);
+    try {
+      const ordered = [...conversation.messages].reverse();
+      const details: MailMessageDetail[] = [];
+      for (let offset = 0; offset < ordered.length; offset += 4) {
+        const batch = await Promise.all(ordered.slice(offset, offset + 4).map(async (message) => {
+          const demo = demoDetails?.get(`${selection.account.id}:${message.folderPath}:${message.uid}`);
+          if (demo) return demo;
+          const result = await window.emzero.messages.get(selection.account.id, message.folderPath, message.uid);
+          if (!result.ok || !result.messageDetail) {
+            throw new Error(result.message ?? 'Could not load every message in this conversation.');
+          }
+          return result.messageDetail;
+        }));
+        details.push(...batch);
+      }
+      await navigator.clipboard.writeText(formatConversationForCopy(conversation.subject, details));
+      setCopyStatus({ kind: 'success', message: 'Conversation copied.' });
+    } catch (error) {
+      setCopyStatus({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Could not copy conversation.',
+      });
+    } finally {
+      setCopying(false);
+    }
+  };
   useEffect(() => {
     const key = `${selection.account.id}:${selection.folder.path}:${conversation.id}`;
     if (
@@ -844,11 +875,20 @@ export function ConversationReader({
             <h1 className="min-w-0 text-xl font-semibold leading-tight tracking-tight sm:text-2xl">
               {conversation.subject}
             </h1>
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {conversation.messages.length}{' '}
-              {conversation.messages.length === 1 ? 'message' : 'messages'}
-            </span>
+            <div className="flex shrink-0 items-center gap-3">
+              <span className="text-xs text-muted-foreground">
+                {conversation.messages.length}{' '}
+                {conversation.messages.length === 1 ? 'message' : 'messages'}
+              </span>
+              <Button type="button" variant="ghost" className="h-8 gap-1.5 px-2 text-xs"
+                disabled={copying} onClick={() => void copyConversation()}>
+                {copying ? <LoaderCircle className="size-3.5 animate-spin" /> : <Copy className="size-3.5" />}
+                {copying ? 'Copying…' : 'Copy conversation'}
+              </Button>
+            </div>
           </div>
+          {copyStatus && <p role="status" className={cn('mb-3 text-xs',
+            copyStatus.kind === 'error' ? 'text-danger' : 'text-success')}>{copyStatus.message}</p>}
           <div className="space-y-3">
             {conversation.messages.map((message, index) => {
               const messageKey = `${message.folderPath}:${message.uid}`;
