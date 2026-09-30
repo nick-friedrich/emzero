@@ -1050,6 +1050,12 @@ export function MessageList({
                 )}
                 role="listitem"
               >
+                {unread && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-y-2.5 left-0.5 w-[3px] rounded-full bg-primary"
+                  />
+                )}
                 <div
                   className={compactList
                     ? 'relative ml-2 grid size-8 shrink-0 place-items-center'
@@ -1160,20 +1166,20 @@ export function MessageList({
                 >
                   <div className="flex min-w-0 items-center gap-2">
                     <span
-                      className={`size-1.5 shrink-0 rounded-full ${unread ? 'bg-primary' : 'bg-transparent'}`}
+                      className={`size-2 shrink-0 rounded-full ${unread ? 'bg-primary shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary)_18%,transparent)]' : 'bg-transparent'}`}
                       aria-label={unread ? 'Contains unread messages' : 'Read'}
                     />
-                    <span className={`truncate text-sm ${unread ? 'font-semibold' : ''}`}>
+                    <span className={`truncate text-sm ${unread ? 'font-semibold text-foreground' : 'text-foreground/70'}`}>
                       {showRecipients ? `To: ${opponent}` : opponent}
                     </span>
                   </div>
                   <p
                     className={cn(
                       'min-w-0 truncate text-sm',
-                      unread && 'font-semibold',
+                      unread ? 'font-semibold text-foreground' : 'text-foreground/70',
                       compactList
-                        ? 'col-span-2 col-start-1 row-start-2 pl-3.5'
-                        : 'col-span-2 col-start-1 row-start-2 pl-3.5 lg:col-auto lg:row-auto lg:pl-0',
+                        ? 'col-span-2 col-start-1 row-start-2 pl-4'
+                        : 'col-span-2 col-start-1 row-start-2 pl-4 lg:col-auto lg:row-auto lg:pl-0',
                     )}
                   >
                     {hasDraft && (
@@ -1193,7 +1199,7 @@ export function MessageList({
                   </p>
                   {latest.preview && <p className={cn(
                     'min-w-0 truncate text-xs leading-5 text-muted-foreground',
-                    compactList ? 'col-span-2 col-start-1 row-start-3 pl-3.5' : 'col-span-2 col-start-1 row-start-3 pl-3.5 lg:col-span-1 lg:col-start-2 lg:row-start-2 lg:pl-0',
+                    compactList ? 'col-span-2 col-start-1 row-start-3 pl-4' : 'col-span-2 col-start-1 row-start-3 pl-4 lg:col-span-1 lg:col-start-2 lg:row-start-2 lg:pl-0',
                   )}>{latest.preview}</p>}
                   <div className={cn(
                     'flex items-center gap-2 text-xs text-muted-foreground',
