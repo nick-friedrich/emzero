@@ -1009,7 +1009,7 @@ export function MessageList({
       )}
 
       {state.status === 'loaded' && conversations.length > 0 && (
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3" role="list" aria-label="Messages">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-3" role="list" aria-label="Messages">
           {conversations.map((conversation, index) => {
             const latest = conversation.messages[0];
             const prefetchTarget = {
@@ -1043,7 +1043,7 @@ export function MessageList({
               {group && group !== previousGroup && <InboxGroupHeader group={group} />}
               <div
                 className={cn(
-                  'mail-conversation-row group relative mb-1 flex min-w-0 items-center rounded-xl hover:bg-secondary/60',
+                  'mail-conversation-row group relative mb-1 flex min-w-0 max-w-full items-center rounded-xl hover:bg-secondary/60',
                   dueDateRowClass(importantMessage?.dueDate ?? null),
                   selectedConversationIds.has(conversation.id) && 'bg-primary/8 ring-1 ring-inset ring-primary/15',
                   mailLayout === 'split' && selectedConversation?.id === conversation.id && 'bg-primary/10',
