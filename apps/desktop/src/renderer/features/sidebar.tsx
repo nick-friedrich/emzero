@@ -487,6 +487,16 @@ export function Sidebar({
     [demoMode],
   );
 
+  const selectAccountInbox = (account: AccountSummary) => {
+    const selectInbox = (folders: MailFolderSummary[]) => {
+      const inbox = findInboxFolder(folders);
+      if (inbox) onSelect({ kind: 'folder', account, folder: inbox });
+    };
+    const folderState = displayedFolderStates[account.id];
+    if (folderState?.status === 'loaded') selectInbox(folderState.folders);
+    else loadFolders(account.id, selectInbox);
+  };
+
   const toggleAccount = (account: AccountSummary) => {
     const isOpening = !expanded.has(account.id);
     setExpanded((current) => {
@@ -496,13 +506,7 @@ export function Sidebar({
       return next;
     });
     if (isOpening) {
-      const selectInbox = (folders: MailFolderSummary[]) => {
-        const inbox = findInboxFolder(folders);
-        if (inbox) onSelect({ kind: 'folder', account, folder: inbox });
-      };
-      const folderState = displayedFolderStates[account.id];
-      if (folderState?.status === 'loaded') selectInbox(folderState.folders);
-      else loadFolders(account.id, selectInbox);
+      selectAccountInbox(account);
     }
   };
   const editorFolderState = folderEditor ? displayedFolderStates[folderEditor.account.id] : undefined;
@@ -515,17 +519,17 @@ export function Sidebar({
     <>
       <aside
       className={cn(
-        'relative flex min-h-0 flex-col overflow-hidden border-r border-border bg-sidebar p-4',
+        'relative flex min-h-0 flex-col overflow-hidden border-r border-border bg-sidebar p-3',
         className,
       )}
     >
       {window.emzero?.platform === 'darwin' && (
         <div className="macos-titlebar-drag absolute inset-x-0 top-0 h-6 shrink-0" />
       )}
-      <div className="mb-8 flex shrink-0 items-center gap-3 px-2">
+      <div className="mb-5 flex shrink-0 items-center gap-2.5 px-2">
         <button
           type="button"
-          className="emzero-logo size-9 shrink-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="emzero-logo size-7 shrink-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
           style={logoStyle}
           aria-label="Emzero"
           onClick={() => {
@@ -552,7 +556,6 @@ export function Sidebar({
         </button>
         <div className="min-w-0 flex-1">
           <p className="font-semibold tracking-tight">Emzero</p>
-          <p className="text-xs text-muted-foreground">Mail</p>
         </div>
         {onPinnedChange && pinned !== undefined && (
           <Button
@@ -571,7 +574,7 @@ export function Sidebar({
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         <Button
-          className="mb-4 w-full justify-start"
+          className="mb-3 h-9 w-full justify-start rounded-lg shadow-sm"
           disabled={accounts.length === 0}
           onClick={onCompose}
         >
@@ -581,7 +584,7 @@ export function Sidebar({
 
         <Button
           variant={selection.kind === 'search' ? 'secondary' : 'ghost'}
-          className="mb-2 w-full justify-start"
+          className="mb-2 h-9 w-full justify-start rounded-lg bg-background/60 text-muted-foreground"
           onClick={() => onSelect({ kind: 'search', query: '' })}
         >
           <Search className="size-4" />
@@ -594,7 +597,7 @@ export function Sidebar({
         <nav aria-label="Mailboxes" className="space-y-1">
         <Button
           variant={selection.kind === 'unified' && (selection.mailbox ?? 'inbox') === 'inbox' ? 'secondary' : 'ghost'}
-          className="w-full shrink-0 justify-start"
+          className="h-8 w-full shrink-0 justify-start rounded-lg text-[13px]"
           onClick={() => onSelect({ kind: 'unified', mailbox: 'inbox' })}
         >
           <Inbox className="size-4" />
@@ -603,7 +606,7 @@ export function Sidebar({
         </Button>
         <Button
           variant={selection.kind === 'unified' && selection.mailbox === 'starred' ? 'secondary' : 'ghost'}
-          className="w-full shrink-0 justify-start"
+          className="h-8 w-full shrink-0 justify-start rounded-lg text-[13px]"
           onClick={() => onSelect({ kind: 'unified', mailbox: 'starred' })}
         >
           <Star className="size-4" />
@@ -611,7 +614,7 @@ export function Sidebar({
         </Button>
         <Button
           variant={selection.kind === 'unified' && selection.mailbox === 'drafts' ? 'secondary' : 'ghost'}
-          className="w-full shrink-0 justify-start"
+          className="h-8 w-full shrink-0 justify-start rounded-lg text-[13px]"
           onClick={() => onSelect({ kind: 'unified', mailbox: 'drafts' })}
         >
           <FileText className="size-4" />
@@ -620,7 +623,7 @@ export function Sidebar({
         </Button>
         <Button
           variant={selection.kind === 'unified' && selection.mailbox === 'trash' ? 'secondary' : 'ghost'}
-          className="w-full shrink-0 justify-start"
+          className="h-8 w-full shrink-0 justify-start rounded-lg text-[13px]"
           onClick={() => onSelect({ kind: 'unified', mailbox: 'trash' })}
         >
           <Trash2 className="size-4" />
@@ -639,7 +642,28 @@ export function Sidebar({
           />
         )}
         {accounts.length > 0 && (
-          <div className="pt-5">
+          <div className="pt-4">
+            <label className="relative mb-4 block">
+              <span className="sr-only">Switch account</span>
+              <select
+                className="h-9 w-full appearance-none rounded-lg border border-border/70 bg-card pl-3 pr-8 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={selection.kind === 'folder' ? selection.account.id : ''}
+                onChange={(event) => {
+                  const account = accounts.find((candidate) => candidate.id === event.target.value);
+                  if (!account) {
+                    onSelect({ kind: 'unified', mailbox: 'inbox' });
+                    return;
+                  }
+                  setExpanded(new Set([account.id]));
+                  selectAccountInbox(account);
+                }}>
+                <option value="">All accounts</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>{account.name} · {account.email}</option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-3 size-3 text-muted-foreground" />
+            </label>
             <p className="mb-2 px-3 text-[0.68rem] font-semibold uppercase tracking-wider text-muted-foreground">
               Accounts
             </p>
@@ -682,10 +706,10 @@ export function Sidebar({
                   >
                     <Button
                       variant="ghost"
-                      className="h-auto w-full cursor-grab justify-start gap-2 py-2 focus-visible:ring-inset active:cursor-grabbing"
+                      className="h-9 w-full cursor-grab justify-start gap-2 rounded-lg py-1 focus-visible:ring-inset active:cursor-grabbing"
                       aria-expanded={isExpanded}
                       draggable={!demoMode}
-                      title={demoMode ? 'Sample account' : 'Drag to reorder account'}
+                      title={`${account.email} · ${demoMode ? 'Sample account' : 'Drag to reorder account'}`}
                       onDragStart={(event) => {
                         event.dataTransfer.effectAllowed = 'move';
                         event.dataTransfer.setData('text/plain', account.id);
@@ -702,12 +726,12 @@ export function Sidebar({
                     ) : (
                       <ChevronRight className="size-3.5 text-muted-foreground" />
                     )}
-                    <span className={cn('grid size-6 shrink-0 place-items-center rounded-md text-xs font-semibold text-white shadow-sm', accountColorDotClass(account.color))}>
+                    <span className={cn('grid size-5 shrink-0 place-items-center rounded-md text-[10px] font-semibold text-white', accountColorDotClass(account.color))}>
                       {account.name.charAt(0).toUpperCase()}
                     </span>
                     <span className="min-w-0 flex-1 text-left">
                       <span className="block truncate text-sm">{account.name}</span>
-                      <span className="block truncate text-[0.68rem] font-normal text-muted-foreground">
+                      <span className="sr-only">
                         {account.email}
                       </span>
                     </span>
@@ -716,7 +740,7 @@ export function Sidebar({
                   </div>
 
                   {isExpanded && (
-                    <div className="mb-2 ml-5 border-l border-border pl-2">
+                    <div className="mb-2 ml-3 pl-1">
                       {(!folderState || folderState.status === 'loading') && (
                         <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
                           <LoaderCircle className="size-3.5 animate-spin" />
@@ -821,7 +845,7 @@ export function Sidebar({
                               </button>
                               <Button
                                 variant={isSelected ? 'secondary' : 'ghost'}
-                                className="h-7 min-w-0 flex-1 justify-start gap-1.5 px-2 font-normal"
+                                className="h-7 min-w-0 flex-1 justify-start gap-1.5 rounded-md px-1 font-normal"
                                 disabled={!folder.selectable}
                                 title={canManage ? `${folder.path} · drag to move` : folder.path}
                                 onClick={() => onSelect({ kind: 'folder', account, folder })}
@@ -926,10 +950,10 @@ export function Sidebar({
         </nav>
       </div>
 
-      <div className="mt-auto shrink-0 border-t border-border pt-4">
+      <div className="mt-3 shrink-0 border-t border-border/60 pt-2">
         <Button
           variant="ghost"
-          className="mb-1 w-full justify-start text-muted-foreground"
+          className="mb-0.5 h-8 w-full justify-start text-xs text-muted-foreground"
           disabled={syncStatus.state === 'syncing' || accounts.length === 0}
           aria-disabled={demoMode}
           title={demoMode ? 'Unavailable in demo mode' : syncStatus.message}
@@ -950,7 +974,7 @@ export function Sidebar({
         </Button>
         <Button
           variant="ghost"
-          className="mb-1 w-full justify-start text-muted-foreground"
+          className="mb-0.5 h-8 w-full justify-start text-xs text-muted-foreground"
           aria-disabled={demoMode}
           title={demoMode ? 'Unavailable in demo mode' : undefined}
           onClick={() => {
@@ -962,7 +986,7 @@ export function Sidebar({
         </Button>
         <Button
           variant="ghost"
-          className="w-full justify-start text-muted-foreground"
+          className="h-8 w-full justify-start text-xs text-muted-foreground"
           aria-disabled={demoMode}
           title={demoMode ? 'Unavailable in demo mode' : undefined}
           onClick={() => {

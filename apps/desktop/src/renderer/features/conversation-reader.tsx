@@ -1,3 +1,4 @@
+import { MessageHtmlFrame } from './message-html-frame';
 import {
   useCallback,
   useEffect,
@@ -91,29 +92,11 @@ function MessageBody({
   const [attachmentStatus, setAttachmentStatus] = useState<Status | null>(null);
   const [savedAttachmentId, setSavedAttachmentId] = useState<string | null>(null);
   const [pendingLink, setPendingLink] = useState<string | null>(null);
-  const messageFrameRef = useRef<HTMLIFrameElement>(null);
   const textParts = splitQuotedText(message.text);
   const hasQuotedText = view === 'html' ? message.htmlHasQuotedText : Boolean(textParts.quoted);
   const messageKey = `${accountId}\0${folderPath}\0${message.uid}`;
   const loadRemoteImages = alwaysLoadRemoteImages || remoteImagesLoadedFor === messageKey;
   const remoteImagesBlocked = Boolean(message.html && hasRemoteImages(message.html) && !loadRemoteImages);
-
-  useEffect(() => {
-    const receiveLink = (event: MessageEvent<unknown>) => {
-      if (event.source !== messageFrameRef.current?.contentWindow) return;
-      if (!event.data || typeof event.data !== 'object') return;
-      const data = event.data as { type?: unknown; url?: unknown };
-      if (data.type !== 'emzero:open-link' || typeof data.url !== 'string') return;
-      try {
-        const url = new URL(data.url);
-        if (url.protocol === 'http:' || url.protocol === 'https:') setPendingLink(url.toString());
-      } catch {
-        // Ignore malformed or relative links that cannot be opened safely.
-      }
-    };
-    window.addEventListener('message', receiveLink);
-    return () => window.removeEventListener('message', receiveLink);
-  }, []);
 
   return (
     <>
@@ -174,17 +157,13 @@ function MessageBody({
               </Button>
             </div>
           )}
-          <iframe
-            ref={messageFrameRef}
-            className="mt-3 h-[55vh] min-h-80 w-full rounded-md border border-border bg-white"
-            title="Email content"
-            sandbox="allow-scripts"
-            referrerPolicy="no-referrer"
-            srcDoc={htmlDocument(message.html, showQuoted, theme, loadRemoteImages)}
+          <MessageHtmlFrame
+            document={htmlDocument(message.html, showQuoted, theme, loadRemoteImages)}
+            onOpenLink={setPendingLink}
           />
         </>
       ) : (
-        <div className="mt-5 whitespace-pre-wrap break-words text-sm leading-7 text-foreground">
+        <div className="mt-4 whitespace-pre-wrap break-words text-[15px] leading-7 text-foreground">
           {textParts.visible || 'No new text in this reply.'}
           {showQuoted && textParts.quoted && (
             <div className="mt-5 border-l-2 border-border pl-4 text-muted-foreground">
@@ -449,8 +428,8 @@ function ThreadMessageCard({
   };
 
   return (
-    <article className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
-      <div className="flex w-full items-center gap-4 px-5 py-4 hover:bg-accent/50 focus-within:bg-accent/50">
+    <article className="overflow-hidden border-b border-border/60 bg-card last:border-b-0">
+      <div className="flex w-full items-center gap-4 rounded-lg py-4 hover:bg-secondary/40 focus-within:bg-secondary/40">
         <button
           type="button"
           className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none"
@@ -459,13 +438,13 @@ function ThreadMessageCard({
             if (!draftEditorOpen && !replyOpen) setExpanded((current) => !current);
           }}
         >
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-account text-xs font-semibold text-primary">
+          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-secondary text-xs font-semibold text-muted-foreground">
             {addressLabel(summary.from).charAt(0).toUpperCase()}
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{addressLabel(summary.from)}</p>
             <p
-              className="truncate text-xs font-medium text-foreground/80"
+              className="truncate text-xs font-normal text-muted-foreground"
               title={`Sender address: ${senderAddresses}`}
             >
               From: {senderAddresses}
@@ -476,8 +455,8 @@ function ThreadMessageCard({
         <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
           {expanded && state.status === 'loaded' && !isSavedDraft && !draftEditorOpen && (
             <Button
-              variant="secondary"
-              className="h-8 px-3"
+              variant="ghost"
+              className="h-8 px-3 text-muted-foreground"
               disabled={Boolean(demoDetail) || replyOpen || !canReply}
               title={demoDetail
                 ? 'Sending is disabled for sample messages'
@@ -515,7 +494,7 @@ function ThreadMessageCard({
       </div>
 
       {expanded && (
-        <div className="border-t border-border px-5 py-5">
+        <div className="pb-7 pt-1">
           {state.status === 'loading' && (
             <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
               <LoaderCircle className="size-4 animate-spin" />
@@ -544,7 +523,7 @@ function ThreadMessageCard({
                   accounts={[selection.account]}
                   defaultAccountId={selection.account.id}
                   composerKind="draft"
-                  variant="floating"
+                  variant="inline"
                   initialDraft={{
                     to: state.message.to,
                     cc: state.message.cc,
@@ -598,7 +577,10 @@ function ThreadMessageCard({
                 message={state.message}
                 threadMessages={threadMessages}
                 open={replyOpen}
-                onOpenChange={setReplyOpen}
+                onOpenChange={(open) => {
+                  if (open && !replyOpen) setReplySession((current) => current + 1);
+                  setReplyOpen(open);
+                }}
                 onSent={onReplySent}
                 onDraftSaved={onDraftSaved}
                 onDraftDeleted={onDraftDeleted}
@@ -795,9 +777,9 @@ export function ConversationReader({
   }, [busy, leaveConversation, setUnreadExplicitly, unread]);
 
   return (
-    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card">
       <header className={cn(
-        'flex items-center gap-3 border-b border-border bg-card py-3 pl-16 pr-4 lg:px-4',
+        'mail-pane-header flex items-center gap-3 border-b border-border/60 bg-card py-3 pl-16 pr-4 lg:px-4',
         window.emzero?.platform === 'darwin' && 'macos-content-header macos-titlebar-drag',
         nativeMacWindow && 'macos-native-window-header',
       )}>
@@ -869,10 +851,10 @@ export function ConversationReader({
           {actionError}
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-7 lg:px-10">
-        <div className="mx-auto max-w-4xl">
-          <div className="mb-6 flex items-end justify-between gap-4">
-            <h1 className="min-w-0 text-xl font-semibold leading-tight tracking-tight sm:text-2xl">
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-7 sm:px-8 sm:py-9 lg:px-12">
+        <div className="mx-auto max-w-[42rem]">
+          <div className="mb-7 flex flex-col items-start gap-3">
+            <h1 className="min-w-0 text-2xl font-semibold leading-snug tracking-tight sm:text-[28px]">
               {conversation.subject}
             </h1>
             <div className="flex shrink-0 items-center gap-3">

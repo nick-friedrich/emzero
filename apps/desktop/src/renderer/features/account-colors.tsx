@@ -32,7 +32,7 @@ export function AccountColorDot({
     <span className={cn('group/account relative inline-flex', className)}>
       <span
         className={cn(
-          'block size-3 rounded-full ring-2 ring-card shadow-sm transition-transform group-hover/account:scale-125',
+          'block size-2 rounded-full ring-2 ring-card transition-transform group-hover/account:scale-125',
           accountColorDotClass(account.color),
         )}
         role="img"

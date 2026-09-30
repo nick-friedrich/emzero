@@ -51,11 +51,11 @@ type MailLayout = 'list' | 'split';
 
 function storedSidebarWidth(): number {
   const stored = window.localStorage.getItem(sidebarWidthStorageKey);
-  if (stored === null) return 240;
+  if (stored === null) return 232;
   const value = Number(stored);
   return Number.isFinite(value)
     ? Math.min(maximumSidebarWidth, Math.max(minimumSidebarWidth, value))
-    : 240;
+    : 232;
 }
 
 export function App() {
@@ -359,7 +359,7 @@ export function App() {
     setBulkOperation(null);
   };
   const openComposer = () => {
-    if (demoMode) return;
+    if (demoMode || composeOpen) return;
     setComposeRevision((current) => current + 1);
     setComposeOpen(true);
   };
@@ -389,9 +389,10 @@ export function App() {
             }}
             onSelect={(nextSelection) => {
               setSelection(nextSelection);
+              setComposeOpen(false);
               setShowSetup(false);
             }}
-            onAdd={() => setShowSetup(true)}
+            onAdd={() => { setComposeOpen(false); setShowSetup(true); }}
             onManage={() => void window.emzero.openSettingsWindow()}
             onReorder={async (accountIds) => {
               if (demoMode) return true;
@@ -478,9 +479,10 @@ export function App() {
               }}
               onSelect={(nextSelection) => {
                 setSelection(nextSelection);
+                setComposeOpen(false);
                 setShowSetup(false);
               }}
-              onAdd={() => setShowSetup(true)}
+              onAdd={() => { setComposeOpen(false); setShowSetup(true); }}
               onManage={() => void window.emzero.openSettingsWindow()}
               onReorder={async (accountIds) => {
                 if (demoMode) return true;
@@ -555,10 +557,12 @@ export function App() {
             onDemoModeChange={changeDemoMode}
             onSelect={(nextSelection) => {
               setSelection(nextSelection);
+              setComposeOpen(false);
               setShowSetup(false);
               setSidebarOpen(false);
             }}
             onAdd={() => {
+              setComposeOpen(false);
               setShowSetup(true);
               setSidebarOpen(false);
             }}
@@ -591,9 +595,10 @@ export function App() {
           />
         </SheetContent>
       </Sheet>
-      {!demoMode && <ComposeDialog
+      {!demoMode && composeOpen && <ComposeDialog
         key={composeRevision}
         open={composeOpen}
+        variant="page"
         accounts={visibleAccounts}
         defaultAccountId={
           selection.kind === 'folder' ? selection.account.id : (accounts[0]?.id ?? null)
@@ -612,7 +617,7 @@ export function App() {
           setSyncRevision((current) => current + 1);
         }}
       />}
-      {demoMode ? (
+      {composeOpen && !demoMode ? null : demoMode ? (
         <UnifiedInbox
           key={`demo:${demoSelectionKey}`}
           accounts={visibleAccounts}

@@ -117,6 +117,7 @@ const summaries = seeds.map((seed, index): MailMessageSummary => {
     inReplyTo: null,
     references: [],
     subject: seed.subject,
+    preview: seed.body.replace(/\s+/g, ' ').slice(0, 160),
     from: [{ name: seed.sender, address: seed.address }],
     to: [{ name: fromSelf ? 'Maya Chen' : account.name, address: fromSelf ? 'maya@example.com' : account.email }],
     sentAt: seed.sentAt,

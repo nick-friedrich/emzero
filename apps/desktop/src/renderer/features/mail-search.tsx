@@ -1,3 +1,4 @@
+import { MailViewMenu } from './mail-view-menu';
 import {
   useEffect,
   useMemo,
@@ -352,10 +353,10 @@ export function MailSearch({
   const list = (
     <section
       ref={listSurfaceRef}
-      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background"
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card"
     >
       <header className={cn(
-        'border-b border-border bg-card py-3 pl-16 pr-4 lg:px-6',
+        'mail-pane-header border-b border-border/60 bg-card py-3 pl-16 pr-4 lg:px-6',
         compactList && 'lg:px-4',
         window.emzero?.platform === 'darwin' && 'macos-content-header macos-titlebar-drag',
       )}>
@@ -433,8 +434,10 @@ export function MailSearch({
             )}
             <span className={compactList ? 'sr-only' : undefined}>Search</span>
           </Button>
-          <SidebarHeaderToggle pinned={sidebarPinned} onToggle={onToggleSidebar} />
-          <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
+          <MailViewMenu>
+            <SidebarHeaderToggle pinned={sidebarPinned} onToggle={onToggleSidebar} />
+            <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
+          </MailViewMenu>
         </form>
       </header>
 
@@ -472,7 +475,7 @@ export function MailSearch({
           </div>
         )}
         {state.status === 'loaded' && state.items.length > 0 && (
-          <div role="list" aria-label="Search results">
+          <div className="px-2 pb-3" role="list" aria-label="Search results">
             <div className="border-b border-border px-4 py-2 text-xs text-muted-foreground lg:px-6">
               {state.items.length === 100 ? 'First 100 results' : `${state.items.length} ${state.items.length === 1 ? 'result' : 'results'}`}
               {' '}from cached mail
@@ -495,14 +498,14 @@ export function MailSearch({
                   type="button"
                   role="listitem"
                   className={cn(
-                    'grid w-full min-w-0 gap-y-1 border-b border-border text-left hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none',
+                    'mail-search-row mb-1 grid w-full min-w-0 gap-y-1 rounded-xl text-left hover:bg-secondary/60 focus-visible:outline-none',
                     dueDateRowClass(item.message.important ? item.message.dueDate : null),
                     compactList
                       ? 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-4 py-3.5'
                       : 'grid-cols-[minmax(0,1fr)_auto] gap-x-4 px-4 py-3 lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:px-6',
                     selected?.item.accountId === item.accountId &&
                       selected.item.folder.path === item.folder.path &&
-                      selected.item.message.uid === item.message.uid && 'bg-accent',
+                      selected.item.message.uid === item.message.uid && 'bg-primary/10',
                   )}
                   onMouseEnter={() => prefetchSoon(prefetchTarget)}
                   onMouseLeave={(event) => {

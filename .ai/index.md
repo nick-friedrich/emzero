@@ -55,7 +55,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/attachment-files.ts` — native file selection, opaque outgoing-file authorization, attachment limits, retained-draft attachment authorization, and received-attachment saving.
 - `apps/desktop/src/main/message-actions.ts` — read/unread, star/unstar, delete, same-account move, and cross-account message-transfer operations.
 - `apps/desktop/src/main/bulk-message-jobs.ts` — bulk-action request validation, execution, cancellation, and progress publication.
-- `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache, search, and AI insight/smart-inbox score storage joined onto listed messages.
+- `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache, bounded plain-text list previews from cached bodies, search, and AI insight/smart-inbox score storage joined onto listed messages.
 - `apps/desktop/src/main/message-html.ts` — sanitization and quoted-content detection for message HTML.
 - `apps/desktop/src/main/outgoing-html.ts` — safe outgoing rich-text HTML and pasted-image size validation before MIME compilation.
 - `apps/desktop/src/main/mail-windows.ts` — validated creation of standalone message, composer, and single-instance settings windows.
@@ -81,7 +81,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 
 - `apps/desktop/src/renderer/main.tsx` — React renderer entry point and providers.
 - `apps/desktop/src/renderer/mail-window.tsx` — standalone composer and conversation window loading and actions.
-- `apps/desktop/src/renderer/App.tsx` — application-level orchestration only: account loading and cross-window refresh, current mailbox selection, persisted sidebar/mail-layout preferences, dialog visibility, sync revision, and active bulk-operation state.
+- `apps/desktop/src/renderer/App.tsx` — application-level orchestration only: account loading and cross-window refresh, current mailbox selection and dedicated new-message navigation, persisted sidebar/mail-layout preferences, dialog visibility, sync revision, and active bulk-operation state.
 - `apps/desktop/src/renderer/styles.css` — global Tailwind styles and visual tokens.
 - `apps/desktop/src/renderer/theme.tsx` — synchronized appearance and mail-behavior preference persistence/context, plus message color schemes.
 - `apps/desktop/src/renderer/lib/utils.ts` — small renderer-wide helpers such as class merging and range selection.
@@ -89,14 +89,14 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 
 ## Renderer features
 
-- `features/sidebar.tsx` — desktop/mobile navigation with a fixed brand header and action footer, scrollable mailbox/account navigation, drag-to-reorder accounts, folder CRUD, drag-and-drop folder moves, and sync status.
+- `features/sidebar.tsx` — desktop/mobile navigation with a compact brand header and account switcher, action footer, scrollable mailbox/account navigation, drag-to-reorder accounts, folder CRUD, drag-and-drop folder moves, and sync status.
 - `features/demo-mode.tsx` — persistent, privacy-safe show-off dataset injected into the existing mailbox and conversation UI for screenshots.
 - `features/account-setup.tsx` — provider detection, password/app-password setup, and personal Microsoft device-code connection flow.
 - `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior, account names/colors, signatures, and encrypted backup/restore.
 - `features/appearance-switcher.tsx` — global keyboard shortcut and accessible quick theme/font picker, shared by all renderer windows; owns the settings shortcut label.
 - `features/signatures.ts` — main-process-backed signature cache and cross-window refresh, the one-time migration off origin-scoped browser storage, account-to-signature assignments, and delimiter-aware outgoing-message formatting.
 - `features/signature-picker.tsx` — compose-time signature selection shared by new-message and reply composers.
-- `features/compose-dialog.tsx` — reusable docked, full-area, inline-draft, and standalone composer with recipient suggestions, attachments, validation, confirmation, and sending.
+- `features/compose-dialog.tsx` — dedicated new-message page, expanding inline reply/draft editor, and standalone composer with recipient suggestions, attachments, draft autosave, validation, confirmation, and sending.
 - `features/rich-text-editor.tsx` — composer formatting controls and clipboard image insertion, with a plain-text copy for AI drafting and multipart email.
 - `features/ai-draft-assistant.tsx` — reusable configured-provider prompt panel for AI drafting in reply, new-message, and saved-draft composers.
 - `features/smart-inboxes.tsx` — smart-inbox sidebar section and create/edit dialog, AI tag chips, the remove-sender row action, the settings toggle, and the shared settings hook.
@@ -106,14 +106,16 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/account-colors.tsx` — account color palette classes, the hover-labelled account dot shown on unified-inbox avatars, and the settings color picker.
 - `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: action controls, selection toolbar, replied-last detection and badge, and mail-view types/helpers.
 - `features/inbox-view-options.tsx` — persisted icon filters and Starred/Unread inbox grouping shared by account and unified inboxes.
+- `features/mail-view-menu.tsx` — accessible dismissible popover for secondary mailbox layout and filter controls, shared by account, unified, and search headers.
 - `features/mail-split-layout.tsx` — persisted, pointer- and keyboard-resizable list/reader layout shared by three-column mail views.
 - `features/reader-selection.ts` — decides which conversation the reader keeps after a delete or move, so unopened rows are never opened (and auto-marked read) behind the user.
 - `features/reader-selection.test.ts` — renderer tests for post-delete reader selection.
 - `features/mail-common.test.ts` — renderer tests for isolated HTML-email document generation, remote-image privacy controls, and replied-conversation detection.
 - `features/message-move.tsx` — account-and-folder destination picker for single and bulk message moves.
 - `features/conversation-reader.tsx` — conversation reader, message body/thread cards, received-attachment saving, quoted-content display, and reply entry points.
+- `features/message-html-frame.tsx` — isolated HTML-email frame that reports content height for a single reader scrollbar, validates frame messages, and owns the CSP-authorized resize/link relay.
 - `features/conversation-copy.ts` — plain-text formatting for copying every message in a conversation to the clipboard.
-- `features/reply-composer.tsx` — replies in the shared bottom-right composer, preserving reply headers and loading conversation context for AI drafting.
+- `features/reply-composer.tsx` — expanding inline reply entry and editor beneath a message, preserving reply headers, draft autosave, and conversation context for AI drafting.
 - `features/message-prefetch.ts` — bounded idle, hover, and keyboard-focus message-body prefetching shared by folder, unified, and search lists.
 - `features/attachment-picker.tsx` — reusable outgoing-attachment selection and removal UI for compose and reply.
 - `features/draft-autosave.ts` — debounced, sequential IMAP autosave shared by compose and reply, including pending-edit flushing on editor unmount.
@@ -130,6 +132,6 @@ All paths in this section are relative to `apps/desktop/src/renderer/`.
 - `apps/desktop/src/main/` tests cover cache, HTML sanitization, provider discovery, folder subscriptions, folder input rules, message parsing helpers, message-action rules, draft-folder discovery, signature storage, and bulk-job validation/progress.
 - `apps/desktop/src/shared/` tests cover domain helpers and contracts.
 - `apps/desktop/src/renderer/` tests cover renderer utilities and theming.
-- `apps/desktop/e2e/` — Playwright smoke coverage for production Electron builds using the privacy-safe demo dataset, plus isolated mock-mail regression coverage for reply preservation across background sync, navigation, and discard.
+- `apps/desktop/e2e/` — Playwright smoke coverage for production Electron builds using the privacy-safe demo dataset, plus isolated mock-mail regression coverage for reply preservation, dedicated composition, and automatic HTML-email sizing with privacy/link controls.
 - `apps/desktop/playwright.config.ts` — production Electron smoke-test configuration.
 - Run the complete suite with `pnpm check` from the repository root.

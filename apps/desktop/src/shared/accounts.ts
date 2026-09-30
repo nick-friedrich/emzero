@@ -303,6 +303,8 @@ export interface MailMessageSummary {
   dueDate: string | null;
   color: import('./message-keywords.js').EmzeroMessageColor | null;
   size: number | null;
+  /** Short plain-text excerpt of a locally cached body; absent before body download. */
+  preview?: string;
   /** Local AI classification; present only while smart inboxes are enabled. */
   insights?: import('./mail-insights.js').MessageInsights;
 }

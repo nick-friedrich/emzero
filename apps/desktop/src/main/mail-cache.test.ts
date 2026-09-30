@@ -58,6 +58,21 @@ describe('MailCache', () => {
 
   afterEach(() => cache?.close());
 
+  it('lists bounded cached previews without changing unread state or using another message body', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox]);
+    cache.replaceRecentMessages('account-1', 'INBOX', [message(2)], 1);
+    expect(cache.listMessages('account-1', 'INBOX').messages[0].preview).toBeUndefined();
+    cache.putMessageBody('account-1', 'INBOX', {
+      ...detail, text: `Hello\n\n  there\t${'x'.repeat(500)}`,
+    });
+    const listed = cache.listMessages('account-1', 'INBOX').messages[0];
+    expect(listed.preview).toBe(`Hello there ${'x'.repeat(148)}`);
+    expect(listed.unread).toBe(true);
+    cache.putMessageBody('account-1', 'INBOX', { ...detail, messageId: '<different@example.com>' });
+    expect(cache.listMessages('account-1', 'INBOX').messages[0].preview).toBeUndefined();
+  });
+
   it('stores folder metadata and preserves server order', () => {
     cache = new MailCache(':memory:');
     const archive = { ...inbox, path: 'Archive', name: 'Archive', specialUse: '\\Archive' };

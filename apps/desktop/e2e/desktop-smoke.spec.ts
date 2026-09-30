@@ -45,6 +45,19 @@ test('navigates the desktop app and reads sample mail', async () => {
 
     await expect(page.getByRole('heading', { name: 'Inbox', exact: true })).toBeVisible();
     await expect(page.getByRole('list', { name: 'Messages' }).getByRole('listitem')).toHaveCount(5);
+    await page.screenshot({ path: testInfo.outputPath('modern-inbox.png') });
+
+    await page.getByRole('button', { name: 'View options', exact: true }).click();
+    await page.screenshot({ path: testInfo.outputPath('modern-view-options.png') });
+    await page.getByRole('button', { name: 'Use three-column layout' }).click();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: /The launch page is ready for review/ }).click();
+    await expect(page.getByRole('heading', { name: 'The launch page is ready for review' })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('modern-split.png') });
+    await page.getByRole('button', { name: 'Close message', exact: true }).click();
+    await page.getByRole('button', { name: 'View options', exact: true }).click();
+    await page.getByRole('button', { name: 'Use list layout' }).click();
+    await page.keyboard.press('Escape');
 
     const appearanceShortcut = process.platform === 'darwin' ? 'Meta+Shift+P' : 'Control+Shift+P';
     const appearance = page.getByRole('dialog', { name: 'Quick appearance' });
@@ -52,6 +65,13 @@ test('navigates the desktop app and reads sample mail', async () => {
     await expect(appearance.getByRole('radio', { name: 'Light', exact: true })).toBeFocused();
     await page.keyboard.press('ArrowDown');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await page.keyboard.press('Escape');
+    await page.screenshot({ path: testInfo.outputPath('modern-dark.png') });
+    await page.getByRole('button', { name: /The launch page is ready for review/ }).click();
+    await expect(page.getByRole('heading', { name: 'The launch page is ready for review' })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('modern-dark-reader.png') });
+    await page.keyboard.press('Escape');
+    await page.keyboard.press(appearanceShortcut);
     await page.keyboard.press('Tab');
     await expect(appearance.getByRole('radio', { name: 'Inter', exact: true })).toBeFocused();
     await page.keyboard.press('ArrowDown');
@@ -72,24 +92,30 @@ test('navigates the desktop app and reads sample mail', async () => {
     await page.setViewportSize({ width: 800, height: 700 });
     await page.getByRole('button', { name: 'Open navigation' }).click();
     await expect(page.getByRole('navigation', { name: 'Mailboxes' })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('modern-narrow-navigation.png') });
     await page.getByRole('button', { name: 'Close navigation' }).click();
     await expect(page.getByRole('button', { name: 'Open navigation' })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('modern-narrow-inbox.png') });
     await application.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setSize(1280, 800);
     });
     await page.setViewportSize({ width: 1280, height: 800 });
 
     await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowUp');
     const launchConversation = page.getByRole('button', {
       name: /The launch page is ready for review/,
     });
     await expect(launchConversation).toBeFocused();
+    await expect(launchConversation).toHaveCSS('box-shadow', 'none');
+    await expect(launchConversation.locator('..')).toHaveCSS('box-shadow', /1px.*inset|inset.*1px/);
     await page.keyboard.press('Enter');
 
     await expect(page.getByRole('heading', {
       name: 'The launch page is ready for review',
     })).toBeVisible();
     await expect(page.getByText('launch-checklist.pdf')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('modern-reader.png') });
     const replyButton = page.getByRole('button', { name: 'Reply', exact: true });
     await expect(replyButton).toBeVisible();
     await expect(replyButton).toBeDisabled();
@@ -103,10 +129,13 @@ test('navigates the desktop app and reads sample mail', async () => {
     await page.keyboard.press('Escape');
     await expect(page.getByRole('heading', { name: 'Inbox', exact: true })).toBeVisible();
 
+    await page.getByRole('button', { name: 'View options', exact: true }).click();
     await page.getByRole('button', { name: 'Show unread only' }).click();
     await expect(page.getByRole('list', { name: 'Messages' }).getByRole('listitem')).toHaveCount(2);
     await expect(launchConversation).toHaveCount(0);
     await page.getByRole('button', { name: 'Show all mail' }).click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'View options', exact: true })).toBeFocused();
 
     await page.getByRole('navigation', { name: 'Mailboxes' })
       .getByRole('button', { name: 'Starred', exact: true })
@@ -123,6 +152,11 @@ test('navigates the desktop app and reads sample mail', async () => {
       name: 'Select conversation: Partnership details', exact: true,
     })).toBeVisible();
 
+    await page.getByRole('combobox', { name: 'Switch account' }).selectOption('demo-personal');
+    await expect(page.getByRole('heading', { name: 'Inbox', exact: true })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Switch account' })).toHaveValue('demo-personal');
+    await page.getByRole('combobox', { name: 'Switch account' }).selectOption('');
+
     await page.getByRole('navigation', { name: 'Mailboxes' })
       .getByRole('button', { name: 'Trash', exact: true })
       .first()
@@ -134,7 +168,7 @@ test('navigates the desktop app and reads sample mail', async () => {
 });
 
 for (const mailbox of ['unified', 'folder'] as const) {
-  test(`preserves docked replies across sync and navigation in ${mailbox} inbox`, async () => {
+  test(`preserves inline replies across sync and navigation in ${mailbox} inbox`, async () => {
     const executablePath = packagedExecutable();
     expect(executablePath).toBeDefined();
     const launchEnv = { ...process.env };
@@ -214,15 +248,23 @@ for (const mailbox of ['unified', 'folder'] as const) {
       );
       const openReply = async () => {
         await page.getByRole('button', { name: /Sender.*Reply persistence test/ }).click();
-        await page.getByRole('button', { name: 'Reply', exact: true }).click();
+        await page.getByRole('button', { name: 'Write a reply…', exact: true }).click();
       };
       await openReply();
       const editor = page.getByRole('region', { name: 'Reply composer' }).getByRole('textbox', { name: 'Message', exact: true });
       const composer = page.getByRole('region', { name: 'Reply composer' });
-      await expect(composer).toHaveCSS('position', 'fixed');
-      await expect(composer).toHaveCSS('right', '16px');
-      await expect(composer).toHaveCSS('bottom', '16px');
+      await expect(composer).toHaveCSS('position', 'relative');
+      await expect(composer).toBeVisible();
+      await expect(composer.getByRole('textbox', { name: 'Subject', exact: true })).toBeHidden();
+      await composer.getByRole('button', { name: 'Edit details', exact: true }).click();
+      await expect(composer.getByRole('textbox', { name: 'Subject', exact: true })).toBeVisible();
+      await composer.getByRole('button', { name: 'Hide details', exact: true }).click();
       await editor.fill('First part');
+      if (mailbox === 'unified') {
+        await page.setViewportSize({ width: 1440, height: 1100 });
+        await page.screenshot({ path: test.info().outputPath('modern-reply.png') });
+        await page.setViewportSize({ width: 1280, height: 800 });
+      }
       const listsBeforeSync = (await readState()).lists;
       await application.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()[0].webContents.send('sync:mailbox-changed', {});
@@ -253,10 +295,39 @@ for (const mailbox of ['unified', 'folder'] as const) {
       await editor.fill('Discard this draft');
       await page.getByRole('button', { name: 'Delete draft', exact: true }).click();
       await page.getByRole('alertdialog').getByRole('button', { name: /Delete/ }).click();
-      await page.getByRole('button', { name: 'Back', exact: true }).click();
-      // Give a wrongly retained debounce a chance to run after discard/unmount.
+      // Give a wrongly retained debounce a chance to run after discard.
       await page.waitForTimeout(1_400);
       expect((await readState()).saves).toHaveLength(3);
+      await page.getByRole('button', { name: 'Write a reply…', exact: true }).click();
+      await expect(editor).toBeEmpty();
+      await composer.getByRole('button', { name: 'Edit details', exact: true }).click();
+      await expect(composer.getByRole('textbox', { name: 'Subject', exact: true })).toHaveValue('Re: Reply persistence test');
+      await page.getByRole('button', { name: 'Delete draft', exact: true }).click();
+      await page.getByRole('alertdialog').getByRole('button', { name: /Delete/ }).click();
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
+
+      // New messages occupy the mail area and autosave when navigating away.
+      await page.getByRole('button', { name: 'Compose', exact: true }).click();
+      const newMessage = page.getByRole('region', { name: 'New message', exact: true });
+      await expect(newMessage).toHaveCSS('position', 'relative');
+      await expect(page.getByRole('list', { name: 'Messages' })).toHaveCount(0);
+      await expect(newMessage.getByRole('button', { name: 'Expand to message area' })).toHaveCount(0);
+      await newMessage.getByRole('combobox', { name: 'To', exact: true }).fill('friend@example.test');
+      await newMessage.getByRole('textbox', { name: 'Subject', exact: true }).fill('A dedicated compose page');
+      const newEditor = newMessage.getByRole('textbox', { name: 'Message', exact: true });
+      await newEditor.fill('Room to write without covering the inbox.');
+      await page.getByRole('button', { name: 'Compose', exact: true }).click();
+      await expect(newEditor).toHaveText('Room to write without covering the inbox.');
+      if (mailbox === 'unified') {
+        await page.setViewportSize({ width: 1440, height: 1100 });
+        await page.screenshot({ path: test.info().outputPath('modern-compose-page.png') });
+        await page.setViewportSize({ width: 1280, height: 800 });
+      }
+      await page.getByRole('navigation', { name: 'Mailboxes' }).getByRole('button', { name: 'Inbox', exact: true }).first().click();
+      await expect(newMessage).toHaveCount(0);
+      await expect(page.getByRole('list', { name: 'Messages' })).toBeVisible();
+      await expect.poll(async () => (await readState()).completed).toBe(4);
+      expect((await readState()).saves[3].text).toBe('Room to write without covering the inbox.');
     } finally {
       await application.close();
     }

@@ -1,3 +1,4 @@
+import { htmlFrameScript, htmlFrameScriptHash } from './message-html-frame';
 import {
   useEffect,
   useRef,
@@ -82,20 +83,20 @@ export type MailboxSelection =
 export type MailLayout = 'list' | 'split';
 
 export function useCompactMailList(forceCompact = false) {
-  const ref = useRef<HTMLElement>(null);
+  // Switching list/split layout replaces the surface; observe its new node too.
+  const [element, setElement] = useState<HTMLElement | null>(null);
   const [measuredCompact, setMeasuredCompact] = useState(false);
 
   useEffect(() => {
-    const element = ref.current;
     if (!element) return;
     const observer = new ResizeObserver(([entry]) => {
       setMeasuredCompact(entry.contentRect.width < 760);
     });
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [element]);
 
-  return { ref, compact: forceCompact || measuredCompact };
+  return { ref: setElement, compact: forceCompact || measuredCompact };
 }
 
 export function MailLayoutToggle({
@@ -110,7 +111,7 @@ export function MailLayoutToggle({
     <Button
       type="button"
       variant="ghost"
-      className="header-tooltip px-3"
+      className="header-tooltip size-8 px-0"
       aria-label={split ? 'Use list layout' : 'Use three-column layout'}
       data-tooltip={split ? 'Use list layout' : 'Use three-column layout'}
       onClick={() => onChange(split ? 'list' : 'split')}
@@ -130,7 +131,7 @@ export function SidebarHeaderToggle({
   return (
     <Button
       variant="ghost"
-      className="header-tooltip hidden px-3 lg:inline-flex"
+      className="header-tooltip hidden size-8 px-0 lg:inline-flex"
       aria-label="Toggle main sidebar"
       data-tooltip={`Toggle main sidebar (${window.emzero?.platform === 'darwin' ? '⌘B' : 'Ctrl+B'})`}
       onClick={onToggle}
@@ -210,12 +211,12 @@ export function addressDetails(addresses: MailMessageSummary['from']): string {
 }
 
 const avatarColorClasses = [
-  'bg-blue-600',
-  'bg-emerald-600',
-  'bg-violet-600',
-  'bg-amber-600',
-  'bg-rose-600',
-  'bg-cyan-600',
+  'bg-blue-500/12 text-foreground/75',
+  'bg-emerald-500/12 text-foreground/75',
+  'bg-violet-500/12 text-foreground/75',
+  'bg-amber-500/12 text-foreground/75',
+  'bg-rose-500/12 text-foreground/75',
+  'bg-cyan-500/12 text-foreground/75',
 ] as const;
 
 export function avatarInitials(label: string): string {
@@ -280,7 +281,7 @@ export function SenderAvatar({
   return (
     <span
       className={cn(
-        'grid size-7 place-items-center rounded-full text-[0.65rem] font-semibold tracking-wide text-white transition-opacity',
+        'grid size-7 place-items-center rounded-full text-[0.65rem] font-semibold tracking-wide transition-opacity',
         avatarColorClass(label),
         className,
       )}
@@ -373,8 +374,8 @@ export function htmlDocument(
     : 'blockquote,.gmail_quote,.yahoo_quoted,.moz-cite-prefix,#divRplyFwdMsg{display:none!important}';
   const colors = messageThemeColors[theme];
   const imageSources = loadRemoteImages ? 'data: http: https:' : 'data:';
-  const linkRelay = `<script>document.addEventListener('click',function(event){var link=event.target.closest('a[href]');if(!link)return;event.preventDefault();parent.postMessage({type:'emzero:open-link',url:link.href},'*')})</script>`;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${imageSources}; style-src 'unsafe-inline'; script-src 'sha256-WjIlQhU8kgACo60V/0qpiNd4Brn6ImW1j3ghP53B1Yg=';"><style>html{color-scheme:light;background:#fff;scrollbar-color:color-mix(in oklab,${colors.primary} 55%,transparent) transparent;scrollbar-width:thin}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}::-webkit-scrollbar-thumb{min-width:40px;min-height:40px;border:3px solid transparent;border-radius:999px;background:color-mix(in oklab,${colors.primary} 55%,transparent);background-clip:content-box}::-webkit-scrollbar-thumb:hover{background:color-mix(in oklab,${colors.primary} 78%,transparent);background-clip:content-box}body{box-sizing:border-box;margin:0;padding:1.5rem;color:#202124;background:#fff;font:14px/1.55 Arial,Helvetica,sans-serif;overflow-wrap:anywhere}a{color:#2457a7}img{max-width:100%;height:auto}table{max-width:100%}${quotedStyle}</style></head><body>${body}${linkRelay}</body></html>`;
+  const linkRelay = `<script>${htmlFrameScript}</script>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${imageSources}; style-src 'unsafe-inline'; script-src '${htmlFrameScriptHash}';"><style>html{color-scheme:light;background:#fff;overflow:hidden}body{display:flow-root;box-sizing:border-box;margin:0;padding:0;color:#202124;background:#fff;font:14px/1.55 Arial,Helvetica,sans-serif;overflow-wrap:anywhere}a{color:${colors.primary}}img{max-width:100%;height:auto}table{max-width:100%}${quotedStyle}</style></head><body>${body}${linkRelay}</body></html>`;
 }
 
 export function messageDate(value: string | null): string {

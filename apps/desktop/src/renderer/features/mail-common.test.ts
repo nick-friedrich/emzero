@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { htmlFrameScript, htmlFrameScriptHash } from './message-html-frame';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
@@ -39,6 +41,15 @@ describe('HTML email documents', () => {
     expect(appShell).toMatch(/img-src [^;]*http: [^;]*https:/);
   });
 
+  it('authorizes only the trusted sizing/link relay in both CSPs', () => {
+    const hash = `sha256-${createHash('sha256').update(htmlFrameScript).digest('base64')}`;
+    expect(htmlFrameScriptHash).toBe(hash);
+    const shell = readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
+    expect(shell).toContain(`'${hash}'`);
+    expect(htmlDocument('<p>Mail</p>', false, 'dark')).toContain(`'${hash}'`);
+    expect(htmlFrameScript).toContain('ResizeObserver');
+  });
+
   it('detects remote images but not embedded data images', () => {
     expect(hasRemoteImages('<img src="https://images.example/banner.png">')).toBe(true);
     expect(hasRemoteImages('<img src="//images.example/banner.png">')).toBe(true);
@@ -60,7 +71,7 @@ describe('HTML email documents', () => {
     expect(blocked).toContain('color-scheme:light');
     expect(blocked).toContain('background:#fff');
     expect(blocked).toContain("type:'emzero:open-link'");
-    expect(blocked).toContain("script-src 'sha256-WjIlQhU8kgACo60V/0qpiNd4Brn6ImW1j3ghP53B1Yg='");
+    expect(blocked).toContain(`script-src '${htmlFrameScriptHash}'`);
   });
 });
 

@@ -6,6 +6,7 @@ import {
   type FormEvent,
 } from 'react';
 import {
+  ArrowLeft,
   ChevronDown,
   ExternalLink,
   LoaderCircle,
@@ -220,7 +221,7 @@ export function ComposeDialog({
   initialDraftReference,
   composerKind = 'new',
   loadConversation,
-  variant = 'floating',
+  variant = 'page',
   onDraftSaved,
   onDeleted,
 }: {
@@ -233,7 +234,7 @@ export function ComposeDialog({
   initialDraftReference?: MailDraftReference;
   composerKind?: MailComposerKind;
   loadConversation?: () => Promise<AiConversationMessage[]>;
-  variant?: 'floating' | 'inline' | 'window';
+  variant?: 'page' | 'inline' | 'window';
   onDraftSaved?: (event: DraftSavedEvent) => void;
   onDeleted?: (event: DraftDeletedEvent) => void;
 }) {
@@ -271,6 +272,8 @@ export function ComposeDialog({
   });
   const [attachments, setAttachments] = useState<MailOutgoingAttachment[]>(initialDraft?.attachments ?? []);
   const [expanded, setExpanded] = useState(variant === 'window');
+  const [replyDetailsOpen, setReplyDetailsOpen] = useState(false);
+  const compactReply = variant === 'inline' && composerKind === 'reply' && !expanded;
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
@@ -483,10 +486,10 @@ export function ComposeDialog({
     <>
       {open && <section
         className={cn(
-          'z-40 flex flex-col overflow-hidden border border-border bg-card shadow-2xl',
-          variant !== 'window' && 'macos-titlebar-no-drag',
-          variant === 'inline' && !expanded && 'relative mt-5 rounded-lg',
-          variant === 'floating' && !expanded && 'fixed bottom-4 right-4 max-h-[min(44rem,calc(100vh-2rem))] w-[min(42rem,calc(100vw-2rem))] rounded-xl',
+          'z-40 flex flex-col overflow-hidden border border-border bg-card',
+          variant === 'inline' && 'macos-titlebar-no-drag',
+          variant === 'inline' && !expanded && 'relative mt-5 rounded-xl shadow-sm',
+          variant === 'page' && 'relative h-full min-h-0 min-w-0 border-0',
           expanded && variant !== 'window' && 'fixed inset-y-0 right-0 lg:left-[var(--sidebar-width)]',
           variant === 'window' && 'h-screen border-0',
         )}
@@ -494,10 +497,17 @@ export function ComposeDialog({
       >
         <header className={cn(
           'flex items-center gap-2 border-b border-border px-4 py-3',
+          variant === 'page' && 'mail-pane-header gap-3 pl-16 lg:px-6',
+          window.emzero?.platform === 'darwin' && variant === 'page' && 'macos-content-header macos-titlebar-drag',
           window.emzero?.platform === 'darwin' && variant === 'window' && 'macos-content-header macos-native-window-header macos-titlebar-drag',
         )}>
+          {variant === 'page' && <Button type="button" variant="ghost"
+            className="size-8 shrink-0 px-0" disabled={busy || aiBusy}
+            aria-label="Back to mailbox" title="Back to mailbox" onClick={closeComposer}>
+            <ArrowLeft className="size-4" />
+          </Button>}
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold">
+            <h2 className={cn('truncate font-semibold', variant === 'page' ? 'text-lg tracking-tight' : 'text-sm')}>
               {composerKind === 'reply' ? 'Reply' : composerKind === 'draft' ? 'Edit draft' : 'New message'}
             </h2>
             {subject && <p className="truncate text-xs text-muted-foreground">{subject}</p>}
@@ -514,7 +524,7 @@ export function ComposeDialog({
             >
               <Trash2 className="size-4" />
             </Button>}
-            {variant !== 'window' && <Button
+            {variant === 'inline' && <Button
               type="button"
               variant="ghost"
               className="size-8 px-0"
@@ -548,7 +558,7 @@ export function ComposeDialog({
             >
               <ExternalLink className="size-4" />
             </Button>}
-            <Button
+            {variant !== 'page' && <Button
               type="button"
               variant="ghost"
               className="size-8 px-0"
@@ -558,87 +568,105 @@ export function ComposeDialog({
               onClick={closeComposer}
             >
               <X className="size-4" />
-            </Button>
+            </Button>}
           </div>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+        <div className={cn('min-h-0 flex-1 overflow-y-auto p-4 sm:p-5',
+          variant === 'page' && 'sm:px-8 sm:py-8')}>
         <form
-          className="space-y-4"
+          className={cn('space-y-4', variant === 'page' && 'mx-auto max-w-3xl')}
           onSubmit={submit}
         >
-          <Field label="From">
-            <div className="relative">
-              <select
-                className="field appearance-none pr-9"
-                value={accountId}
+          {compactReply && (
+            <div className="flex items-start justify-between gap-3 text-xs">
+              <div className="min-w-0 space-y-1 text-muted-foreground">
+                <p className="truncate">To: <span className="text-foreground">{to}</span></p>
+                {cc && <p className="truncate">Cc: {cc}</p>}
+                {bcc && <p className="truncate">Bcc: {bcc}</p>}
+                <p className="truncate">From: {accounts.find((account) => account.id === accountId)?.email}</p>
+              </div>
+              <Button type="button" variant="ghost" className="h-7 shrink-0 px-2 text-xs"
+                aria-expanded={replyDetailsOpen} onClick={() => setReplyDetailsOpen((current) => !current)}>
+                {replyDetailsOpen ? 'Hide details' : 'Edit details'}
+              </Button>
+            </div>
+          )}
+          <div className="space-y-4" hidden={compactReply && !replyDetailsOpen}>
+            <Field label="From">
+              <div className="relative">
+                <select
+                  className="field appearance-none pr-9"
+                  value={accountId}
+                  disabled={busy || aiBusy}
+                  onChange={(event) => {
+                    const nextAccountId = event.target.value;
+                    const nextSignatureId = signatureIdForAccount(nextAccountId);
+                    changeSignature(nextSignatureId);
+                    setAccountId(nextAccountId);
+                    setStatus(null);
+                  }}
+                >
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name} — {account.email}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-2.5 size-4 text-muted-foreground" />
+              </div>
+            </Field>
+            <RecipientField
+              label="To"
+              accountId={accountId}
+              value={to}
+              placeholder="Start typing a name or email address"
+              autoFocus={composerKind !== 'reply'}
+              disabled={busy || aiBusy}
+              onChange={(value) => {
+                setTo(value);
+                setStatus(null);
+              }}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <RecipientField
+                label="Cc"
+                accountId={accountId}
+                value={cc}
+                placeholder="Optional"
                 disabled={busy || aiBusy}
-                onChange={(event) => {
-                  const nextAccountId = event.target.value;
-                  const nextSignatureId = signatureIdForAccount(nextAccountId);
-                  changeSignature(nextSignatureId);
-                  setAccountId(nextAccountId);
+                onChange={(value) => {
+                  setCc(value);
                   setStatus(null);
                 }}
-              >
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name} — {account.email}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-2.5 size-4 text-muted-foreground" />
+              />
+              <RecipientField
+                label="Bcc"
+                accountId={accountId}
+                value={bcc}
+                placeholder="Optional"
+                disabled={busy || aiBusy}
+                onChange={(value) => {
+                  setBcc(value);
+                  setStatus(null);
+                }}
+              />
             </div>
-          </Field>
-          <RecipientField
-            label="To"
-            accountId={accountId}
-            value={to}
-            placeholder="Start typing a name or email address"
-            autoFocus={composerKind !== 'reply'}
-            disabled={busy || aiBusy}
-            onChange={(value) => {
-              setTo(value);
-              setStatus(null);
-            }}
-          />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <RecipientField
-              label="Cc"
-              accountId={accountId}
-              value={cc}
-              placeholder="Optional"
-              disabled={busy || aiBusy}
-              onChange={(value) => {
-                setCc(value);
-                setStatus(null);
-              }}
-            />
-            <RecipientField
-              label="Bcc"
-              accountId={accountId}
-              value={bcc}
-              placeholder="Optional"
-              disabled={busy || aiBusy}
-              onChange={(value) => {
-                setBcc(value);
-                setStatus(null);
-              }}
-            />
+            <Field label="Subject">
+              <input
+                className="field"
+                value={subject}
+                disabled={busy || aiBusy}
+                onChange={(event) => {
+                  setSubject(event.target.value);
+                  setStatus(null);
+                }}
+              />
+            </Field>
           </div>
-          <Field label="Subject">
-            <input
-              className="field"
-              value={subject}
-              disabled={busy || aiBusy}
-              onChange={(event) => {
-                setSubject(event.target.value);
-                setStatus(null);
-              }}
-            />
-          </Field>
           <Field label="Message">
             <RichTextEditor
               html={bodyHtml}
+              compact={compactReply}
               autoFocus={composerKind === 'reply'}
               disabled={busy || aiBusy}
               onChange={(html, text) => {

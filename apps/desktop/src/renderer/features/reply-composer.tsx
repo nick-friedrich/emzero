@@ -1,8 +1,10 @@
 import type { AccountSummary, MailMessageDetail, MailMessageSummary } from '../../shared/accounts';
 import type { AiConversationMessage } from '../../shared/ai';
-import { createReplyDraft } from '../../shared/replies';
+import { createReplyDraft, replyRecipients } from '../../shared/replies';
 import { ComposeDialog, type DraftDeletedEvent, type DraftSavedEvent } from './compose-dialog';
 import { signatureBody } from './signatures';
+import { Reply } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 export function ReplyComposer({
   account,
@@ -65,17 +67,27 @@ export function ReplyComposer({
   };
 
   return (
-    <ComposeDialog
-      open={open}
-      accounts={[account]}
-      defaultAccountId={account.id}
-      composerKind="reply"
-      initialDraft={createReplyDraft(account, summary, message, signatureBody(account.id))}
-      loadConversation={loadConversation}
-      onOpenChange={onOpenChange}
-      onSent={(sentMessage) => { if (sentMessage) onSent(sentMessage); }}
-      onDraftSaved={onDraftSaved}
-      onDeleted={onDraftDeleted}
-    />
+    <>
+      {!open && <Button variant="ghost"
+        className="mt-7 h-14 w-full justify-start gap-3 rounded-xl border border-border/70 bg-background px-4 text-sm font-normal text-muted-foreground hover:border-primary/30"
+        disabled={replyRecipients(account, message).length === 0}
+        onClick={() => onOpenChange(true)}>
+        <Reply className="size-4 text-primary" />
+        Write a reply…
+      </Button>}
+      <ComposeDialog
+        open={open}
+        accounts={[account]}
+        defaultAccountId={account.id}
+        composerKind="reply"
+        variant="inline"
+        initialDraft={createReplyDraft(account, summary, message, signatureBody(account.id))}
+        loadConversation={loadConversation}
+        onOpenChange={onOpenChange}
+        onSent={(sentMessage) => { if (sentMessage) onSent(sentMessage); }}
+        onDraftSaved={onDraftSaved}
+        onDeleted={onDraftDeleted}
+      />
+    </>
   );
 }

@@ -86,7 +86,7 @@ export function inboxGroup(conversation: MailConversation, folderPath: string): 
 export function InboxGroupHeader({ group }: { group: InboxGroup }) {
   const label = { starred: 'Starred', unread: 'Unread', other: 'Other mail' }[group];
   return (
-    <div className="flex items-center gap-2 border-y border-border bg-secondary/60 px-4 py-1.5 text-[0.68rem] font-semibold uppercase tracking-wider text-muted-foreground lg:px-6">
+    <div className="flex items-center gap-2 px-3 pb-2 pt-4 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground lg:px-4">
       {group === 'starred' && <Star className="size-3 fill-primary text-primary" />}
       {group === 'unread' && <Mail className="size-3 text-primary" />}
       {label}

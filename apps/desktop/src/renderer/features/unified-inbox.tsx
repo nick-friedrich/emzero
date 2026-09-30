@@ -1,3 +1,4 @@
+import { MailViewMenu } from './mail-view-menu';
 import {
   Fragment,
   useCallback,
@@ -1106,10 +1107,10 @@ export function UnifiedInbox({
   const list = (
     <section
       ref={listSurfaceRef}
-      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background"
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card"
     >
       <header className={cn(
-        'flex min-w-0 items-center justify-between gap-3 border-b border-border bg-card py-4 pl-16 pr-4 lg:px-6',
+        'mail-pane-header flex min-w-0 items-center justify-between gap-3 border-b border-border/60 bg-card py-3 pl-16 pr-4 lg:px-6',
         compactList && 'lg:px-4',
         window.emzero?.platform === 'darwin' && 'macos-content-header macos-titlebar-drag',
       )}>
@@ -1121,20 +1122,22 @@ export function UnifiedInbox({
               : `${accounts.length} ${accounts.length === 1 ? 'account' : 'accounts'}`}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <SidebarHeaderToggle pinned={sidebarPinned} onToggle={onToggleSidebar} />
-          <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
-          {mailbox === 'inbox' && (
-            <InboxViewOptions
-              filter={inboxView.filter}
-              onFilterChange={(filter) => {
-                inboxView.setFilter(filter);
-                setSelectedItemKeys(new Set());
-                setSelectionAnchorKey(null);
-                setSelectionCursorKey(null);
-              }}
-            />
-          )}
+        <div className="flex shrink-0 items-center gap-1">
+          <MailViewMenu>
+            <SidebarHeaderToggle pinned={sidebarPinned} onToggle={onToggleSidebar} />
+            <MailLayoutToggle layout={mailLayout} onChange={onMailLayoutChange} />
+            {mailbox === 'inbox' && (
+              <InboxViewOptions
+                filter={inboxView.filter}
+                onFilterChange={(filter) => {
+                  inboxView.setFilter(filter);
+                  setSelectedItemKeys(new Set());
+                  setSelectionAnchorKey(null);
+                  setSelectionCursorKey(null);
+                }}
+              />
+            )}
+          </MailViewMenu>
           {!compactList && state.status === 'loaded' && (
             <span className="hidden whitespace-nowrap text-xs text-muted-foreground lg:inline">
               {availableItems.length} {availableItems.length === 1 ? 'conversation' : 'conversations'}
@@ -1146,7 +1149,7 @@ export function UnifiedInbox({
           )}
           <Button
             variant="ghost"
-            className="px-3"
+            className="size-8 px-0"
             aria-label={`Refresh ${title.toLowerCase()}`}
             title={`Refresh ${title.toLowerCase()}`}
             disabled={state.status === 'loading'}
@@ -1286,7 +1289,7 @@ export function UnifiedInbox({
       )}
 
       {state.status === 'loaded' && availableItems.length > 0 && (
-        <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Messages">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3" role="list" aria-label="Messages">
           {availableItems.map((item, index) => {
             const { conversation, selection } = item;
             const latest = conversation.messages[0];
@@ -1327,17 +1330,17 @@ export function UnifiedInbox({
               {group && group !== previousGroup && <InboxGroupHeader group={group} />}
               <div
                 className={cn(
-                  'group relative flex min-w-0 items-center border-b border-border hover:bg-accent/60',
+                  'mail-conversation-row group relative mb-1 flex min-w-0 items-center rounded-xl hover:bg-secondary/60',
                   dueDateRowClass(importantMessage?.dueDate ?? null),
-                  selectedItemKeys.has(itemKey(item)) && 'bg-accent/60',
-                  mailLayout === 'split' && selectedItem && itemKey(selectedItem) === itemKey(item) && 'bg-accent',
+                  selectedItemKeys.has(itemKey(item)) && 'bg-primary/8 ring-1 ring-inset ring-primary/15',
+                  mailLayout === 'split' && selectedItem && itemKey(selectedItem) === itemKey(item) && 'bg-primary/10',
                 )}
                 role="listitem"
               >
                 <div
                   className={compactList
-                    ? 'relative ml-3 grid size-8 shrink-0 place-items-center'
-                    : 'relative ml-4 grid size-8 shrink-0 place-items-center lg:ml-6'}
+                    ? 'relative ml-2 grid size-8 shrink-0 place-items-center'
+                    : 'relative ml-3 grid size-8 shrink-0 place-items-center lg:ml-4'}
                   onClick={(event) => event.stopPropagation()}
                 >
                   <SenderAvatar
@@ -1392,10 +1395,10 @@ export function UnifiedInbox({
                     else unifiedRowRefs.current.delete(key);
                   }}
                   className={cn(
-                    'grid min-w-0 flex-1 items-center gap-y-1 text-left focus-visible:bg-accent focus-visible:outline-none',
+                    'grid min-w-0 flex-1 items-center gap-y-1 text-left focus-visible:outline-none',
                     compactList
-                      ? 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-3 py-3.5'
-                      : 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-4 py-3 lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-4 lg:px-6',
+                      ? 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-3 py-3'
+                      : 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-4 py-3 lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-x-4 lg:px-4',
                   )}
                   onMouseEnter={() => prefetchSoon(prefetchTarget)}
                   onMouseLeave={(event) => {
@@ -1483,6 +1486,10 @@ export function UnifiedInbox({
                     className="hidden sm:flex"
                   />
                 </div>
+                  {latest.preview && <p className={cn(
+                    'min-w-0 truncate text-xs leading-5 text-muted-foreground',
+                    compactList ? 'col-span-2 col-start-1 row-start-3 pl-3.5' : 'col-span-2 col-start-1 row-start-3 pl-3.5 lg:col-span-1 lg:col-start-2 lg:row-start-2 lg:pl-0',
+                  )}>{latest.preview}</p>}
                 <div className={cn(
                   'flex items-center gap-2 text-xs text-muted-foreground',
                   compactList
@@ -1504,8 +1511,8 @@ export function UnifiedInbox({
                 </button>
                 <div className={cn(
                   compactList
-                    ? 'absolute bottom-1.5 right-2 z-10 rounded-md border border-border bg-card p-0.5 opacity-0 shadow-md transition-opacity group-hover:opacity-100 focus-within:opacity-100'
-                    : 'pr-3 lg:pr-5',
+                    ? 'absolute bottom-2 right-2 z-10 rounded-lg border border-border/60 bg-card p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100'
+                    : 'pr-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 lg:pr-4',
                 )}>
                   <ConversationActions
                     accounts={accounts}

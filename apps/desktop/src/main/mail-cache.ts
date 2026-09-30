@@ -44,6 +44,7 @@ interface MessageRow {
   due_date: string | null;
   color: string | null;
   size: number | null;
+  body_preview?: string | null;
   insight_category?: string | null;
   insight_category_confidence?: number | null;
   insight_needs_reply?: number | null;
@@ -164,6 +165,7 @@ function messageSummary(row: MessageRow): MailMessageSummary {
     dueDate: row.due_date,
     color: row.color as EmzeroMessageColor | null,
     size: row.size,
+    ...(row.body_preview ? { preview: row.body_preview.replace(/\s+/g, ' ').trim().slice(0, 160) } : {}),
     ...(insights ? { insights } : {}),
   };
 }
@@ -700,7 +702,15 @@ export class MailCache {
                messages.reference_ids, messages.subject, messages.sender_addresses,
                messages.recipient_addresses, messages.sent_at, messages.received_at,
                messages.unread, messages.flagged, messages.important, messages.due_date,
-               messages.color, messages.size, ${insightColumns}
+               messages.color, messages.size, ${insightColumns},
+               (
+                 SELECT substr(message_bodies.body_text, 1, 400)
+                 FROM message_bodies
+                 WHERE message_bodies.account_id = messages.account_id
+                   AND message_bodies.folder_path = messages.folder_path
+                   AND message_bodies.uid = messages.uid
+                   AND message_bodies.message_id IS messages.message_id
+               ) AS body_preview
         FROM messages
         ${insightJoin}
         WHERE messages.account_id = ? AND messages.folder_path = ?

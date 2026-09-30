@@ -49,12 +49,14 @@ export function RichTextEditor({
   html,
   disabled,
   autoFocus,
+  compact = false,
   onChange,
   onError,
 }: {
   html: string;
   disabled: boolean;
   autoFocus: boolean;
+  compact?: boolean;
   onChange: (html: string, text: string) => void;
   onError: (message: string) => void;
 }) {
@@ -162,7 +164,7 @@ export function RichTextEditor({
       contentEditable={!disabled}
       suppressContentEditableWarning
       autoFocus={autoFocus}
-      className="min-h-52 overflow-auto px-3 py-2 text-sm leading-6 outline-none [&_img]:max-w-full [&_img]:h-auto"
+      className={`${compact ? 'min-h-32' : 'min-h-52'} overflow-auto px-3 py-2 text-sm leading-6 outline-none [&_img]:max-w-full [&_img]:h-auto`}
       onInput={reportChange}
       onPaste={paste}
     />
