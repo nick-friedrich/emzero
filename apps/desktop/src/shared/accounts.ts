@@ -623,6 +623,7 @@ export const ACCOUNT_CHANNELS = {
   sendMessage: 'messages:send',
   suggestRecipients: 'messages:suggest-recipients',
   selectAttachments: 'attachments:select',
+  addDroppedAttachments: 'attachments:add-dropped',
   prepareDraftAttachments: 'attachments:prepare-draft',
   openAttachment: 'attachments:open',
   saveAttachment: 'attachments:save',

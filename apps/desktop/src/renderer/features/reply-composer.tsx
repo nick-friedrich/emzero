@@ -1,9 +1,9 @@
 import type { AccountSummary, MailMessageDetail, MailMessageSummary } from '../../shared/accounts';
 import type { AiConversationMessage } from '../../shared/ai';
-import { createReplyDraft, replyRecipients } from '../../shared/replies';
+import { createReplyDraft, replyAllCcRecipients, replyRecipients, type ReplyMode } from '../../shared/replies';
 import { ComposeDialog, type DraftDeletedEvent, type DraftSavedEvent } from './compose-dialog';
 import { signatureBody } from './signatures';
-import { Reply } from 'lucide-react';
+import { Reply, ReplyAll } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function ReplyComposer({
@@ -12,6 +12,7 @@ export function ReplyComposer({
   message,
   threadMessages,
   open,
+  mode,
   onOpenChange,
   onSent,
   onDraftSaved,
@@ -22,11 +23,15 @@ export function ReplyComposer({
   message: MailMessageDetail;
   threadMessages: MailMessageSummary[];
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  mode: ReplyMode;
+  onOpenChange: (open: boolean, mode?: ReplyMode) => void;
   onSent: (message: MailMessageSummary) => void;
   onDraftSaved?: (event: DraftSavedEvent) => void;
   onDraftDeleted?: (event: DraftDeletedEvent) => void;
 }) {
+  const canReply = replyRecipients(account, message).length > 0;
+  const canReplyAll = canReply && replyAllCcRecipients(account, message).length > 0;
+
   const loadConversation = async () => {
     try {
       const loadedConversation = await Promise.all(
@@ -68,20 +73,33 @@ export function ReplyComposer({
 
   return (
     <>
-      {!open && <Button variant="ghost"
-        className="mt-7 h-14 w-full justify-start gap-3 rounded-xl border border-border/70 bg-background px-4 text-sm font-normal text-muted-foreground hover:border-primary/30"
-        disabled={replyRecipients(account, message).length === 0}
-        onClick={() => onOpenChange(true)}>
-        <Reply className="size-4 text-primary" />
-        Write a reply…
-      </Button>}
+      {!open && <div className="mt-7 flex items-center gap-2">
+        <button
+          type="button"
+          className="flex h-12 min-w-0 flex-1 items-center gap-3 rounded-2xl border border-border/80 bg-background px-4 text-left text-sm text-muted-foreground shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-colors hover:border-primary/35 hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+          disabled={!canReply}
+          onClick={() => onOpenChange(true, 'reply')}
+        >
+          <Reply className="size-4 shrink-0 text-primary" />
+          <span className="truncate">Write a reply…</span>
+        </button>
+        {canReplyAll && <Button
+          variant="ghost"
+          className="h-12 shrink-0 rounded-2xl border border-border/80 px-4 text-sm font-normal text-muted-foreground hover:border-primary/35 hover:text-foreground"
+          onClick={() => onOpenChange(true, 'replyAll')}
+        >
+          <ReplyAll className="size-4 text-primary" />
+          Reply all
+        </Button>}
+      </div>}
       <ComposeDialog
         open={open}
         accounts={[account]}
         defaultAccountId={account.id}
         composerKind="reply"
         variant="inline"
-        initialDraft={createReplyDraft(account, summary, message, signatureBody(account.id))}
+        title={mode === 'replyAll' ? 'Reply all' : 'Reply'}
+        initialDraft={createReplyDraft(account, summary, message, signatureBody(account.id), mode)}
         loadConversation={loadConversation}
         onOpenChange={onOpenChange}
         onSent={(sentMessage) => { if (sentMessage) onSent(sentMessage); }}

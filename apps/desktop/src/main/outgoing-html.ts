@@ -9,11 +9,18 @@ export function outgoingHtml(value: string | undefined): string | undefined {
   if (!value) return undefined;
   if (value.length > 30 * 1024 * 1024) throw new Error('The formatted message is too large.');
   const cleaned = sanitizeHtml(value, {
-    allowedTags: ['p', 'div', 'br', 'b', 'strong', 'i', 'em', 'u', 's', 'ul', 'ol', 'li', 'blockquote', 'a', 'img'],
-    allowedAttributes: { a: ['href'], img: ['src', 'alt'] },
+    allowedTags: ['p', 'div', 'br', 'b', 'strong', 'i', 'em', 'u', 's', 'strike', 'ul', 'ol', 'li', 'blockquote', 'a', 'img'],
+    allowedAttributes: { a: ['href'], img: ['src', 'alt'], div: ['id'] },
     allowedSchemes: ['http', 'https', 'mailto'],
     allowedSchemesByTag: { img: ['data'] },
     exclusiveFilter: (frame) => frame.tag === 'img' && !frame.attribs.src,
+    // Only the Outlook-style signature marker survives, so other clients can find the signature.
+    transformTags: {
+      div: (_tag, attributes) => ({
+        tagName: 'div',
+        attribs: attributes.id === 'Signature' ? { id: 'Signature' } : {} as Record<string, string>,
+      }),
+    },
   });
   let total = 0;
   sanitizeHtml(cleaned, {

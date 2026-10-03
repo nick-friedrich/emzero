@@ -50,6 +50,7 @@ import {
   revealSavedAttachment,
   saveMessageAttachment,
   selectOutgoingAttachments,
+  addDroppedAttachments,
 } from './attachment-files.js';
 import {
   createAccountFolder,
@@ -743,6 +744,11 @@ export function registerAccountHandlers(): void {
   ipcMain.handle(ACCOUNT_CHANNELS.selectAttachments, (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return selectOutgoingAttachments();
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.addDroppedAttachments, (event, files: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    return addDroppedAttachments(files);
   });
 
   ipcMain.handle(

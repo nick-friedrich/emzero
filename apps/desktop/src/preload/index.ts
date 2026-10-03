@@ -157,6 +157,7 @@ export interface EmzeroDesktopApi {
     send: (accountId: string, draft: MailSendDraft) => Promise<MailSendResult>;
     suggestRecipients: (accountId: string, query: string) => Promise<RecipientSuggestion[]>;
     selectAttachments: () => Promise<AttachmentSelectionResult>;
+    addDroppedAttachments: (files: { filename: string; content: Uint8Array }[]) => Promise<AttachmentSelectionResult>;
     prepareDraftAttachments: (
       accountId: string,
       folderPath: string,
@@ -328,6 +329,8 @@ contextBridge.exposeInMainWorld('emzero', {
     suggestRecipients: (accountId, query) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.suggestRecipients, accountId, query),
     selectAttachments: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.selectAttachments),
+    addDroppedAttachments: (files: { filename: string; content: Uint8Array }[]) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.addDroppedAttachments, files),
     prepareDraftAttachments: (accountId, folderPath, uid) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.prepareDraftAttachments, accountId, folderPath, uid),
     openAttachment: (accountId, folderPath, uid, attachmentIndex) =>

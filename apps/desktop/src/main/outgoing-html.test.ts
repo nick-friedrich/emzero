@@ -6,6 +6,11 @@ import { outgoingHtml } from './outgoing-html.js';
 const image = 'data:image/png;base64,iVBORw0KGgo=';
 
 describe('outgoing rich text', () => {
+  it('keeps only the Outlook-style Signature marker on divs', () => {
+    expect(outgoingHtml('<div id="Signature" class="x">Nick</div><div id="other">Hi</div>'))
+      .toBe('<div id="Signature">Nick</div><div>Hi</div>');
+  });
+
   it('keeps formatting and embeds a pasted image in the MIME message', async () => {
     const html = outgoingHtml(`<p><strong>Hello</strong><img src="${image}"></p>`);
     expect(html).toContain('<strong>Hello</strong>');

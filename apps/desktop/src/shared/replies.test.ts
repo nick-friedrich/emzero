@@ -8,6 +8,7 @@ import type {
 import {
   createReplyDraft,
   parseAddressList,
+  replyAllCcRecipients,
   replyRecipients,
   replySubject,
   validateReplyDraft,
@@ -97,6 +98,28 @@ describe('reply helpers', () => {
     });
     expect(validateReplyDraft(draft)).toBeNull();
     expect(validateReplyDraft({ ...draft, text: '   ' })).toBe('Write a message before sending.');
+  });
+
+  it('copies every other participant on reply-all without the account or the sender', () => {
+    const groupMessage = {
+      ...detail,
+      to: [
+        { name: 'Me', address: 'ME@example.com' },
+        { name: 'Colleague', address: 'colleague@example.com' },
+      ],
+      cc: [
+        { name: 'Sender again', address: 'sender@example.com' },
+        { name: 'Manager', address: 'manager@example.com' },
+        { name: 'Colleague duplicate', address: 'Colleague@example.com' },
+        { name: 'Broken', address: 'not-an-address' },
+      ],
+    };
+    expect(replyAllCcRecipients(account, groupMessage)).toEqual([
+      { name: 'Colleague', address: 'colleague@example.com' },
+      { name: 'Manager', address: 'manager@example.com' },
+    ]);
+    expect(createReplyDraft(account, summary, groupMessage, '', 'replyAll').cc).toHaveLength(2);
+    expect(createReplyDraft(account, summary, groupMessage, '').cc).toEqual([]);
   });
 });
 

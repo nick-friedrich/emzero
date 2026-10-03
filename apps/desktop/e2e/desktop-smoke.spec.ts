@@ -205,23 +205,29 @@ for (const mailbox of ['unified', 'folder'] as const) {
           important: false, dueDate: null, color: null, size: 100,
         };
         const state = {
-          saves: [] as { text: string; previous: unknown }[],
+          saves: [] as { text: string; html?: string; previous: unknown }[],
           completed: 0, deleted: 0, lists: 0,
         };
         Object.assign(globalThis, { replyTestState: state });
         const handlers: Record<string, Parameters<typeof ipcMain.handle>[1]> = {
           'accounts:list': () => [account],
+          'signatures:list': () => ({
+            signatures: [{ id: 'sig', name: 'Default', body: 'Nick\nEmzero', accountIds: [account.id] }],
+            initialized: true,
+          }),
           'folders:list': () => ({ ok: true, folders }),
           'messages:list': (_event, _account, folder) => {
             state.lists += 1;
             return { ok: true, messages: folder === 'INBOX' ? [message] : [], total: 1 };
           },
           'messages:get': () => ({ ok: true, messageDetail: {
-            ...message, cc: [], replyTo: [], text: 'Please reply.', html: null,
+            ...message, cc: [], replyTo: [],
+            text: `Please reply.\n\n${'A long paragraph that pushes the reply box below the fold.\n\n'.repeat(40)}`,
+            html: null,
             htmlHasQuotedText: false, attachments: [],
           } }),
           'drafts:save': async (_event, _account, draft, previous) => {
-            state.saves.push({ text: draft.text, previous });
+            state.saves.push({ text: draft.text, html: draft.html, previous });
             const uid = state.saves.length;
             await new Promise((resolve) => setTimeout(resolve, 400));
             state.completed += 1;
@@ -242,19 +248,43 @@ for (const mailbox of ['unified', 'folder'] as const) {
       }
       const readState = () => application.evaluate(() =>
         (globalThis as unknown as { replyTestState: {
-          saves: { text: string; previous?: { uid: number } }[];
+          saves: { text: string; html?: string; previous?: { uid: number } }[];
           completed: number; deleted: number; lists: number;
         } }).replyTestState,
       );
-      const openReply = async () => {
+      const openReply = async (entry: 'Write a reply…' | 'Reply' = 'Write a reply…') => {
         await page.getByRole('button', { name: /Sender.*Reply persistence test/ }).click();
-        await page.getByRole('button', { name: 'Write a reply…', exact: true }).click();
+        await page.getByRole('button', { name: entry, exact: true }).click();
       };
-      await openReply();
+      await openReply('Reply');
       const editor = page.getByRole('region', { name: 'Reply composer' }).getByRole('textbox', { name: 'Message', exact: true });
       const composer = page.getByRole('region', { name: 'Reply composer' });
       await expect(composer).toHaveCSS('position', 'relative');
       await expect(composer).toBeVisible();
+      // Opening a reply below a long message brings the composer into view, ready to type.
+      await expect(composer).toBeInViewport();
+      await expect(editor).toBeFocused();
+      // Google Docs wraps pasted text in a normal-weight <b>; only truly bold text stays bold.
+      await editor.evaluate((node) => {
+        const data = new DataTransfer();
+        data.setData('text/html', '<meta charset="utf-8"><b style="font-weight:normal;" id="docs-internal-guid-1">'
+          + '<span style="font-weight:400">Pasted from Docs </span><span style="font-weight:700">bold part</span></b>');
+        data.setData('text/plain', 'Pasted from Docs bold part');
+        node.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+      });
+      await expect(editor).toContainText('Pasted from Docs bold part');
+      await expect(editor.locator('b')).toHaveText('bold part');
+      if (mailbox === 'unified') await page.screenshot({ path: test.info().outputPath('reply-scrolled.png') });
+      // Files dropped on the composer are handed to the main process and attached.
+      await composer.evaluate((node) => {
+        const data = new DataTransfer();
+        data.items.add(new File(['quarterly numbers'], 'report.txt', { type: 'text/plain' }));
+        for (const type of ['dragenter', 'dragover', 'drop']) {
+          node.dispatchEvent(new DragEvent(type, { dataTransfer: data, bubbles: true, cancelable: true }));
+        }
+      });
+      await expect(composer.getByLabel('Selected attachments')).toContainText('report.txt');
+      await composer.getByRole('button', { name: 'Remove report.txt' }).click();
       await expect(composer.getByRole('textbox', { name: 'Subject', exact: true })).toBeHidden();
       await composer.getByRole('button', { name: 'Edit details', exact: true }).click();
       await expect(composer.getByRole('textbox', { name: 'Subject', exact: true })).toBeVisible();
@@ -299,7 +329,16 @@ for (const mailbox of ['unified', 'folder'] as const) {
       await page.waitForTimeout(1_400);
       expect((await readState()).saves).toHaveLength(3);
       await page.getByRole('button', { name: 'Write a reply…', exact: true }).click();
-      await expect(editor).toBeEmpty();
+      await expect(editor).not.toContainText('Discard this draft');
+      // The signature shows without a divider; the plain-text part carries the "-- " delimiter.
+      await expect(editor.locator('#Signature')).toHaveText('NickEmzero');
+      await expect(editor).not.toContainText('--');
+      await page.keyboard.type('Thanks');
+      await expect.poll(async () => (await readState()).saves.length).toBe(4);
+      const signed = (await readState()).saves[3];
+      expect(signed.text).toBe('Thanks\n\n-- \nNick\nEmzero');
+      expect(signed.html).toContain('<div id="Signature">Nick<br>Emzero</div>');
+      expect(signed.html).not.toContain('--');
       await composer.getByRole('button', { name: 'Edit details', exact: true }).click();
       await expect(composer.getByRole('textbox', { name: 'Subject', exact: true })).toHaveValue('Re: Reply persistence test');
       await page.getByRole('button', { name: 'Delete draft', exact: true }).click();
@@ -326,8 +365,8 @@ for (const mailbox of ['unified', 'folder'] as const) {
       await page.getByRole('navigation', { name: 'Mailboxes' }).getByRole('button', { name: 'Inbox', exact: true }).first().click();
       await expect(newMessage).toHaveCount(0);
       await expect(page.getByRole('list', { name: 'Messages' })).toBeVisible();
-      await expect.poll(async () => (await readState()).completed).toBe(4);
-      expect((await readState()).saves[3].text).toBe('Room to write without covering the inbox.');
+      await expect.poll(async () => (await readState()).completed).toBe(5);
+      expect((await readState()).saves[4].text).toBe('Room to write without covering the inbox.');
     } finally {
       await application.close();
     }

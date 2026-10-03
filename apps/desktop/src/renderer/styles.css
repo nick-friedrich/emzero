@@ -461,6 +461,61 @@ button {
   padding-right: 2.75rem;
 }
 
+/* Composer message body: readable typography without a boxed text field. */
+.composer-editor[data-empty='true']::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  color: var(--muted-foreground);
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.composer-editor ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+}
+
+.composer-editor ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+}
+
+.composer-editor blockquote {
+  margin: 0.25rem 0;
+  border-left: 3px solid color-mix(in oklab, var(--primary) 45%, var(--border));
+  padding-left: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+.composer-editor a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.composer-editor img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+@keyframes composer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.995);
+  }
+}
+
+.composer-enter {
+  animation: composer-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-enter {
+    animation: none;
+  }
+}
+
 .search-field {
   padding-left: 2.25rem;
   padding-right: 0.75rem;

@@ -52,12 +52,12 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization with periodic full reconciliation, message parsing, and cached/server message reading.
 - `apps/desktop/src/main/message-sender.ts` — SMTP delivery, IMAP Sent-copy persistence, and sent-message cache updates.
 - `apps/desktop/src/main/mail-drafts.ts` — MIME draft compilation plus append-first IMAP draft autosave and deletion.
-- `apps/desktop/src/main/attachment-files.ts` — native file selection, opaque outgoing-file authorization, attachment limits, retained-draft attachment authorization, and received-attachment saving.
+- `apps/desktop/src/main/attachment-files.ts` — native file selection, byte-backed registration of files dropped or pasted into a composer, opaque outgoing-file authorization, attachment limits, retained-draft attachment authorization, and received-attachment saving.
 - `apps/desktop/src/main/message-actions.ts` — read/unread, star/unstar, delete, same-account move, and cross-account message-transfer operations.
 - `apps/desktop/src/main/bulk-message-jobs.ts` — bulk-action request validation, execution, cancellation, and progress publication.
 - `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache, bounded plain-text list previews from cached bodies, search, and AI insight/smart-inbox score storage joined onto listed messages.
 - `apps/desktop/src/main/message-html.ts` — sanitization and quoted-content detection for message HTML.
-- `apps/desktop/src/main/outgoing-html.ts` — safe outgoing rich-text HTML and pasted-image size validation before MIME compilation.
+- `apps/desktop/src/main/outgoing-html.ts` — safe outgoing rich-text HTML (keeping only the `id="Signature"` marker) and pasted-image size validation before MIME compilation.
 - `apps/desktop/src/main/mail-windows.ts` — validated creation of standalone message, composer, and single-instance settings windows.
 - `apps/desktop/src/main/provider-discovery.ts` — provider catalog lookup and domain/MX discovery.
 - `apps/desktop/src/main/folder-subscriptions.ts` — IMAP folder subscription and deletion helpers.
@@ -72,7 +72,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/shared/appearance.ts` — theme and interface-font identifiers shared by the renderer theme provider and backup validation.
 - `apps/desktop/src/shared/signatures.ts` — signature IPC contract, size limits, and the validation shared by main-process storage, backups, and the renderer.
 - `apps/desktop/src/shared/conversations.ts` — conversation grouping and quoted-text splitting.
-- `apps/desktop/src/shared/replies.ts` — reply construction, address parsing, and outgoing-draft validation.
+- `apps/desktop/src/shared/replies.ts` — reply and reply-all construction, address parsing, and outgoing-draft validation.
 - `apps/desktop/src/shared/message-keywords.ts` — Emzero-private IMAP importance and due-date keyword encoding, parsing, and capability rules.
 
 Shared modules must remain usable by both Electron and renderer code; do not import renderer components or browser-only state into them.
@@ -94,11 +94,17 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/account-setup.tsx` — provider detection, password/app-password setup, and personal Microsoft device-code connection flow.
 - `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior, account names/colors, signatures, and encrypted backup/restore.
 - `features/appearance-switcher.tsx` — global keyboard shortcut and accessible quick theme/font picker, shared by all renderer windows; owns the settings shortcut label.
-- `features/signatures.ts` — main-process-backed signature cache and cross-window refresh, the one-time migration off origin-scoped browser storage, account-to-signature assignments, and delimiter-aware outgoing-message formatting.
-- `features/signature-picker.tsx` — compose-time signature selection shared by new-message and reply composers.
-- `features/compose-dialog.tsx` — dedicated new-message page, expanding inline reply/draft editor, and standalone composer with recipient suggestions, attachments, draft autosave, validation, confirmation, and sending.
-- `features/rich-text-editor.tsx` — composer formatting controls and clipboard image insertion, with a plain-text copy for AI drafting and multipart email.
-- `features/ai-draft-assistant.tsx` — reusable configured-provider prompt panel for AI drafting in reply, new-message, and saved-draft composers.
+- `features/signatures.ts` — main-process-backed signature cache and cross-window refresh, the one-time migration off origin-scoped browser storage, account-to-signature assignments, and the plain-text signature form with the RFC 3676 "-- " delimiter.
+- `features/signature-html.ts` — the Outlook-style `<div id="Signature">` block in the editor and HTML part (no visible divider), and the delimited plain-text part derived from it.
+- `features/signature-html.test.ts` — renderer tests for signature markup and the delimited plain-text part.
+- `features/signature-picker.tsx` — compact compose-time signature selection for the composer action bar.
+- `features/compose-dialog.tsx` — dedicated new-message page, expanding inline reply/draft editor, and standalone composer: header rows, action bar, scroll-into-view and focus on open, drag-and-drop attachments, draft autosave, validation, and sending.
+- `features/compose-confirmations.tsx` — send, delete-draft, and keep-draft confirmation dialogs used by the composer.
+- `features/recipient-input.tsx` — chip-based To/Cc/Bcc rows with recipient suggestions over a plain comma-separated value.
+- `features/rich-text-editor.tsx` — borderless message editor with a portaled formatting toolbar (active states, links, quotes, lists, clear formatting), Markdown-style line shortcuts, plain-text paste, and clipboard image insertion, with a plain-text copy for AI drafting and multipart email.
+- `features/clipboard-html.ts` — plain-text-to-editor HTML escaping, pasted-HTML rebuilding that interprets inline styles (so Google Docs pastes are not all bold) and link-target normalization.
+- `features/clipboard-html.test.ts` — renderer tests for pasted-style interpretation and link normalization.
+- `features/ai-draft-assistant.tsx` — the AI-configured hook and reusable, dismissible prompt panel for AI drafting in reply, new-message, and saved-draft composers.
 - `features/smart-inboxes.tsx` — smart-inbox sidebar section and create/edit dialog, AI tag chips, the remove-sender row action, the settings toggle, and the shared settings hook.
 - `features/mail-search.tsx` — search form/results and selected-result reader.
 - `features/message-list.tsx` — one account-folder conversation list, selection, and folder-scoped actions.
@@ -115,9 +121,9 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/conversation-reader.tsx` — conversation reader, message body/thread cards, received-attachment saving, quoted-content display, and reply entry points.
 - `features/message-html-frame.tsx` — isolated HTML-email frame that reports content height for a single reader scrollbar, validates frame messages, and owns the CSP-authorized resize/link relay.
 - `features/conversation-copy.ts` — plain-text formatting for copying every message in a conversation to the clipboard.
-- `features/reply-composer.tsx` — expanding inline reply entry and editor beneath a message, preserving reply headers, draft autosave, and conversation context for AI drafting.
+- `features/reply-composer.tsx` — Reply / Reply all entry and inline editor beneath a message, preserving reply headers, draft autosave, and conversation context for AI drafting.
 - `features/message-prefetch.ts` — bounded idle, hover, and keyboard-focus message-body prefetching shared by folder, unified, and search lists.
-- `features/attachment-picker.tsx` — reusable outgoing-attachment selection and removal UI for compose and reply.
+- `features/attachment-picker.tsx` — outgoing-attachment chips, the attach button, limit-aware merging, and dropped/pasted file authorization for compose and reply.
 - `features/draft-autosave.ts` — debounced, sequential IMAP autosave shared by compose and reply, including pending-edit flushing on editor unmount.
 - `features/bulk-operation.tsx` — persistent progress/status bar for background bulk message jobs.
 - `features/undoable-delete.tsx` — shared delayed-action controller and Undo bar for optimistic conversation deletion, archiving, and moves.

@@ -1,41 +1,12 @@
 import { useEffect, useState } from 'react';
-import { LoaderCircle, Sparkles, Undo2 } from 'lucide-react';
+import { LoaderCircle, Sparkles, Undo2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { AiDraftMessageResult } from '../../shared/ai';
 
-export function AiDraftAssistant({
-  disabled = false,
-  className,
-  currentText,
-  actionLabel,
-  placeholder,
-  privacyDescription,
-  onGenerate,
-  onApply,
-  onBusyChange,
-}: {
-  disabled?: boolean;
-  className?: string;
-  currentText: string;
-  actionLabel: string;
-  placeholder: string;
-  privacyDescription: string;
-  onGenerate: (
-    instruction: string,
-    onProgress: (text: string) => void,
-  ) => Promise<AiDraftMessageResult>;
-  onApply: (text: string) => void;
-  onBusyChange?: (busy: boolean) => void;
-}) {
+/** Whether an AI provider is configured, kept current across settings windows. */
+export function useAiConfigured(): boolean {
   const [configured, setConfigured] = useState(false);
-  const [instruction, setInstruction] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [streamStarted, setStreamStarted] = useState(false);
-  const [generated, setGenerated] = useState(false);
-  const [history, setHistory] = useState<{ text: string; generated: boolean }[]>([]);
-  const [status, setStatus] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
-
   useEffect(() => {
     const refresh = () => {
       void window.emzero.ai.getSettings()
@@ -49,6 +20,42 @@ export function AiDraftAssistant({
     });
     return () => channel.close();
   }, []);
+  return configured;
+}
+
+export function AiDraftAssistant({
+  disabled = false,
+  className,
+  currentText,
+  actionLabel,
+  placeholder,
+  privacyDescription,
+  onGenerate,
+  onApply,
+  onBusyChange,
+  onClose,
+}: {
+  disabled?: boolean;
+  className?: string;
+  currentText: string;
+  actionLabel: string;
+  placeholder: string;
+  privacyDescription: string;
+  onGenerate: (
+    instruction: string,
+    onProgress: (text: string) => void,
+  ) => Promise<AiDraftMessageResult>;
+  onApply: (text: string) => void;
+  onBusyChange?: (busy: boolean) => void;
+  onClose?: () => void;
+}) {
+  const configured = useAiConfigured();
+  const [instruction, setInstruction] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [streamStarted, setStreamStarted] = useState(false);
+  const [generated, setGenerated] = useState(false);
+  const [history, setHistory] = useState<{ text: string; generated: boolean }[]>([]);
+  const [status, setStatus] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
 
   if (!configured) return null;
 
@@ -113,25 +120,39 @@ export function AiDraftAssistant({
 
   return (
     <section
-      className={cn('rounded-lg border border-border bg-secondary/50 p-3', className)}
+      className={cn('rounded-xl border border-primary/20 bg-primary/[0.04] p-3', className)}
       aria-label="AI email drafting"
     >
       <div className="mb-2 flex items-center gap-2 text-xs font-medium">
         <Sparkles className="size-4 text-primary" />
         {generated ? 'Refine with AI' : 'Draft with AI'}
+        {onClose && <button
+          type="button"
+          className="ml-auto grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+          aria-label="Hide AI drafting"
+          disabled={busy}
+          onClick={onClose}
+        ><X className="size-3.5" /></button>}
       </div>
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
         <label className="min-w-0 flex-1">
           <span className="sr-only">Instructions for AI draft</span>
           <textarea
-            className="field min-h-20 resize-y text-sm leading-5"
+            className="field min-h-16 resize-y bg-card py-2 text-sm leading-5"
             value={instruction}
             maxLength={4_000}
             placeholder={placeholder}
             disabled={disabled || busy}
+            autoFocus
             onChange={(event) => {
               setInstruction(event.target.value);
               setStatus(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+                event.preventDefault();
+                void generate();
+              }
             }}
           />
         </label>

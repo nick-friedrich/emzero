@@ -43,15 +43,35 @@ export function replyRecipients(
   ).values()];
 }
 
+/** Everyone else on the message who should be copied on a reply-all, without duplicates. */
+export function replyAllCcRecipients(
+  account: AccountSummary,
+  message: Pick<MailMessageDetail, 'from' | 'to' | 'cc' | 'replyTo'>,
+): MailAddressSummary[] {
+  const excluded = new Set(
+    [account.email, account.username, ...replyRecipients(account, message).map(normalizedAddress)]
+      .map((value) => value.trim().toLowerCase()),
+  );
+  return [...message.to, ...message.cc].filter((address) => {
+    const normalized = normalizedAddress(address);
+    if (!emailPattern.test(normalized) || excluded.has(normalized)) return false;
+    excluded.add(normalized);
+    return true;
+  });
+}
+
+export type ReplyMode = 'reply' | 'replyAll';
+
 export function createReplyDraft(
   account: AccountSummary,
   summary: MailMessageSummary,
   detail: MailMessageDetail,
   text: string,
+  mode: ReplyMode = 'reply',
 ): MailReplyDraft {
   return {
     to: replyRecipients(account, detail),
-    cc: [],
+    cc: mode === 'replyAll' ? replyAllCcRecipients(account, detail) : [],
     bcc: [],
     subject: replySubject(detail.subject),
     text,

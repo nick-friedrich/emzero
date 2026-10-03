@@ -3,32 +3,28 @@ import {
   useId,
   useRef,
   useState,
+  type DragEvent,
   type FormEvent,
 } from 'react';
 import {
+  AlertCircle,
   ArrowLeft,
+  Check,
   ChevronDown,
   ExternalLink,
   LoaderCircle,
   Maximize2,
   Minimize2,
+  Paperclip,
   Send,
+  SlidersHorizontal,
+  Sparkles,
   Trash2,
   X,
 } from 'lucide-react';
 import {
   Button,
 } from '@/components/ui/button';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import {
   cn,
 } from '@/lib/utils';
@@ -38,7 +34,6 @@ import {
   type MailDraftReference,
   type MailSendDraft,
   type MailOutgoingAttachment,
-  type RecipientSuggestion,
 } from '../../shared/accounts';
 import {
   parseAddressList,
@@ -46,14 +41,16 @@ import {
 } from '../../shared/replies';
 import { sendShortcutLabel, skipSendConfirmationStorageKey, storedSkipSendConfirmation, useSendShortcut, type Status } from './app-shared';
 import type { AiConversationMessage } from '../../shared/ai';
-import { Field } from './form-field';
-import { addressDetails } from './mail-common';
-import { AttachmentPicker } from './attachment-picker';
-import { AiDraftAssistant } from './ai-draft-assistant';
+import { AttachButton, AttachmentList, authorizeDroppedFiles, mergeAttachments } from './attachment-picker';
+import { AiDraftAssistant, useAiConfigured } from './ai-draft-assistant';
+import { DeleteDraftDialog, KeepDraftDialog, SendConfirmationDialog } from './compose-confirmations';
 import { useDraftAutosave } from './draft-autosave';
 import { SignaturePicker } from './signature-picker';
-import { RichTextEditor, htmlFromText } from './rich-text-editor';
-import { formatSignature, replaceSignature, signatureBody, signatureBodyForId, signatureIdForAccount, signatureSuffix } from './signatures';
+import { RecipientInput, initialRecipientValue } from './recipient-input';
+import { RichTextEditor, type RichTextEditorHandle } from './rich-text-editor';
+import { htmlFromText } from './clipboard-html';
+import { messageHtml, signatureBlock, signatureHtml, withSignatureBlock } from './signature-html';
+import { formatSignature, replaceSignature, signatureBody, signatureBodyForId, signatureIdForAccount, signatureSeparator, signatureSuffix } from './signatures';
 
 export interface DraftSavedEvent {
   accountId: string;
@@ -63,152 +60,6 @@ export interface DraftSavedEvent {
 export interface DraftDeletedEvent {
   accountId: string;
   references: MailDraftReference[];
-}
-
-function recipientQuery(value: string): string {
-  return value.slice(Math.max(value.lastIndexOf(','), value.lastIndexOf(';')) + 1).trim();
-}
-
-function insertRecipient(value: string, suggestion: RecipientSuggestion): string {
-  const separator = Math.max(value.lastIndexOf(','), value.lastIndexOf(';'));
-  const prefix = value.slice(0, separator + 1);
-  const safeName = suggestion.name && !/[,;]/.test(suggestion.name) ? suggestion.name : null;
-  const formatted = safeName ? `${safeName} <${suggestion.address}>` : suggestion.address;
-  return `${prefix}${prefix && !/\s$/.test(prefix) ? ' ' : ''}${formatted}, `;
-}
-
-function editableAddressList(addresses: MailSendDraft['to']): string {
-  return addresses.flatMap(({ name, address }) => {
-    if (!address) return [];
-    return name && !/[,;]/.test(name) ? [`${name} <${address}>`] : [address];
-  }).join(', ');
-}
-
-function RecipientField({
-  label,
-  accountId,
-  value,
-  placeholder,
-  disabled,
-  autoFocus,
-  onChange,
-}: {
-  label: string;
-  accountId: string;
-  value: string;
-  placeholder: string;
-  disabled: boolean;
-  autoFocus?: boolean;
-  onChange: (value: string) => void;
-}) {
-  const listId = useId();
-  const [focused, setFocused] = useState(false);
-  const [suggestions, setSuggestions] = useState<RecipientSuggestion[]>([]);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const query = recipientQuery(value);
-
-  useEffect(() => {
-    if (!focused || !accountId || !query) return;
-    let active = true;
-    const timer = window.setTimeout(() => {
-      void window.emzero.messages
-        .suggestRecipients(accountId, query)
-        .then((result) => {
-          if (active) setSuggestions(result);
-        })
-        .catch(() => {
-          if (active) setSuggestions([]);
-        });
-    }, 120);
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [accountId, focused, query]);
-
-  const choose = (suggestion: RecipientSuggestion) => {
-    onChange(insertRecipient(value, suggestion));
-    setSuggestions([]);
-    setActiveIndex(0);
-  };
-  const open = focused && query.length > 0 && suggestions.length > 0;
-
-  return (
-    <Field label={label}>
-      <div className="relative">
-        <input
-          className="field"
-          type="text"
-          value={value}
-          placeholder={placeholder}
-          autoFocus={autoFocus}
-          disabled={disabled}
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={open}
-          aria-controls={open ? listId : undefined}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onChange={(event) => {
-            onChange(event.target.value);
-            setSuggestions([]);
-            setActiveIndex(0);
-          }}
-          onKeyDown={(event) => {
-            if (!open) return;
-            if (event.key === 'ArrowDown') {
-              event.preventDefault();
-              setActiveIndex((current) => (current + 1) % suggestions.length);
-            } else if (event.key === 'ArrowUp') {
-              event.preventDefault();
-              setActiveIndex((current) =>
-                current === 0 ? suggestions.length - 1 : current - 1,
-              );
-            } else if (event.key === 'Enter' || event.key === 'Tab') {
-              event.preventDefault();
-              choose(suggestions[activeIndex]);
-            } else if (event.key === 'Escape') {
-              setSuggestions([]);
-            }
-          }}
-        />
-        {open && (
-          <div
-            id={listId}
-            className="absolute left-0 right-0 top-[calc(100%+0.25rem)] z-20 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg"
-            role="listbox"
-          >
-            {suggestions.map((suggestion, index) => (
-              <button
-                key={suggestion.address}
-                type="button"
-                className={cn(
-                  'flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left hover:bg-accent',
-                  index === activeIndex && 'bg-accent',
-                )}
-                role="option"
-                aria-selected={index === activeIndex}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => choose(suggestion)}
-              >
-                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-account text-xs font-semibold text-primary">
-                  {(suggestion.name || suggestion.address).charAt(0).toUpperCase()}
-                </span>
-                <span className="min-w-0">
-                  {suggestion.name && (
-                    <span className="block truncate text-sm font-medium">{suggestion.name}</span>
-                  )}
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {suggestion.address}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </Field>
-  );
 }
 
 export function ComposeDialog({
@@ -224,6 +75,7 @@ export function ComposeDialog({
   variant = 'page',
   onDraftSaved,
   onDeleted,
+  title,
 }: {
   open: boolean;
   accounts: AccountSummary[];
@@ -237,15 +89,17 @@ export function ComposeDialog({
   variant?: 'page' | 'inline' | 'window';
   onDraftSaved?: (event: DraftSavedEvent) => void;
   onDeleted?: (event: DraftDeletedEvent) => void;
+  /** Heading override, for example "Reply all". */
+  title?: string;
 }) {
   const [accountId, setAccountId] = useState(() =>
     accounts.some((account) => account.id === defaultAccountId)
       ? defaultAccountId!
       : (accounts[0]?.id ?? ''),
   );
-  const [to, setTo] = useState(() => editableAddressList(initialDraft?.to ?? []));
-  const [cc, setCc] = useState(() => editableAddressList(initialDraft?.cc ?? []));
-  const [bcc, setBcc] = useState(() => editableAddressList(initialDraft?.bcc ?? []));
+  const [to, setTo] = useState(() => initialRecipientValue(initialDraft?.to ?? []));
+  const [cc, setCc] = useState(() => initialRecipientValue(initialDraft?.cc ?? []));
+  const [bcc, setBcc] = useState(() => initialRecipientValue(initialDraft?.bcc ?? []));
   const [subject, setSubject] = useState(initialDraft?.subject ?? '');
   const [body, setBody] = useState(() => {
     const initialText = initialDraft?.text ?? '';
@@ -253,11 +107,14 @@ export function ComposeDialog({
       accounts.some((account) => account.id === defaultAccountId) ? defaultAccountId! : (accounts[0]?.id ?? ''),
     );
   });
-  const [bodyHtml, setBodyHtml] = useState(() => initialDraft?.html ?? htmlFromText(initialDraft?.text || (
-    composerKind === 'draft' ? '' : signatureBody(
-      accounts.some((account) => account.id === defaultAccountId) ? defaultAccountId! : (accounts[0]?.id ?? ''),
-    )
-  )));
+  const [bodyHtml, setBodyHtml] = useState(() => {
+    if (initialDraft?.html) return initialDraft.html;
+    const initialAccountId = accounts.some((account) => account.id === defaultAccountId)
+      ? defaultAccountId!
+      : (accounts[0]?.id ?? '');
+    const text = initialDraft?.text || (composerKind === 'draft' ? '' : signatureBody(initialAccountId));
+    return messageHtml(text, signatureBodyForId(signatureIdForAccount(initialAccountId)));
+  });
   const [signatureId, setSignatureId] = useState(() => {
     const initialAccountId = accounts.some((account) => account.id === defaultAccountId)
       ? defaultAccountId!
@@ -280,12 +137,19 @@ export function ComposeDialog({
   const [skipSendConfirmation, setSkipSendConfirmation] = useState(
     storedSkipSendConfirmation,
   );
-  const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
-  const [dontShowAgain, setDontShowAgain] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<MailSendDraft | null>(null);
-  const confirmationActionRef = useRef<HTMLButtonElement>(null);
+  const [showCc, setShowCc] = useState(false);
+  const [showBcc, setShowBcc] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiMounted, setAiMounted] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [toolbarContainer, setToolbarContainer] = useState<HTMLDivElement | null>(null);
+  const aiConfigured = useAiConfigured();
+  const sectionId = useId();
+  const sectionRef = useRef<HTMLElement>(null);
+  const editorRef = useRef<RichTextEditorHandle>(null);
   const allowWindowCloseRef = useRef(false);
   const currentDraft: MailSendDraft = {
     to: parseAddressList(to),
@@ -314,7 +178,11 @@ export function ComposeDialog({
     initialDraftReference,
   );
 
-  const currentSignature = signatureSuffix(body, signatureId);
+  // The plain-text body carries the signature after the "-- " delimiter; the HTML carries it in
+  // a Signature block, which wins when present because the user may have edited it in place.
+  const hasSignatureBlock = signatureBlock(bodyHtml) !== null;
+  const delimiterIndex = hasSignatureBlock ? body.lastIndexOf(signatureSeparator) : -1;
+  const currentSignature = delimiterIndex >= 0 ? body.slice(delimiterIndex) : signatureSuffix(body, signatureId);
   const bodyWithoutSignature = currentSignature
     ? body.slice(0, -currentSignature.length)
     : body;
@@ -325,15 +193,24 @@ export function ComposeDialog({
     setBodyHtml(htmlFromText(text));
   };
 
+  /** Replace the message text while keeping the signature block (and its edits) below it. */
+  const replaceMessageText = (text: string) => {
+    const block = signatureBlock(bodyHtml) ?? signatureHtml(signatureBodyForId(signatureId));
+    setBody(block ? `${text}${preservedSignature}` : text);
+    setBodyHtml(block ? `${htmlFromText(text)}<br><br>${block}` : htmlFromText(text));
+  };
+
   const changeSignature = (nextSignatureId: string) => {
-    const oldSuffix = signatureSuffix(body, signatureId);
-    const nextSuffix = formatSignature(signatureBodyForId(nextSignatureId));
-    const oldMarkup = htmlFromText(oldSuffix);
-    const nextText = replaceSignature(body, signatureId, nextSignatureId);
-    setBody(nextText);
-    setBodyHtml(oldSuffix && bodyHtml.endsWith(oldMarkup)
-      ? `${bodyHtml.slice(0, -oldMarkup.length)}${htmlFromText(nextSuffix)}`
-      : oldSuffix ? htmlFromText(nextText) : `${bodyHtml}${htmlFromText(nextSuffix)}`);
+    const nextSignature = signatureBodyForId(nextSignatureId);
+    if (hasSignatureBlock || !signatureSuffix(body, signatureId)) {
+      setBody(`${bodyWithoutSignature}${formatSignature(nextSignature)}`);
+      setBodyHtml(withSignatureBlock(bodyHtml, signatureHtml(nextSignature)));
+    } else {
+      // Drafts from earlier releases carry the signature only as trailing text.
+      const nextText = replaceSignature(body, signatureId, nextSignatureId);
+      setBody(nextText);
+      setBodyHtml(messageHtml(nextText, nextSignature));
+    }
     setSignatureId(nextSignatureId);
   };
 
@@ -462,16 +339,41 @@ export function ComposeDialog({
       return;
     }
     setPendingDraft(draft);
-    setDontShowAgain(false);
-    setConfirmationOpen(true);
   };
 
-  useSendShortcut(open && !busy && !aiBusy && !confirmationOpen, requestSend);
+  useSendShortcut(open && !busy && !aiBusy && !pendingDraft, requestSend);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     requestSend();
   };
+
+  // Bring an inline composer into view and put the caret where the reply goes.
+  useEffect(() => {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (variant === 'inline' && !expanded) {
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        sectionRef.current?.scrollIntoView({ block: 'nearest', behavior: reducedMotion ? 'auto' : 'smooth' });
+      }
+      if (composerKind === 'reply') editorRef.current?.focus('start');
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [composerKind, expanded, open, variant]);
+
+  const addFiles = async (files: File[]) => {
+    if (files.length === 0) return;
+    const authorized = await authorizeDroppedFiles(files);
+    const merged = authorized.ok ? mergeAttachments(attachments, authorized.attachments) : authorized;
+    if (merged.ok) {
+      setAttachments(merged.attachments);
+      setStatus(null);
+    } else {
+      setStatus({ kind: 'error', message: merged.message });
+    }
+  };
+
+  const draggingFiles = (event: DragEvent) => [...event.dataTransfer.types].includes('Files');
 
   const closeComposer = () => {
     if (busy || aiBusy) return;
@@ -482,42 +384,74 @@ export function ComposeDialog({
     setCloseConfirmationOpen(true);
   };
 
+
+  const disabled = busy || aiBusy;
+  const fromAccount = accounts.find((account) => account.id === accountId);
+  const detailsVisible = !compactReply || replyDetailsOpen;
+  const ccVisible = Boolean(cc) || showCc || (compactReply && replyDetailsOpen);
+  const bccVisible = Boolean(bcc) || showBcc || (compactReply && replyDetailsOpen);
+  const scrolls = variant !== 'inline' || expanded;
+  const sendKeys = window.emzero?.platform === 'darwin' ? '⌘↵' : 'Ctrl ↵';
+  const rowButton = 'h-7 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50';
+
   return (
     <>
       {open && <section
+        ref={sectionRef}
         className={cn(
-          'z-40 flex flex-col overflow-hidden border border-border bg-card',
+          'z-40 flex flex-col border-border bg-card',
           variant === 'inline' && 'macos-titlebar-no-drag',
-          variant === 'inline' && !expanded && 'relative mt-5 rounded-xl shadow-sm',
-          variant === 'page' && 'relative h-full min-h-0 min-w-0 border-0',
-          expanded && variant !== 'window' && 'fixed inset-y-0 right-0 lg:left-[var(--sidebar-width)]',
-          variant === 'window' && 'h-screen border-0',
+          variant === 'inline' && !expanded && 'composer-enter relative mt-6 scroll-mb-6 rounded-2xl border shadow-[0_1px_2px_rgb(0_0_0/0.04),0_4px_14px_-8px_rgb(0_0_0/0.14)] transition-[border-color,box-shadow] focus-within:border-primary/35 focus-within:shadow-[0_1px_2px_rgb(0_0_0/0.05),0_6px_18px_-8px_rgb(0_0_0/0.2)]',
+          variant === 'page' && 'relative h-full min-h-0 min-w-0 overflow-hidden',
+          expanded && variant !== 'window' && 'fixed inset-y-0 right-0 overflow-hidden border-l lg:left-[var(--sidebar-width)]',
+          variant === 'window' && 'relative h-screen overflow-hidden',
         )}
         aria-label={composerKind === 'reply' ? 'Reply composer' : composerKind === 'draft' ? 'Draft editor' : 'New message'}
+        onDragEnter={(event) => {
+          if (!draggingFiles(event)) return;
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragOver={(event) => {
+          if (!draggingFiles(event)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = disabled ? 'none' : 'copy';
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+        }}
+        onDrop={(event) => {
+          if (!draggingFiles(event)) return;
+          event.preventDefault();
+          setDragging(false);
+          if (!disabled) void addFiles([...event.dataTransfer.files]);
+        }}
       >
         <header className={cn(
-          'flex items-center gap-2 border-b border-border px-4 py-3',
+          'flex items-center gap-2 border-b border-border/70 px-4 py-2.5 sm:px-5',
           variant === 'page' && 'mail-pane-header gap-3 pl-16 lg:px-6',
           window.emzero?.platform === 'darwin' && variant === 'page' && 'macos-content-header macos-titlebar-drag',
           window.emzero?.platform === 'darwin' && variant === 'window' && 'macos-content-header macos-native-window-header macos-titlebar-drag',
         )}>
           {variant === 'page' && <Button type="button" variant="ghost"
-            className="size-8 shrink-0 px-0" disabled={busy || aiBusy}
+            className="size-8 shrink-0 px-0" disabled={disabled}
             aria-label="Back to mailbox" title="Back to mailbox" onClick={closeComposer}>
             <ArrowLeft className="size-4" />
           </Button>}
           <div className="min-w-0">
             <h2 className={cn('truncate font-semibold', variant === 'page' ? 'text-lg tracking-tight' : 'text-sm')}>
-              {composerKind === 'reply' ? 'Reply' : composerKind === 'draft' ? 'Edit draft' : 'New message'}
+              {title ?? (composerKind === 'reply' ? 'Reply' : composerKind === 'draft' ? 'Edit draft' : 'New message')}
             </h2>
-            {subject && <p className="truncate text-xs text-muted-foreground">{subject}</p>}
+            {subject && variant !== 'inline' && <p className="truncate text-xs text-muted-foreground">{subject}</p>}
+            {variant === 'inline' && fromAccount && <p className="truncate text-xs text-muted-foreground">from {fromAccount.email}</p>}
           </div>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-0.5">
             {(hasDraftContent || savedDraftReference || initialDraftReference) && <Button
               type="button"
               variant="ghost"
-              className="size-8 px-0 text-danger hover:text-danger"
-              disabled={busy || aiBusy}
+              className="size-8 px-0 text-muted-foreground hover:text-danger"
+              disabled={disabled}
               aria-label="Delete draft"
               title="Delete draft"
               onClick={() => setDeleteConfirmationOpen(true)}
@@ -527,7 +461,7 @@ export function ComposeDialog({
             {variant === 'inline' && <Button
               type="button"
               variant="ghost"
-              className="size-8 px-0"
+              className="size-8 px-0 text-muted-foreground"
               disabled={aiBusy}
               aria-label={expanded ? 'Return to compact composer' : 'Expand to message area'}
               title={expanded ? 'Return to compact composer' : 'Expand to message area'}
@@ -538,7 +472,7 @@ export function ComposeDialog({
             {variant !== 'window' && <Button
               type="button"
               variant="ghost"
-              className="size-8 px-0"
+              className="size-8 px-0 text-muted-foreground"
               disabled={aiBusy}
               aria-label="Open in new window"
               title="Open in new window"
@@ -561,8 +495,8 @@ export function ComposeDialog({
             {variant !== 'page' && <Button
               type="button"
               variant="ghost"
-              className="size-8 px-0"
-              disabled={busy || aiBusy}
+              className="size-8 px-0 text-muted-foreground"
+              disabled={disabled}
               aria-label="Close composer"
               title="Close composer"
               onClick={closeComposer}
@@ -571,315 +505,281 @@ export function ComposeDialog({
             </Button>}
           </div>
         </header>
-        <div className={cn('min-h-0 flex-1 overflow-y-auto p-4 sm:p-5',
-          variant === 'page' && 'sm:px-8 sm:py-8')}>
-        <form
-          className={cn('space-y-4', variant === 'page' && 'mx-auto max-w-3xl')}
-          onSubmit={submit}
-        >
-          {compactReply && (
-            <div className="flex items-start justify-between gap-3 text-xs">
-              <div className="min-w-0 space-y-1 text-muted-foreground">
-                <p className="truncate">To: <span className="text-foreground">{to}</span></p>
-                {cc && <p className="truncate">Cc: {cc}</p>}
-                {bcc && <p className="truncate">Bcc: {bcc}</p>}
-                <p className="truncate">From: {accounts.find((account) => account.id === accountId)?.email}</p>
-              </div>
-              <Button type="button" variant="ghost" className="h-7 shrink-0 px-2 text-xs"
-                aria-expanded={replyDetailsOpen} onClick={() => setReplyDetailsOpen((current) => !current)}>
-                {replyDetailsOpen ? 'Hide details' : 'Edit details'}
-              </Button>
-            </div>
-          )}
-          <div className="space-y-4" hidden={compactReply && !replyDetailsOpen}>
-            <Field label="From">
-              <div className="relative">
-                <select
-                  className="field appearance-none pr-9"
-                  value={accountId}
-                  disabled={busy || aiBusy}
-                  onChange={(event) => {
-                    const nextAccountId = event.target.value;
-                    const nextSignatureId = signatureIdForAccount(nextAccountId);
-                    changeSignature(nextSignatureId);
-                    setAccountId(nextAccountId);
-                    setStatus(null);
-                  }}
-                >
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name} — {account.email}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-2.5 size-4 text-muted-foreground" />
-              </div>
-            </Field>
-            <RecipientField
-              label="To"
-              accountId={accountId}
-              value={to}
-              placeholder="Start typing a name or email address"
-              autoFocus={composerKind !== 'reply'}
-              disabled={busy || aiBusy}
-              onChange={(value) => {
-                setTo(value);
-                setStatus(null);
-              }}
-            />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <RecipientField
+        <form className={cn('flex flex-col', scrolls && 'min-h-0 flex-1')} onSubmit={submit}>
+          <div className={cn(scrolls && 'min-h-0 flex-1 overflow-y-auto')}>
+            <div className={cn('flex min-h-full flex-col', variant === 'page' && 'mx-auto max-w-3xl')}>
+              {detailsVisible && accounts.length > 1 && (
+                <div className="flex min-h-11 items-center gap-2 border-b border-border/70 px-4 sm:px-5">
+                  <span className="w-14 shrink-0 text-sm text-muted-foreground" aria-hidden="true">From</span>
+                  <div className="relative min-w-0 flex-1">
+                    <select
+                      className="h-10 w-full min-w-0 cursor-pointer appearance-none truncate bg-transparent pr-7 text-sm outline-none"
+                      value={accountId}
+                      disabled={disabled}
+                      aria-label="From"
+                      onChange={(event) => {
+                        const nextAccountId = event.target.value;
+                        changeSignature(signatureIdForAccount(nextAccountId));
+                        setAccountId(nextAccountId);
+                        setStatus(null);
+                      }}
+                    >
+                      {accounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name} — {account.email}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-1 top-3 size-4 text-muted-foreground" />
+                  </div>
+                </div>
+              )}
+              <RecipientInput
+                label="To"
+                accountId={accountId}
+                value={to}
+                placeholder="Name or email address"
+                autoFocus={composerKind === 'new' && !to}
+                disabled={disabled}
+                onChange={(value) => {
+                  setTo(value);
+                  setStatus(null);
+                }}
+                trailing={<>
+                  {!ccVisible && <button type="button" className={rowButton} disabled={disabled}
+                    onClick={() => setShowCc(true)}>Cc</button>}
+                  {!bccVisible && <button type="button" className={rowButton} disabled={disabled}
+                    onClick={() => setShowBcc(true)}>Bcc</button>}
+                  {compactReply && <button type="button" className={cn(rowButton, 'flex items-center gap-1.5')}
+                    aria-expanded={replyDetailsOpen} title="Edit From, Cc, Bcc, and subject"
+                    onClick={() => setReplyDetailsOpen((current) => !current)}>
+                    <SlidersHorizontal className="size-3.5" />
+                    {replyDetailsOpen ? 'Hide details' : 'Edit details'}
+                  </button>}
+                </>}
+              />
+              {ccVisible && <RecipientInput
                 label="Cc"
                 accountId={accountId}
                 value={cc}
-                placeholder="Optional"
-                disabled={busy || aiBusy}
+                autoFocus={showCc && !cc}
+                disabled={disabled}
                 onChange={(value) => {
                   setCc(value);
                   setStatus(null);
                 }}
-              />
-              <RecipientField
+              />}
+              {bccVisible && <RecipientInput
                 label="Bcc"
                 accountId={accountId}
                 value={bcc}
-                placeholder="Optional"
-                disabled={busy || aiBusy}
+                autoFocus={showBcc && !bcc}
+                disabled={disabled}
                 onChange={(value) => {
                   setBcc(value);
                   setStatus(null);
                 }}
-              />
-            </div>
-            <Field label="Subject">
-              <input
-                className="field"
-                value={subject}
-                disabled={busy || aiBusy}
-                onChange={(event) => {
-                  setSubject(event.target.value);
-                  setStatus(null);
+              />}
+              {detailsVisible && (
+                <div className="flex min-h-11 items-center gap-2 border-b border-border/70 px-4 sm:px-5">
+                  <label htmlFor={`${sectionId}-subject`} className="w-14 shrink-0 text-sm text-muted-foreground">Subject</label>
+                  <input
+                    id={`${sectionId}-subject`}
+                    className="h-10 min-w-0 flex-1 bg-transparent text-sm font-medium outline-none placeholder:font-normal placeholder:text-muted-foreground/70"
+                    value={subject}
+                    placeholder="What is this about?"
+                    disabled={disabled}
+                    onChange={(event) => {
+                      setSubject(event.target.value);
+                      setStatus(null);
+                    }}
+                  />
+                </div>
+              )}
+              {aiMounted && (
+                <div className="px-4 pt-4 sm:px-5" hidden={!aiOpen}>
+                  <AiDraftAssistant
+                    disabled={busy || !accountId}
+                    currentText={bodyWithoutSignature}
+                    actionLabel={composerKind === 'draft' ? 'Rewrite draft' : 'Draft message'}
+                    placeholder={composerKind === 'draft'
+                      ? 'For example: Make this warmer and more concise.'
+                      : composerKind === 'reply'
+                        ? 'For example: Thank them and propose Tuesday at 10.'
+                        : 'For example: Ask for a project update and suggest a call next week.'}
+                    privacyDescription={loadConversation
+                      ? "The conversation, your existing text, and your instruction will be sent to your configured AI provider."
+                      : "Your recipients, subject, existing draft, and instruction will be sent to your configured AI provider."}
+                    onGenerate={generateAiDraft}
+                    onApply={(draft) => {
+                      replaceMessageText(draft);
+                      setStatus(null);
+                    }}
+                    onBusyChange={setAiBusy}
+                    onClose={() => setAiOpen(false)}
+                  />
+                </div>
+              )}
+              <div
+                className={cn('flex-1 cursor-text px-4 py-4 sm:px-5', scrolls && 'pb-8')}
+                onMouseDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
+                  event.preventDefault();
+                  editorRef.current?.focus('end');
                 }}
-              />
-            </Field>
+              >
+                <RichTextEditor
+                  ref={editorRef}
+                  html={bodyHtml}
+                  placeholder={composerKind === 'reply' ? 'Write your reply…' : 'Write your message…'}
+                  className={scrolls ? 'min-h-64' : undefined}
+                  toolbarContainer={toolbarContainer}
+                  disabled={disabled}
+                  onChange={(html, text) => {
+                    setBodyHtml(html);
+                    setBody(text);
+                    setStatus(null);
+                  }}
+                  onError={(message) => setStatus({ kind: 'error', message })}
+                  onPasteFiles={(files) => void addFiles(files)}
+                />
+              </div>
+              {attachments.length > 0 && (
+                <div className="px-4 pb-4 sm:px-5">
+                  <AttachmentList
+                    attachments={attachments}
+                    disabled={disabled}
+                    onRemove={(attachment) => {
+                      setAttachments((current) => current.filter((candidate) => candidate.id !== attachment.id));
+                      setStatus(null);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
           </div>
-          <Field label="Message">
-            <RichTextEditor
-              html={bodyHtml}
-              compact={compactReply}
-              autoFocus={composerKind === 'reply'}
-              disabled={busy || aiBusy}
-              onChange={(html, text) => {
-                setBodyHtml(html);
-                setBody(text);
+          {status && (
+            <div
+              className={cn(
+                'mx-3 mb-2 flex items-start gap-2 rounded-lg px-3 py-2 text-sm sm:mx-4',
+                status.kind === 'success' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger',
+              )}
+              role="status"
+            >
+              {status.kind === 'error' ? <AlertCircle className="mt-0.5 size-4 shrink-0" /> : <Check className="mt-0.5 size-4 shrink-0" />}
+              <span className="min-w-0 flex-1">{status.message}</span>
+              <button type="button" className="shrink-0 rounded p-0.5 opacity-70 hover:opacity-100"
+                aria-label="Dismiss" onClick={() => setStatus(null)}><X className="size-3.5" /></button>
+            </div>
+          )}
+          <div className={cn(
+            'border-t border-border/70 bg-card px-3 py-2 sm:px-4',
+            variant === 'inline' && !expanded && 'rounded-b-2xl',
+          )}>
+          <div className={cn('flex flex-wrap items-center gap-x-1 gap-y-2', variant === 'page' && 'mx-auto max-w-3xl')}>
+            <div ref={setToolbarContainer} className="min-w-0" />
+            <div className="mx-1 hidden h-5 w-px bg-border/70 sm:block" aria-hidden="true" />
+            <AttachButton
+              attachments={attachments}
+              disabled={disabled}
+              onChange={(nextAttachments) => {
+                setAttachments(nextAttachments);
                 setStatus(null);
               }}
               onError={(message) => setStatus({ kind: 'error', message })}
             />
-          </Field>
-          <AiDraftAssistant
-            disabled={busy || !accountId}
-            currentText={bodyWithoutSignature}
-            actionLabel={composerKind === 'draft' ? 'Rewrite draft' : 'Draft message'}
-            placeholder={composerKind === 'draft'
-              ? 'For example: Make this warmer and more concise.'
-              : 'For example: Ask for a project update and suggest a call next week.'}
-            privacyDescription={loadConversation
-              ? "The conversation, your existing text, and your instruction will be sent to your configured AI provider."
-              : "Your recipients, subject, existing draft, and instruction will be sent to your configured AI provider."}
-            onGenerate={generateAiDraft}
-            onApply={(draft) => {
-              replaceBody(`${draft}${preservedSignature}`);
-              setStatus(null);
-            }}
-            onBusyChange={setAiBusy}
-          />
-          <SignaturePicker
-            value={signatureId}
-            disabled={busy || aiBusy}
-            onChange={(nextSignatureId) => {
-              changeSignature(nextSignatureId);
-              setStatus(null);
-            }}
-          />
-          <AttachmentPicker
-            attachments={attachments}
-            disabled={busy || aiBusy}
-            onChange={(nextAttachments) => {
-              setAttachments(nextAttachments);
-              setStatus(null);
-            }}
-            onError={(message) => setStatus({ kind: 'error', message })}
-          />
-          {draftStatus.state !== 'idle' && (
-            <p
-              className={draftStatus.state === 'error' ? 'text-xs text-danger' : 'text-xs text-muted-foreground'}
-              role="status"
-            >
-              {draftStatus.state === 'saving' ? 'Saving draft…' : draftStatus.message}
-            </p>
-          )}
-          {status && (
-            <p
-              className={status.kind === 'success' ? 'text-sm text-success' : 'text-sm text-danger'}
-              role="status"
-            >
-              {status.message}
-            </p>
-          )}
-          <div className="flex justify-end gap-2 pt-1">
-            <Button
+            {aiConfigured && <button
               type="button"
-              variant="ghost"
-              disabled={busy || aiBusy}
-              onClick={closeComposer}
-            >
-              Close
-            </Button>
-            <Button
-              type="submit"
-              disabled={busy || aiBusy || !accountId}
-              title="Send (Ctrl+Enter)"
-              aria-keyshortcuts="Control+Enter Meta+Enter"
-            >
-              {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
-              Send
-            </Button>
-          </div>
-          <p className="text-right text-[0.68rem] text-muted-foreground">
-            Send with {sendShortcutLabel()}
-          </p>
-        </form>
-        </div>
-      </section>}
-      <AlertDialog
-        open={confirmationOpen}
-        onOpenChange={(nextOpen) => {
-          setConfirmationOpen(nextOpen);
-          if (!nextOpen) setPendingDraft(null);
-        }}
-      >
-        <AlertDialogContent
-          onOpenAutoFocus={(event) => {
-            event.preventDefault();
-            confirmationActionRef.current?.focus();
-          }}
-          onKeyDownCapture={(event) => {
-            if (event.key === 'Enter' && !event.repeat) {
-              event.preventDefault();
-              event.stopPropagation();
-              confirmationActionRef.current?.click();
-            }
-          }}
-        >
-          <AlertDialogHeader>
-            <AlertDialogTitle>Send this email?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will send the message immediately and cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {pendingDraft && (
-            <div className="rounded-lg border border-border bg-background px-4 py-3 text-sm">
-              <p className="truncate">
-                <span className="text-muted-foreground">From: </span>
-                {accounts.find((account) => account.id === accountId)?.email}
-              </p>
-              <p className="mt-1 truncate">
-                <span className="text-muted-foreground">To: </span>
-                {addressDetails(pendingDraft.to)}
-              </p>
-              <p className="mt-1 truncate">
-                <span className="text-muted-foreground">Subject: </span>
-                {pendingDraft.subject}
-              </p>
-              {pendingDraft.attachments.length > 0 && (
-                <p className="mt-1 truncate">
-                  <span className="text-muted-foreground">Attachments: </span>
-                  {pendingDraft.attachments.length}
-                </p>
+              className={cn(
+                'flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50',
+                aiOpen && 'bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary',
               )}
-            </div>
-          )}
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              className="size-4 accent-primary"
-              type="checkbox"
-              checked={dontShowAgain}
-              onChange={(event) => setDontShowAgain(event.target.checked)}
-            />
-            Don’t show this confirmation again
-          </label>
-          <p className="text-xs text-muted-foreground">
-            Press <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5">Enter</kbd>{' '}
-            to send or <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5">Esc</kbd>{' '}
-            to cancel. Open this dialog with {sendShortcutLabel()}.
-          </p>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              ref={confirmationActionRef}
-              variant="default"
+              aria-pressed={aiOpen}
+              title="Draft with AI"
+              disabled={busy || aiBusy}
               onClick={() => {
-                if (!pendingDraft) return;
-                const draft = pendingDraft;
-                if (dontShowAgain) {
-                  try {
-                    window.localStorage.setItem(skipSendConfirmationStorageKey, 'true');
-                  } catch {
-                    // Sending should still work if preferences cannot be persisted.
-                  }
-                  setSkipSendConfirmation(true);
-                }
-                setPendingDraft(null);
-                void deliver(draft);
+                setAiMounted(true);
+                setAiOpen((current) => !current);
               }}
             >
-              <Send className="size-4" />
-              Send email
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={deleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this draft?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The saved draft will be permanently removed from the mail server.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={deleteAndClose}
-            >
-              <Trash2 className="size-4" />
-              Delete draft
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={closeConfirmationOpen} onOpenChange={setCloseConfirmationOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Keep this draft?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Keep it in Drafts so you can continue later, or delete it permanently.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Continue editing</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={busy} onClick={deleteAndClose}>
-              <Trash2 className="size-4" />
-              Delete draft
-            </AlertDialogAction>
-            <AlertDialogAction variant="default" disabled={busy} onClick={keepAndClose}>
-              Keep draft
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              <Sparkles className="size-4" />
+              <span className="hidden sm:inline">AI</span>
+            </button>}
+            <SignaturePicker
+              value={signatureId}
+              disabled={disabled}
+              onChange={(nextSignatureId) => {
+                changeSignature(nextSignatureId);
+                setStatus(null);
+              }}
+            />
+            <div className="ml-auto flex items-center gap-3 pl-2">
+              {draftStatus.state !== 'idle' && (
+                <span
+                  className={cn('flex items-center gap-1 text-xs',
+                    draftStatus.state === 'error' ? 'text-danger' : 'text-muted-foreground')}
+                  role="status"
+                  title={draftStatus.state === 'saving' ? undefined : draftStatus.message}
+                >
+                  {draftStatus.state === 'saving' && <><LoaderCircle className="size-3 animate-spin" />Saving…</>}
+                  {draftStatus.state === 'saved' && <><Check className="size-3" />Saved</>}
+                  {draftStatus.state === 'error' && <><AlertCircle className="size-3" />{draftStatus.message}</>}
+                </span>
+              )}
+              <Button
+                type="submit"
+                className="h-9 rounded-full pl-4 pr-2.5 text-sm shadow-sm"
+                disabled={disabled || !accountId}
+                aria-label="Send"
+                title={`Send (${sendShortcutLabel()})`}
+                aria-keyshortcuts="Control+Enter Meta+Enter"
+              >
+                {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
+                Send
+                <kbd className="rounded-full bg-primary-foreground/15 px-1.5 py-0.5 font-sans text-[0.65rem] font-medium">{sendKeys}</kbd>
+              </Button>
+            </div>
+          </div>
+          </div>
+        </form>
+        {dragging && (
+          <div className="pointer-events-none absolute inset-1.5 z-40 grid place-items-center rounded-xl border-2 border-dashed border-primary/60 bg-card/85 backdrop-blur-[2px]">
+            <div className="flex flex-col items-center gap-2 text-primary">
+              <Paperclip className="size-6" />
+              <p className="text-sm font-medium">Drop files to attach</p>
+            </div>
+          </div>
+        )}
+      </section>}
+      <SendConfirmationDialog
+        draft={pendingDraft}
+        fromAddress={fromAccount?.email ?? ''}
+        onCancel={() => setPendingDraft(null)}
+        onConfirm={(draft, dontShowAgain) => {
+          if (dontShowAgain) {
+            try {
+              window.localStorage.setItem(skipSendConfirmationStorageKey, 'true');
+            } catch {
+              // Sending should still work if preferences cannot be persisted.
+            }
+            setSkipSendConfirmation(true);
+          }
+          setPendingDraft(null);
+          void deliver(draft);
+        }}
+      />
+      <DeleteDraftDialog
+        open={deleteConfirmationOpen}
+        onOpenChange={setDeleteConfirmationOpen}
+        onDelete={deleteAndClose}
+      />
+      <KeepDraftDialog
+        open={closeConfirmationOpen}
+        busy={busy}
+        onOpenChange={setCloseConfirmationOpen}
+        onDelete={deleteAndClose}
+        onKeep={keepAndClose}
+      />
     </>
   );
 }

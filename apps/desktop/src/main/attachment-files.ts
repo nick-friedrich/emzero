@@ -97,6 +97,38 @@ export async function selectOutgoingAttachments(): Promise<AttachmentSelectionRe
   }
 }
 
+/** Register files dropped or pasted into a composer; their bytes come from the renderer, never a path. */
+export function addDroppedAttachments(files: unknown): AttachmentSelectionResult {
+  if (!Array.isArray(files) || files.length === 0 || files.length > maximumAttachmentCount) {
+    return { ok: false, attachments: [], message: 'Attach no more than 20 files.' };
+  }
+  const attachments: SelectedAttachment[] = [];
+  let total = 0;
+  for (const file of files as unknown[]) {
+    if (!file || typeof file !== 'object') return { ok: false, attachments: [], message: 'Invalid attachment.' };
+    const { filename, content } = file as { filename?: unknown; content?: unknown };
+    if (typeof filename !== 'string' || !(content instanceof Uint8Array)) {
+      return { ok: false, attachments: [], message: 'Invalid attachment.' };
+    }
+    const safeName = path.basename(filename.replace(/[\\/\r\n\0]/g, '_')).slice(0, 255) || 'attachment';
+    if (content.byteLength > maximumAttachmentSize) {
+      return { ok: false, attachments: [], message: `${safeName} exceeds the 25 MB per-file limit.` };
+    }
+    total += content.byteLength;
+    if (total > maximumTotalSize) {
+      return { ok: false, attachments: [], message: 'Attachments cannot exceed 50 MB in total.' };
+    }
+    attachments.push({ id: randomUUID(), filename: safeName, size: content.byteLength, content: Buffer.from(content) });
+  }
+  for (const attachment of attachments) selectedAttachments.set(attachment.id, attachment);
+  while (selectedAttachments.size > 200) {
+    const oldestId = selectedAttachments.keys().next().value;
+    if (oldestId) selectedAttachments.delete(oldestId);
+    else break;
+  }
+  return { ok: true, attachments: attachments.map(({ id, filename, size }) => ({ id, filename, size })) };
+}
+
 export async function prepareDraftAttachments(
   account: StoredAccount,
   folderPath: string,

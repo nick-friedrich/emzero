@@ -16,6 +16,7 @@ import {
   LoaderCircle,
   Paperclip,
   Reply,
+  ReplyAll,
   RefreshCw,
   Trash2,
   X,
@@ -47,7 +48,9 @@ import {
   type MailConversation,
 } from '../../shared/conversations';
 import {
+  replyAllCcRecipients,
   replyRecipients,
+  type ReplyMode,
 } from '../../shared/replies';
 import type { Status } from './app-shared';
 import {
@@ -163,7 +166,7 @@ function MessageBody({
           />
         </>
       ) : (
-        <div className="mt-4 whitespace-pre-wrap break-words text-[15px] leading-7 text-foreground">
+        <div className="mt-4 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
           {textParts.visible || 'No new text in this reply.'}
           {showQuoted && textParts.quoted && (
             <div className="mt-5 border-l-2 border-border pl-4 text-muted-foreground">
@@ -366,6 +369,7 @@ function ThreadMessageCard({
   const [draftAttachmentError, setDraftAttachmentError] = useState<string | null>(null);
   const [deleteDraftConfirmationOpen, setDeleteDraftConfirmationOpen] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
+  const [replyMode, setReplyMode] = useState<ReplyMode>('reply');
   const [replySession, setReplySession] = useState(0);
   const senderAddresses = summary.from
     .map(({ address }) => address)
@@ -373,6 +377,13 @@ function ThreadMessageCard({
     .join(', ') || 'Unknown sender address';
   const canReply = state.status === 'loaded' &&
     replyRecipients(selection.account, state.message).length > 0;
+  const canReplyAll = canReply && state.status === 'loaded' &&
+    replyAllCcRecipients(selection.account, state.message).length > 0;
+  const openReply = (mode: ReplyMode) => {
+    setReplyMode(mode);
+    setReplySession((current) => current + 1);
+    setReplyOpen(true);
+  };
 
   useEffect(() => {
     if (demoDetail) return;
@@ -463,13 +474,22 @@ function ThreadMessageCard({
                 : !canReply
                   ? 'This message has no valid reply address.'
                   : undefined}
-              onClick={() => {
-                setReplySession((current) => current + 1);
-                setReplyOpen(true);
-              }}
+              onClick={() => openReply('reply')}
             >
               <Reply className="size-4" />
               Reply
+            </Button>
+          )}
+          {expanded && canReplyAll && !isSavedDraft && !draftEditorOpen && (
+            <Button
+              variant="ghost"
+              className="h-8 px-3 text-muted-foreground"
+              disabled={Boolean(demoDetail) || replyOpen}
+              title={demoDetail ? 'Sending is disabled for sample messages' : undefined}
+              onClick={() => openReply('replyAll')}
+            >
+              <ReplyAll className="size-4" />
+              Reply all
             </Button>
           )}
           {isSavedDraft && (
@@ -577,9 +597,10 @@ function ThreadMessageCard({
                 message={state.message}
                 threadMessages={threadMessages}
                 open={replyOpen}
-                onOpenChange={(open) => {
-                  if (open && !replyOpen) setReplySession((current) => current + 1);
-                  setReplyOpen(open);
+                mode={replyMode}
+                onOpenChange={(open, mode) => {
+                  if (open && !replyOpen) openReply(mode ?? 'reply');
+                  else setReplyOpen(open);
                 }}
                 onSent={onReplySent}
                 onDraftSaved={onDraftSaved}

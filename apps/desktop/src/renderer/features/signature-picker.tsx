@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Signature } from 'lucide-react';
 import { storedSignatures, subscribeSignatures } from './signatures';
 
 export function SignaturePicker({
@@ -12,28 +12,29 @@ export function SignaturePicker({
   onChange: (signatureId: string) => void;
 }) {
   const signatures = useSyncExternalStore(subscribeSignatures, storedSignatures);
+  if (signatures.length === 0 && !value) return null;
 
   return (
-    <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-      <span className="shrink-0">Signature</span>
-      <span className="relative min-w-0 max-w-56 flex-1">
-        <select
-          className="field h-8 appearance-none py-1 pl-2 pr-7 text-xs"
-          value={value}
-          disabled={disabled}
-          aria-label="Signature"
-          onChange={(event) => onChange(event.target.value)}
-        >
-          <option value="">No signature</option>
-          {signatures.map((signature) => (
-            <option key={signature.id} value={signature.id}>
-              {signature.name || 'Untitled signature'}
-            </option>
-          ))}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-2 top-2 size-3.5" />
-      </span>
-      <span className="hidden sm:inline">Editable in the message</span>
+    <label
+      className="relative flex h-8 min-w-0 max-w-44 items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+      title="Signature — editable in the message"
+    >
+      <Signature className="pointer-events-none absolute left-2 size-4" />
+      <select
+        className="h-8 min-w-0 cursor-pointer appearance-none truncate bg-transparent pl-8 pr-6 text-xs outline-none disabled:cursor-default disabled:opacity-50"
+        value={value}
+        disabled={disabled}
+        aria-label="Signature"
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value="">No signature</option>
+        {signatures.map((signature) => (
+          <option key={signature.id} value={signature.id}>
+            {signature.name || 'Untitled signature'}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-1.5 size-3.5" />
     </label>
   );
 }
