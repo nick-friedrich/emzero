@@ -111,6 +111,7 @@ export interface EmzeroDesktopApi {
   messages: {
     list: (accountId: string, folderPath: string, refresh?: boolean) => Promise<MessageListResult>;
     search: (request: MailSearchRequest) => Promise<MailSearchResult>;
+    searchServer: (request: MailSearchRequest) => Promise<MailSearchResult>;
     get: (accountId: string, folderPath: string, uid: number) => Promise<MessageDetailResult>;
     prefetch: (accountId: string, folderPath: string, uid: number) => Promise<MessageDetailResult>;
     setUnread: (
@@ -283,6 +284,8 @@ contextBridge.exposeInMainWorld('emzero', {
     list: (accountId, folderPath, refresh = false) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.listMessages, accountId, folderPath, refresh),
     search: (request) => ipcRenderer.invoke(ACCOUNT_CHANNELS.searchMessages, request),
+    searchServer: (request) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.searchServerMessages, request),
     get: (accountId, folderPath, uid) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.getMessage, accountId, folderPath, uid),
     prefetch: (accountId, folderPath, uid) =>

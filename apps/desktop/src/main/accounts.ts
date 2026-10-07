@@ -44,6 +44,7 @@ import {
 import { registerSmartInboxHandlers, scheduleMailInsights } from './mail-insights.js';
 import { exportAccountBackup, importAccountBackup, selectAccountBackup, validAppSettingsBackup } from './account-backup.js';
 import { readSignatures, writeSignatures } from './signature-storage.js';
+import { searchServerMessages } from './server-search.js';
 import {
   openMessageAttachment,
   prepareDraftAttachments,
@@ -170,6 +171,24 @@ function validSendDraft(value: unknown): value is MailSendDraft {
         attachment.size >= 0,
     )
   );
+}
+
+function validMailSearchRequest(value: unknown): MailSearchRequest | null {
+  if (!value || typeof value !== 'object') return null;
+  const request = value as Partial<MailSearchRequest>;
+  if (
+    typeof request.query !== 'string' ||
+    request.query.length > 500 ||
+    (request.accountId !== undefined && typeof request.accountId !== 'string') ||
+    (request.folderPath !== undefined && typeof request.folderPath !== 'string') ||
+    (request.specialUse !== undefined && typeof request.specialUse !== 'string') ||
+    (request.limit !== undefined &&
+      (typeof request.limit !== 'number' || !Number.isInteger(request.limit))) ||
+    (request.sort !== undefined && !['relevance', 'newest', 'oldest'].includes(request.sort))
+  ) {
+    return null;
+  }
+  return request as MailSearchRequest;
 }
 
 function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
@@ -499,19 +518,8 @@ export function registerAccountHandlers(): void {
 
   ipcMain.handle(ACCOUNT_CHANNELS.searchMessages, (event, value: unknown) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-    if (!value || typeof value !== 'object') {
-      return { ok: false, items: [], message: 'Invalid search.' } satisfies MailSearchResult;
-    }
-    const request = value as Partial<MailSearchRequest>;
-    if (
-      typeof request.query !== 'string' ||
-      request.query.length > 500 ||
-      (request.accountId !== undefined && typeof request.accountId !== 'string') ||
-      (request.folderPath !== undefined && typeof request.folderPath !== 'string') ||
-      (request.limit !== undefined &&
-        (typeof request.limit !== 'number' || !Number.isInteger(request.limit))) ||
-      (request.sort !== undefined && !['relevance', 'newest', 'oldest'].includes(request.sort))
-    ) {
+    const request = validMailSearchRequest(value);
+    if (!request) {
       return { ok: false, items: [], message: 'Invalid search.' } satisfies MailSearchResult;
     }
     return {
@@ -519,10 +527,20 @@ export function registerAccountHandlers(): void {
       items: mailCache().searchMessages(request.query, {
         accountId: request.accountId,
         folderPath: request.folderPath,
+        specialUse: request.specialUse,
         limit: request.limit,
         sort: request.sort,
       }),
     } satisfies MailSearchResult;
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.searchServerMessages, async (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    const request = validMailSearchRequest(value);
+    if (!request) {
+      return { ok: false, items: [], message: 'Invalid search.' } satisfies MailSearchResult;
+    }
+    return searchServerMessages(await readAccounts(), request);
   });
 
   ipcMain.handle(

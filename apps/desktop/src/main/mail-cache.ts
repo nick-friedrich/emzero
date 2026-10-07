@@ -618,28 +618,7 @@ export class MailCache {
     total: number,
     syncedAt = new Date().toISOString(),
   ): void {
-    const upsert = this.#database.prepare(`
-      INSERT INTO messages (
-        account_id, folder_path, uid, message_id, in_reply_to, reference_ids, subject,
-        sender_addresses, recipient_addresses, sent_at, received_at, unread, flagged,
-        important, due_date, color, size
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT (account_id, folder_path, uid) DO UPDATE SET
-        message_id = excluded.message_id,
-        in_reply_to = excluded.in_reply_to,
-        reference_ids = excluded.reference_ids,
-        subject = excluded.subject,
-        sender_addresses = excluded.sender_addresses,
-        recipient_addresses = excluded.recipient_addresses,
-        sent_at = excluded.sent_at,
-        received_at = excluded.received_at,
-        unread = excluded.unread,
-        flagged = excluded.flagged,
-        important = excluded.important,
-        due_date = excluded.due_date,
-        color = excluded.color,
-        size = excluded.size
-    `);
+    const upsert = this.#prepareMessageUpsert();
     const updateFolder = this.#database.prepare(`
       UPDATE folders SET message_count = ?, synced_at = ?
       WHERE account_id = ? AND path = ?
@@ -660,25 +639,7 @@ export class MailCache {
         const minimumUid = Math.min(...messages.map((message) => message.uid));
         removeRecent.run(accountId, folderPath, minimumUid);
         for (const message of messages) {
-          upsert.run(
-            accountId,
-            folderPath,
-            message.uid,
-            message.messageId,
-            message.inReplyTo,
-            JSON.stringify(message.references),
-            message.subject,
-            JSON.stringify(message.from),
-            JSON.stringify(message.to),
-            message.sentAt,
-            message.receivedAt,
-            message.unread ? 1 : 0,
-            message.flagged ? 1 : 0,
-            message.important ? 1 : 0,
-            message.dueDate,
-            message.color,
-            message.size,
-          );
+          upsert(accountId, folderPath, message);
         }
       }
       updateFolder.run(total, syncedAt, accountId, folderPath);
@@ -733,6 +694,7 @@ export class MailCache {
     filters: {
       accountId?: string;
       folderPath?: string;
+      specialUse?: string;
       limit?: number;
       sort?: 'relevance' | 'newest' | 'oldest';
     } = {},
@@ -752,6 +714,10 @@ export class MailCache {
     if (filters.folderPath) {
       clauses.push('messages.folder_path = ?');
       parameters.push(filters.folderPath);
+    }
+    if (filters.specialUse) {
+      clauses.push('folders.special_use = ?');
+      parameters.push(filters.specialUse);
     }
     parameters.push(Math.max(1, Math.min(filters.limit ?? 100, 200)));
     const orderBy =
@@ -804,6 +770,72 @@ export class MailCache {
       message: messageSummary(row),
       snippet: row.snippet,
     }));
+  }
+
+  /**
+   * Stores summaries found by a server-side search without touching the
+   * folder's sync state, so later incremental syncs still reconcile normally.
+   */
+  putSearchResults(accountId: string, folderPath: string, messages: MailMessageSummary[]): void {
+    const upsert = this.#prepareMessageUpsert();
+    this.#database.exec('BEGIN');
+    try {
+      for (const message of messages) upsert(accountId, folderPath, message);
+      this.#database.exec('COMMIT');
+    } catch (error) {
+      this.#database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  #prepareMessageUpsert(): (
+    accountId: string,
+    folderPath: string,
+    message: MailMessageSummary,
+  ) => void {
+    const statement = this.#database.prepare(`
+      INSERT INTO messages (
+        account_id, folder_path, uid, message_id, in_reply_to, reference_ids, subject,
+        sender_addresses, recipient_addresses, sent_at, received_at, unread, flagged,
+        important, due_date, color, size
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (account_id, folder_path, uid) DO UPDATE SET
+        message_id = excluded.message_id,
+        in_reply_to = excluded.in_reply_to,
+        reference_ids = excluded.reference_ids,
+        subject = excluded.subject,
+        sender_addresses = excluded.sender_addresses,
+        recipient_addresses = excluded.recipient_addresses,
+        sent_at = excluded.sent_at,
+        received_at = excluded.received_at,
+        unread = excluded.unread,
+        flagged = excluded.flagged,
+        important = excluded.important,
+        due_date = excluded.due_date,
+        color = excluded.color,
+        size = excluded.size
+    `);
+    return (accountId, folderPath, message) => {
+      statement.run(
+        accountId,
+        folderPath,
+        message.uid,
+        message.messageId,
+        message.inReplyTo,
+        JSON.stringify(message.references),
+        message.subject,
+        JSON.stringify(message.from),
+        JSON.stringify(message.to),
+        message.sentAt,
+        message.receivedAt,
+        message.unread ? 1 : 0,
+        message.flagged ? 1 : 0,
+        message.important ? 1 : 0,
+        message.dueDate,
+        message.color,
+        message.size,
+      );
+    };
   }
 
   searchRecipients(
@@ -1134,28 +1166,7 @@ export class MailCache {
     const remove = this.#database.prepare(`
       DELETE FROM messages WHERE account_id = ? AND folder_path = ? AND uid = ?
     `);
-    const upsert = this.#database.prepare(`
-      INSERT INTO messages (
-        account_id, folder_path, uid, message_id, in_reply_to, reference_ids, subject,
-        sender_addresses, recipient_addresses, sent_at, received_at, unread, flagged,
-        important, due_date, color, size
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT (account_id, folder_path, uid) DO UPDATE SET
-        message_id = excluded.message_id,
-        in_reply_to = excluded.in_reply_to,
-        reference_ids = excluded.reference_ids,
-        subject = excluded.subject,
-        sender_addresses = excluded.sender_addresses,
-        recipient_addresses = excluded.recipient_addresses,
-        sent_at = excluded.sent_at,
-        received_at = excluded.received_at,
-        unread = excluded.unread,
-        flagged = excluded.flagged,
-        important = excluded.important,
-        due_date = excluded.due_date,
-        color = excluded.color,
-        size = excluded.size
-    `);
+    const upsert = this.#prepareMessageUpsert();
     const resetMessages = this.#database.prepare(
       'DELETE FROM messages WHERE account_id = ? AND folder_path = ?',
     );
@@ -1175,25 +1186,7 @@ export class MailCache {
         }
       }
       for (const message of messages) {
-        upsert.run(
-          accountId,
-          folderPath,
-          message.uid,
-          message.messageId,
-          message.inReplyTo,
-          JSON.stringify(message.references),
-          message.subject,
-          JSON.stringify(message.from),
-          JSON.stringify(message.to),
-          message.sentAt,
-          message.receivedAt,
-          message.unread ? 1 : 0,
-          message.flagged ? 1 : 0,
-          message.important ? 1 : 0,
-          message.dueDate,
-          message.color,
-          message.size,
-        );
+        upsert(accountId, folderPath, message);
       }
       const reconciledAt = metadata.syncedAt ?? new Date().toISOString();
       const messageCount = metadata.reconcile === false

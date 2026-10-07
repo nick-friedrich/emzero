@@ -323,6 +323,8 @@ export interface MailSearchRequest {
   query: string;
   accountId?: string;
   folderPath?: string;
+  /** Limits results to folders with this IMAP special-use flag, such as `\\Trash`. */
+  specialUse?: string;
   limit?: number;
   sort?: 'relevance' | 'newest' | 'oldest';
 }
@@ -608,6 +610,7 @@ export const ACCOUNT_CHANNELS = {
   deleteFolder: 'folders:delete',
   listMessages: 'messages:list',
   searchMessages: 'messages:search',
+  searchServerMessages: 'messages:search-server',
   getMessage: 'messages:get',
   prefetchMessage: 'messages:prefetch',
   setMessageUnread: 'messages:set-unread',

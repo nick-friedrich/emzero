@@ -216,6 +216,35 @@ describe('MailCache', () => {
       .toMatchObject([{ accountId: 'account-1', folder: { path: 'Archive' } }]);
   });
 
+  it('filters search results by folder special use across accounts', () => {
+    cache = new MailCache(':memory:');
+    const trash = { ...inbox, path: 'Deleted Items', name: 'Deleted Items', specialUse: '\\Trash' };
+    cache.replaceFolders('account-1', [inbox, trash]);
+    cache.replaceFolders('account-2', [{ ...trash, path: 'Trash', name: 'Trash' }]);
+    cache.replaceRecentMessages('account-1', 'INBOX', [message(1, 'Lost receipt')], 1);
+    cache.putSearchResults('account-1', 'Deleted Items', [
+      { ...message(2, 'Lost receipt'), folderPath: 'Deleted Items' },
+    ]);
+    cache.putSearchResults('account-2', 'Trash', [
+      { ...message(3, 'Lost receipt'), folderPath: 'Trash' },
+    ]);
+
+    expect(
+      cache.searchMessages('receipt', { specialUse: '\\Trash', sort: 'newest' })
+        .map((item) => [item.accountId, item.folder.path]),
+    ).toEqual([['account-2', 'Trash'], ['account-1', 'Deleted Items']]);
+  });
+
+  it('stores server search results without marking the folder synced', () => {
+    cache = new MailCache(':memory:');
+    const trash = { ...inbox, path: 'Trash', name: 'Trash', specialUse: '\\Trash' };
+    cache.replaceFolders('account-1', [trash]);
+    cache.putSearchResults('account-1', 'Trash', [{ ...message(7), folderPath: 'Trash' }]);
+
+    expect(cache.listMessageUids('account-1', 'Trash')).toEqual([7]);
+    expect(cache.getFolderSyncState('account-1', 'Trash').syncedAt).toBeNull();
+  });
+
   it('sorts search results by relevance or date', () => {
     cache = new MailCache(':memory:');
     cache.replaceFolders('account-1', [inbox]);

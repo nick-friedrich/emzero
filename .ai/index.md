@@ -53,9 +53,10 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/message-sender.ts` — SMTP delivery, IMAP Sent-copy persistence, and sent-message cache updates.
 - `apps/desktop/src/main/mail-drafts.ts` — MIME draft compilation plus append-first IMAP draft autosave and deletion.
 - `apps/desktop/src/main/attachment-files.ts` — native file selection, byte-backed registration of files dropped or pasted into a composer, opaque outgoing-file authorization, attachment limits, retained-draft attachment authorization, and received-attachment saving.
+- `apps/desktop/src/main/server-search.ts` — on-demand IMAP TEXT search scoped by account, folder, or special use (All Mail/Trash/Spam on Gmail-style servers), caching found summaries for later local search.
 - `apps/desktop/src/main/message-actions.ts` — read/unread, star/unstar, delete, same-account move, and cross-account message-transfer operations.
 - `apps/desktop/src/main/bulk-message-jobs.ts` — bulk-action request validation, execution, cancellation, and progress publication.
-- `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache, bounded plain-text list previews from cached bodies, search, and AI insight/smart-inbox score storage joined onto listed messages.
+- `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache, bounded plain-text list previews from cached bodies, search (filterable by folder special use), server-search result storage, and AI insight/smart-inbox score storage joined onto listed messages.
 - `apps/desktop/src/main/message-html.ts` — sanitization and quoted-content detection for message HTML.
 - `apps/desktop/src/main/outgoing-html.ts` — safe outgoing rich-text HTML (keeping only the `id="Signature"` marker) and pasted-image size validation before MIME compilation.
 - `apps/desktop/src/main/mail-windows.ts` — validated creation of standalone message, composer, and single-instance settings windows.
@@ -106,7 +107,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/clipboard-html.test.ts` — renderer tests for pasted-style interpretation and link normalization.
 - `features/ai-draft-assistant.tsx` — the AI-configured hook and reusable, dismissible prompt panel for AI drafting in reply, new-message, and saved-draft composers.
 - `features/smart-inboxes.tsx` — smart-inbox sidebar section and create/edit dialog, AI tag chips, the remove-sender row action, the settings toggle, and the shared settings hook.
-- `features/mail-search.tsx` — search form/results and selected-result reader.
+- `features/mail-search.tsx` — search form with account/folder scope, cached results, the on-demand server search that merges in uncached matches, and the selected-result reader.
 - `features/message-list.tsx` — one account-folder conversation list, selection, and folder-scoped actions.
 - `features/unified-inbox.tsx` — multi-account Inbox, Starred, Trash, and smart-inbox aggregation (including hiding skip-Inbox matches), selection, and actions.
 - `features/account-colors.tsx` — account color palette classes, the hover-labelled account dot shown on unified-inbox avatars, and the settings color picker.
@@ -135,7 +136,7 @@ All paths in this section are relative to `apps/desktop/src/renderer/`.
 ## Tests
 
 - Tests live beside their implementation as `*.test.ts` or `*.test.tsx`.
-- `apps/desktop/src/main/` tests cover cache, HTML sanitization, provider discovery, folder subscriptions, folder input rules, message parsing helpers, message-action rules, draft-folder discovery, signature storage, and bulk-job validation/progress.
+- `apps/desktop/src/main/` tests cover cache, HTML sanitization, provider discovery, folder subscriptions, folder input rules, message parsing helpers, message-action rules, server-search folder scoping, draft-folder discovery, signature storage, and bulk-job validation/progress.
 - `apps/desktop/src/shared/` tests cover domain helpers and contracts.
 - `apps/desktop/src/renderer/` tests cover renderer utilities and theming.
 - `apps/desktop/e2e/` — Playwright smoke coverage for production Electron builds using the privacy-safe demo dataset, plus isolated mock-mail regression coverage for reply preservation, dedicated composition, and automatic HTML-email sizing with privacy/link controls.

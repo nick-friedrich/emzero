@@ -2,6 +2,7 @@ import { MailViewMenu } from './mail-view-menu';
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from 'react';
@@ -49,6 +50,31 @@ import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableAction } from './undoable-delete';
 import { useTheme } from '@/theme';
 
+const specialFolderScopes = [
+  { specialUse: '\\Inbox', label: 'Inbox' },
+  { specialUse: '\\Sent', label: 'Sent' },
+  { specialUse: '\\Drafts', label: 'Drafts' },
+  { specialUse: '\\Archive', label: 'Archive' },
+  { specialUse: '\\Trash', label: 'Trash' },
+  { specialUse: '\\Junk', label: 'Spam' },
+];
+
+/** Encodes the folder filter as `special:<flag>` (any account) or `path:<path>` (one account). */
+function folderScopeRequest(scope: string): { folderPath?: string; specialUse?: string } {
+  if (scope.startsWith('special:')) return { specialUse: scope.slice('special:'.length) };
+  if (scope.startsWith('path:')) return { folderPath: scope.slice('path:'.length) };
+  return {};
+}
+
+function searchItemKey(item: MailSearchItem): string {
+  return `${item.accountId}:${item.folder.path}:${item.message.uid}`;
+}
+
+type ServerSearchState =
+  | { status: 'idle' }
+  | { status: 'loading'; key: string }
+  | { status: 'done'; key: string; added: number; message?: string };
+
 type SearchLoadState =
   | { status: 'idle' }
   | { status: 'loading' }
@@ -79,10 +105,30 @@ export function MailSearch({
     revision: 0,
   });
   const [accountId, setAccountId] = useState('');
+  const [folderScope, setFolderScope] = useState('');
+  const [scopeFolderState, setScopeFolderState] = useState<{
+    accountId: string;
+    folders: MailFolderSummary[];
+  } | null>(null);
+  const stateRef = useRef<SearchLoadState>({ status: 'idle' });
   const [sort, setSort] = useState<'relevance' | 'newest' | 'oldest'>('relevance');
+  const [serverSearchState, setServerSearch] = useState<ServerSearchState>({ status: 'idle' });
+  // A server search belongs to one query and filter set; changing either discards it.
+  const searchKey = JSON.stringify([searchRequest.query, searchRequest.revision, accountId, folderScope, sort]);
+  const searchKeyRef = useRef(searchKey);
+  useEffect(() => {
+    searchKeyRef.current = searchKey;
+  }, [searchKey]);
+  const serverSearch: ServerSearchState =
+    serverSearchState.status !== 'idle' && serverSearchState.key === searchKey
+      ? serverSearchState
+      : { status: 'idle' };
   const [state, setState] = useState<SearchLoadState>(
     initialQuery.trim() ? { status: 'loading' } : { status: 'idle' },
   );
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
   const [selected, setSelected] = useState<{
     item: MailSearchItem;
     conversation: MailConversation;
@@ -117,6 +163,18 @@ export function MailSearch({
   });
 
   useEffect(() => {
+    if (!accountId) return;
+    let active = true;
+    void window.emzero.folders.list(accountId).then((result) => {
+      if (active && result.ok) setScopeFolderState({ accountId, folders: result.folders });
+    });
+    return () => { active = false; };
+  }, [accountId]);
+  const scopeFolders = accountId && scopeFolderState?.accountId === accountId
+    ? scopeFolderState.folders.filter((folder) => folder.selectable && !folder.specialUse)
+    : [];
+
+  useEffect(() => {
     if (!selectedAccountId) return;
     let active = true;
     void window.emzero.folders.list(selectedAccountId).then((result) => {
@@ -145,6 +203,7 @@ export function MailSearch({
       .search({
         query: searchRequest.query,
         accountId: accountId || undefined,
+        ...folderScopeRequest(folderScope),
         limit: 100,
         sort,
       })
@@ -162,7 +221,37 @@ export function MailSearch({
     return () => {
       active = false;
     };
-  }, [accountId, searchRequest, sort]);
+  }, [accountId, folderScope, searchRequest, sort]);
+
+  const runServerSearch = () => {
+    if (!searchRequest.query || serverSearch.status === 'loading') return;
+    const key = searchKey;
+    setServerSearch({ status: 'loading', key });
+    void window.emzero.messages
+      .searchServer({
+        query: searchRequest.query,
+        accountId: accountId || undefined,
+        ...folderScopeRequest(folderScope),
+        limit: 200,
+        sort,
+      })
+      .then((result) => {
+        if (key !== searchKeyRef.current) return;
+        const current = stateRef.current;
+        if (!result.ok || current.status !== 'loaded') {
+          setServerSearch({ status: 'done', key, added: 0, message: result.message ?? 'Server search failed.' });
+          return;
+        }
+        const known = new Set(current.items.map(searchItemKey));
+        const fresh = result.items.filter((item) => !known.has(searchItemKey(item)));
+        setState({ status: 'loaded', items: [...current.items, ...fresh] });
+        setServerSearch({ status: 'done', key, added: fresh.length, message: result.message });
+      })
+      .catch(() => {
+        if (key !== searchKeyRef.current) return;
+        setServerSearch({ status: 'done', key, added: 0, message: 'Server search failed.' });
+      });
+  };
 
   const runSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -350,6 +439,40 @@ export function MailSearch({
 
   if (reader && mailLayout === 'list') return reader;
 
+  const serverScopeLabel = folderScope.startsWith('special:')
+    ? specialFolderScopes.find((scope) => `special:${scope.specialUse}` === folderScope)?.label
+    : folderScope.startsWith('path:')
+      ? scopeFolders.find((folder) => `path:${folder.path}` === folderScope)?.name
+      : null;
+  const serverSearchControl = (
+    <>
+      {serverSearch.status === 'done' && (
+        <span className={cn(serverSearch.message && 'text-danger')}>
+          {serverSearch.message ??
+            (serverSearch.added === 0
+              ? 'No more messages on the server'
+              : `${serverSearch.added} more from the server`)}
+        </span>
+      )}
+      {serverSearch.status !== 'done' && (
+        <Button
+          type="button"
+          variant="secondary"
+          className="h-8 px-3 text-xs"
+          disabled={serverSearch.status === 'loading'}
+          onClick={runServerSearch}
+        >
+          {serverSearch.status === 'loading' ? (
+            <LoaderCircle className="size-4 animate-spin" />
+          ) : (
+            <Search className="size-4" />
+          )}
+          {serverScopeLabel ? `Search ${serverScopeLabel} on server` : 'Search on server'}
+        </Button>
+      )}
+    </>
+  );
+
   const list = (
     <section
       ref={listSurfaceRef}
@@ -395,12 +518,44 @@ export function MailSearch({
                 if (searchRequest.query) setState({ status: 'loading' });
                 setSelected(null);
                 setAccountId(event.target.value);
+                if (folderScope.startsWith('path:')) setFolderScope('');
               }}
             >
               <option value="">All accounts</option>
               {accounts.map((account) => (
                 <option key={account.id} value={account.id}>{account.name}</option>
               ))}
+            </select>
+          </label>
+          <label>
+            <span className="sr-only">Folder</span>
+            <select
+              className={cn(
+                'field px-3 text-sm',
+                compactList ? 'w-24 min-w-0' : 'min-w-36',
+              )}
+              value={folderScope}
+              onChange={(event) => {
+                if (searchRequest.query) setState({ status: 'loading' });
+                setSelected(null);
+                setFolderScope(event.target.value);
+              }}
+            >
+              <option value="">All folders</option>
+              {specialFolderScopes.map((scope) => (
+                <option key={scope.specialUse} value={`special:${scope.specialUse}`}>
+                  {scope.label}
+                </option>
+              ))}
+              {scopeFolders.length > 0 && (
+                <optgroup label="Folders">
+                  {scopeFolders.map((folder) => (
+                    <option key={folder.path} value={`path:${folder.path}`}>
+                      {displayFolderName(folder)}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </label>
           <label>
@@ -470,15 +625,22 @@ export function MailSearch({
             <Search className="mx-auto size-9 text-muted-foreground" />
             <h1 className="mt-4 text-lg font-semibold">No cached messages found</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Search only includes mail already synced to this device and bodies you have opened.
+              Local search only includes mail already synced to this device and bodies you have
+              opened. Folders like Trash may not be synced yet.
             </p>
+            <div className="mt-5 flex flex-col items-center gap-2">{serverSearchControl}</div>
           </div>
         )}
         {state.status === 'loaded' && state.items.length > 0 && (
           <div className="px-2 pb-3" role="list" aria-label="Search results">
-            <div className="border-b border-border px-4 py-2 text-xs text-muted-foreground lg:px-6">
-              {state.items.length === 100 ? 'First 100 results' : `${state.items.length} ${state.items.length === 1 ? 'result' : 'results'}`}
-              {' '}from cached mail
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground lg:px-6">
+              <span>
+                {`${state.items.length} ${state.items.length === 1 ? 'result' : 'results'}`}
+                {serverSearch.status === 'done' && !serverSearch.message
+                  ? ' from cached mail and the server'
+                  : ' from cached mail'}
+              </span>
+              <span className="flex flex-wrap items-center gap-2">{serverSearchControl}</span>
             </div>
             {state.items.map((item) => {
               const account = accounts.find((candidate) => candidate.id === item.accountId);

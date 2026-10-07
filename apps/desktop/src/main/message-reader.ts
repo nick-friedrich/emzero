@@ -134,7 +134,7 @@ const summaryFetchQuery: FetchQueryObject = {
   headers: ['references', 'face'],
 };
 
-async function fetchSummaries(
+export async function fetchSummaries(
   imap: ImapFlow,
   folderPath: string,
   range: string | number[],
