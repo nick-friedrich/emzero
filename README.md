@@ -12,7 +12,7 @@ A private, multi-account desktop mail client for Linux and macOS, with a Laravel
 | Read threads beside the unified inbox. Rosé Pine Dawn with Source Serif 4. | Quick appearance (⌘⇧P) switches theme and font instantly. |
 | ![Unified inbox in the Tokyo Night theme with JetBrains Mono](./media/screenshots/inbox-tokyo-night.webp) | ![Unified inbox in the Gruvbox Dark theme](./media/screenshots/inbox-gruvbox-dark.webp) |
 | Tokyo Night with JetBrains Mono. | Gruvbox Dark. |
-| ![Unified inbox in the Rosé Pine Dawn theme with row actions on hover](./media/screenshots/inbox-rose-pine-dawn.webp) | |
+| ![Unified inbox in the Rosé Pine Dawn theme](./media/screenshots/inbox-rose-pine-dawn.webp) | |
 | Starred, unread, and other mail grouped, with per-account colors and hover actions. | |
 
 ## Install
