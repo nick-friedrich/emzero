@@ -59,7 +59,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache, bounded plain-text list previews from cached bodies, search (filterable by folder special use), server-search result storage, and AI insight/smart-inbox score storage joined onto listed messages.
 - `apps/desktop/src/main/message-html.ts` — sanitization and quoted-content detection for message HTML.
 - `apps/desktop/src/main/outgoing-html.ts` — safe outgoing rich-text HTML (keeping only the `id="Signature"` marker) and pasted-image size validation before MIME compilation.
-- `apps/desktop/src/main/window-visibility.ts` — the `EMZERO_HIDDEN_WINDOWS=1` test mode: every window stays hidden (unthrottled), and the macOS Dock icon is hidden.
+- `apps/desktop/src/main/window-visibility.ts` — the macOS-only `EMZERO_HIDDEN_WINDOWS=1` test mode: every window stays hidden (unthrottled), and the macOS Dock icon is hidden.
 - `apps/desktop/src/main/mail-windows.ts` — validated creation of standalone message, composer, and single-instance settings windows.
 - `apps/desktop/src/main/provider-discovery.ts` — provider catalog lookup and domain/MX discovery.
 - `apps/desktop/src/main/folder-subscriptions.ts` — IMAP folder subscription and deletion helpers.

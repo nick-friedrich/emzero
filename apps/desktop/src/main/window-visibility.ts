@@ -2,8 +2,9 @@ import { app, type BrowserWindow } from 'electron';
 
 // End-to-end tests set this so the packaged app runs without windows or a
 // Dock icon appearing on the developer's screen. Hidden windows still render,
-// so Playwright can drive and screenshot them normally.
-const hiddenWindows = process.env.EMZERO_HIDDEN_WINDOWS === '1';
+// so Playwright can drive and screenshot them normally. Only macOS honors it:
+// hidden windows stall under Linux X11, and Linux CI already runs in xvfb.
+const hiddenWindows = process.env.EMZERO_HIDDEN_WINDOWS === '1' && process.platform === 'darwin';
 
 // Chromium throttles timers in hidden windows, which would shift debounce
 // timing (such as draft autosave) away from what a visible window does.
