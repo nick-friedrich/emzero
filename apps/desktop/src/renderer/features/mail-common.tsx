@@ -3,20 +3,15 @@ import {
   useEffect,
   useRef,
   useState,
-  type ReactNode,
-  type Ref,
 } from 'react';
 import {
   Archive,
   Check,
   FileText,
-  Flag,
-  CalendarDays,
   Folder,
   Inbox,
   Mail,
   MailOpen,
-  MoreHorizontal,
   Send,
   Star,
   Trash2,
@@ -24,7 +19,6 @@ import {
   Columns3,
   PanelLeftClose,
   PanelLeftOpen,
-  Palette,
   Reply,
 } from 'lucide-react';
 import {
@@ -39,15 +33,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import {
   cn,
 } from '@/lib/utils';
@@ -67,7 +53,6 @@ import {
 } from '../../shared/accounts';
 import type { MailConversation } from '../../shared/conversations';
 import {
-  EMZERO_MESSAGE_COLORS,
   localDateKeyAfter,
   tomorrowDateKey,
   type EmzeroMessageColor,
@@ -608,313 +593,6 @@ export function conversationWithMessage(
       ),
     ],
   };
-}
-
-export function ConversationActions({
-  accounts,
-  sourceAccountId,
-  folders,
-  sourcePath,
-  messageCount,
-  unread,
-  flagged,
-  important,
-  dueDate,
-  color,
-  supportsEmzeroKeywords,
-  busy,
-  confirmPermanentDelete,
-  onSetUnread,
-  onSetFlagged,
-  onSetImportant,
-  onSetColor,
-  onMove,
-  onDelete,
-  deleteButtonRef,
-  leadingAction,
-}: {
-  accounts: AccountSummary[];
-  sourceAccountId: string;
-  folders: MailFolderSummary[];
-  sourcePath: string;
-  messageCount: number;
-  unread: boolean;
-  flagged: boolean;
-  important: boolean;
-  dueDate: string | null;
-  color: EmzeroMessageColor | null;
-  supportsEmzeroKeywords: boolean;
-  busy: boolean;
-  confirmPermanentDelete: boolean;
-  onSetUnread: (unread: boolean) => void;
-  onSetFlagged: (flagged: boolean) => void;
-  onSetImportant: (important: boolean, dueDate?: string) => void;
-  onSetColor: (color: EmzeroMessageColor | null) => void;
-  onMove: (destination: MessageMoveDestination) => void;
-  onDelete: () => void;
-  deleteButtonRef?: Ref<HTMLButtonElement>;
-  leadingAction?: ReactNode;
-}) {
-  const [dueDialogOpen, setDueDialogOpen] = useState(false);
-  const [colorDialogOpen, setColorDialogOpen] = useState(false);
-  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const [moreMenuPlacement, setMoreMenuPlacement] = useState<'above' | 'below'>('below');
-  const [customDueDate, setCustomDueDate] = useState(dueDate ?? tomorrowDateKey());
-  const moreMenuRef = useRef<HTMLDivElement>(null);
-  const archive = findArchiveFolder(folders);
-  const unreadLabel = unread ? 'Mark as read' : 'Mark as unread';
-
-  useEffect(() => {
-    if (!moreMenuOpen) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (moreMenuRef.current?.contains(event.target as Node)) return;
-      const focusedElement = document.activeElement;
-      if (
-        focusedElement instanceof HTMLElement &&
-        moreMenuRef.current?.contains(focusedElement)
-      ) {
-        focusedElement.blur();
-      }
-      setMoreMenuOpen(false);
-    };
-    document.addEventListener('pointerdown', closeOnOutsidePointer);
-    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer);
-  }, [moreMenuOpen]);
-
-  const runMenuAction = (action: () => void) => {
-    setMoreMenuOpen(false);
-    action();
-  };
-  const menuItemClass = 'h-8 w-full justify-start rounded-md px-2 text-xs';
-  const deleteButton = (
-    <Button
-      ref={deleteButtonRef}
-      variant="ghost"
-      className="size-8 px-0 text-danger hover:text-danger"
-      aria-label="Delete conversation"
-      title="Delete conversation"
-      onClick={confirmPermanentDelete ? undefined : onDelete}
-    >
-      <Trash2 className="size-4" />
-    </Button>
-  );
-  return (
-    <div className="flex shrink-0 items-center gap-1" aria-label="Conversation actions">
-      {leadingAction}
-      <Button
-        variant="ghost"
-        className="size-8 px-0"
-        aria-label={unreadLabel}
-        title={unreadLabel}
-        disabled={busy}
-        onClick={() => onSetUnread(!unread)}
-      >
-        {unread ? <MailOpen className="size-4" /> : <Mail className="size-4" />}
-      </Button>
-      {confirmPermanentDelete ? (
-        <AlertDialog>
-          <AlertDialogTrigger asChild>{deleteButton}</AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Permanently delete this conversation?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This conversation will be permanently removed and cannot be recovered.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={onDelete}>Permanently delete</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      ) : (
-        deleteButton
-      )}
-      <div
-        ref={moreMenuRef}
-        className="relative"
-        onKeyDown={(event) => {
-          if (event.key !== 'Escape') return;
-          setMoreMenuOpen(false);
-          moreMenuRef.current?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')?.focus();
-        }}
-      >
-        <Button
-          variant="ghost"
-          className="size-8 px-0"
-          aria-label="More conversation actions"
-          title="More conversation actions"
-          aria-haspopup="menu"
-          aria-expanded={moreMenuOpen}
-          disabled={busy}
-          onClick={(event) => {
-            if (moreMenuOpen) {
-              setMoreMenuOpen(false);
-              if (event.detail > 0) event.currentTarget.blur();
-              return;
-            }
-            setMoreMenuPlacement(
-              window.innerHeight - event.currentTarget.getBoundingClientRect().bottom < 220
-                ? 'above'
-                : 'below',
-            );
-            setMoreMenuOpen(true);
-          }}
-        >
-          <MoreHorizontal className="size-4" />
-        </Button>
-        {moreMenuOpen && (
-          <div
-            role="menu"
-            aria-label="More conversation actions"
-            className={cn(
-              'absolute right-0 z-50 w-48 rounded-lg border border-border bg-card p-1 shadow-lg',
-              moreMenuPlacement === 'above'
-                ? 'bottom-[calc(100%+0.25rem)]'
-                : 'top-[calc(100%+0.25rem)]',
-            )}
-          >
-            <Button
-              autoFocus
-              variant="ghost"
-              role="menuitem"
-              className={menuItemClass}
-              onClick={() => runMenuAction(() => onSetFlagged(!flagged))}
-            >
-              <Star className={cn('size-4', flagged && 'fill-primary text-primary')} />
-              {flagged ? 'Remove star' : 'Add star'}
-            </Button>
-            {supportsEmzeroKeywords && (
-              <>
-                <Button
-                  variant="ghost"
-                  role="menuitem"
-                  className={menuItemClass}
-                  onClick={() => runMenuAction(() => onSetImportant(!important))}
-                >
-                  <Flag className={cn('size-4', important && 'fill-danger text-danger')} />
-                  {important ? 'Remove important' : 'Mark important'}
-                </Button>
-                <Button
-                  variant="ghost"
-                  role="menuitem"
-                  className={cn(menuItemClass, dueDate && 'h-auto py-2')}
-                  onClick={() => runMenuAction(() => {
-                    setCustomDueDate(dueDate ?? tomorrowDateKey());
-                    setDueDialogOpen(true);
-                  })}
-                >
-                  <CalendarDays className="size-4" />
-                  <span className="min-w-0 text-left">
-                    <span className="block">{dueDate ? dueDateLabel(dueDate) : 'Set due date'}</span>
-                    {dueDate && (
-                      <span className="block text-[10px] text-muted-foreground">
-                        {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(`${dueDate}T00:00:00`))}
-                      </span>
-                    )}
-                  </span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  role="menuitem"
-                  className={menuItemClass}
-                  onClick={() => runMenuAction(() => setColorDialogOpen(true))}
-                >
-                  <Palette className={cn('size-4', color && messageColorTextClass(color))} />
-                  {color ? 'Change color' : 'Assign color'}
-                </Button>
-              </>
-            )}
-            {archive && archive.path !== sourcePath && (
-              <Button
-                variant="ghost"
-                role="menuitem"
-                className={menuItemClass}
-                onClick={() => runMenuAction(() => onMove({ accountId: sourceAccountId, folderPath: archive.path }))}
-              >
-                <Archive className="size-4" />
-                Archive
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              role="menuitem"
-              className={menuItemClass}
-              disabled={busy || accounts.length === 0}
-              onClick={() => runMenuAction(() => setMoveDialogOpen(true))}
-            >
-              <Folder className="size-4" />
-              Move to folder
-            </Button>
-          </div>
-        )}
-      </div>
-      <MoveToDialog
-        accounts={accounts}
-        sourceAccountId={sourceAccountId}
-        sourceFolders={folders}
-        sourcePath={sourcePath}
-        count={messageCount}
-        busy={busy}
-        hideTrigger
-        open={moveDialogOpen}
-        onOpenChange={setMoveDialogOpen}
-        onMove={onMove}
-      />
-      {supportsEmzeroKeywords && (
-        <>
-          <Dialog open={dueDialogOpen} onOpenChange={(open) => {
-            setDueDialogOpen(open);
-            if (open) setCustomDueDate(dueDate ?? tomorrowDateKey());
-          }}>
-            <DialogContent className="w-[min(28rem,calc(100%-2rem))]">
-              <DialogHeader>
-                <DialogTitle>Set due date</DialogTitle>
-                <DialogDescription>Mark this conversation as important and choose when it is due.</DialogDescription>
-              </DialogHeader>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  ['Today', localDateKeyAfter(0)],
-                  ['Tomorrow', localDateKeyAfter(1)],
-                  ['Next week', localDateKeyAfter(7)],
-                ].map(([label, value]) => (
-                  <Button key={label} variant="secondary" onClick={() => { onSetImportant(true, value); setDueDialogOpen(false); }}>
-                    {label}
-                  </Button>
-                ))}
-              </div>
-              <label className="space-y-2 text-sm font-medium">
-                <span className="block">Custom date</span>
-                <input type="date" className="field" value={customDueDate} onChange={(event) => setCustomDueDate(event.target.value)} />
-              </label>
-              <div className="flex justify-between gap-2">
-                {important ? <Button variant="ghost" onClick={() => { onSetImportant(false); setDueDialogOpen(false); }}>Remove important</Button> : <span />}
-                <Button disabled={!customDueDate} onClick={() => { onSetImportant(true, customDueDate); setDueDialogOpen(false); }}>Set due date</Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-          <Dialog open={colorDialogOpen} onOpenChange={setColorDialogOpen}>
-            <DialogContent className="w-[min(25rem,calc(100%-2rem))]">
-              <DialogHeader>
-                <DialogTitle>Assign color</DialogTitle>
-                <DialogDescription>Choose a color that will synchronize with other Emzero clients.</DialogDescription>
-              </DialogHeader>
-              <div className="grid grid-cols-2 gap-2">
-                {EMZERO_MESSAGE_COLORS.map((candidate) => (
-                  <Button key={candidate} variant={candidate === color ? 'default' : 'secondary'} className="justify-start capitalize" onClick={() => { onSetColor(candidate); setColorDialogOpen(false); }}>
-                    <span className={cn('size-3 rounded-full', messageColorBackgroundClass(candidate))} />
-                    {candidate}
-                  </Button>
-                ))}
-              </div>
-              {color && <Button variant="ghost" onClick={() => { onSetColor(null); setColorDialogOpen(false); }}>Remove color</Button>}
-            </DialogContent>
-          </Dialog>
-        </>
-      )}
-    </div>
-  );
 }
 
 export function SelectionCheckbox({

@@ -54,7 +54,6 @@ import {
 } from '../../shared/replies';
 import type { Status } from './app-shared';
 import {
-  ConversationActions,
   addressLabel,
   addressDetails,
   fileSize,
@@ -66,6 +65,7 @@ import {
   type FolderSelection,
   type MessageDetailLoadState,
 } from './mail-common';
+import { ConversationActions } from './conversation-actions';
 import {
   ComposeDialog,
   type DraftDeletedEvent,

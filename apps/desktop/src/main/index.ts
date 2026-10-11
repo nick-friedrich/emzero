@@ -7,6 +7,7 @@ import { closeMailCache, disconnectPooledImapConnections } from './mail-runtime.
 import { registerMailWindowHandlers } from './mail-windows.js';
 import { setMailNotificationActivationHandler } from './mail-notifications.js';
 import { scheduleMailInsights } from './mail-insights.js';
+import { hiddenWindowWebPreferences, hideDockForHiddenWindows, revealWindow } from './window-visibility.js';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -46,12 +47,15 @@ const createWindow = (): void => {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      ...hiddenWindowWebPreferences,
     },
   });
 
   if (process.platform === 'linux') mainWindow.setMenu(null);
 
-  mainWindow.once('ready-to-show', () => mainWindow?.show());
+  mainWindow.once('ready-to-show', () => {
+    if (mainWindow) revealWindow(mainWindow);
+  });
   mainWindow.once('closed', () => {
     mainWindow = null;
   });
@@ -78,13 +82,13 @@ void app.whenReady().then(() => {
       Menu.setApplicationMenu(applicationMenu);
     }
   }
+  hideDockForHiddenWindows();
   registerAccountHandlers();
   registerMailWindowHandlers();
   setMailNotificationActivationHandler(() => {
     if (!mainWindow || mainWindow.isDestroyed()) createWindow();
     if (mainWindow?.isMinimized()) mainWindow.restore();
-    mainWindow?.show();
-    mainWindow?.focus();
+    if (mainWindow) revealWindow(mainWindow, { focus: true });
   });
   createWindow();
   startBackgroundSync();

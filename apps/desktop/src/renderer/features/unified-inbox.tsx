@@ -40,7 +40,6 @@ import {
 import {
   BulkActionToolbar,
   conversationAvatarUrl,
-  ConversationActions,
   SelectionCheckbox,
   conversationOpponent,
   conversationRepliedByMe,
@@ -67,6 +66,7 @@ import {
   type UnifiedInboxLoadState,
   useCompactMailList,
 } from './mail-common';
+import { ConversationActions } from './conversation-actions';
 import { MailSplitLayout } from './mail-split-layout';
 import { readerSelectionAfterRemoval } from './reader-selection';
 import { ConversationReader } from './conversation-reader';
@@ -181,6 +181,7 @@ export function UnifiedInbox({
   const unreadReadingQueue = useRef<readonly string[] | null>(null);
   const pendingActions = useRef(new Set<string>());
   const [busyConversations, setBusyConversations] = useState<ReadonlySet<string>>(new Set());
+  const [actionsMenuKey, setActionsMenuKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [selectedItemKeys, setSelectedItemKeys] = useState<ReadonlySet<string>>(new Set());
   const [selectionAnchorKey, setSelectionAnchorKey] = useState<string | null>(null);
@@ -1336,6 +1337,11 @@ export function UnifiedInbox({
                   mailLayout === 'split' && selectedItem && itemKey(selectedItem) === itemKey(item) && 'bg-primary/10',
                 )}
                 role="listitem"
+                onContextMenu={(event) => {
+                  if (busyConversations.has(itemKey(item))) return;
+                  event.preventDefault();
+                  setActionsMenuKey(itemKey(item));
+                }}
               >
                 <div
                   className={compactList
@@ -1528,6 +1534,9 @@ export function UnifiedInbox({
                     supportsEmzeroKeywords={item.supportsEmzeroKeywords}
                     busy={busyConversations.has(itemKey(item))}
                     confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
+                    subject={conversation.subject}
+                    actionsOpen={actionsMenuKey === itemKey(item)}
+                    onActionsOpenChange={(open) => setActionsMenuKey(open ? itemKey(item) : null)}
                     onSetUnread={(nextUnread) =>
                       void runAction(item, nextUnread ? 'unread' : 'read')
                     }

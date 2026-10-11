@@ -10,7 +10,8 @@ test('HTML mail grows with content and uses only the reader scrollbar', async ()
   const application = await electron.launch({ executablePath,
     args: [`--user-data-dir=${test.info().outputPath('html-profile')}`,
       ...(process.platform === 'linux' ? ['--no-sandbox'] : [])],
-    env: { ...env, ELECTRON_DISABLE_SECURITY_WARNINGS: 'true' } });
+    env: { ...env, ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
+        EMZERO_HIDDEN_WINDOWS: process.env.EMZERO_E2E_SHOW_WINDOWS === '1' ? '' : '1' } });
   try {
     await application.evaluate(({ ipcMain }) => {
       const account = {

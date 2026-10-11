@@ -33,6 +33,7 @@ test('navigates the desktop app and reads sample mail', async () => {
     env: {
       ...launchEnv,
       ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
+      EMZERO_HIDDEN_WINDOWS: process.env.EMZERO_E2E_SHOW_WINDOWS === '1' ? '' : '1',
     },
   });
 
@@ -46,6 +47,17 @@ test('navigates the desktop app and reads sample mail', async () => {
     await expect(page.getByRole('heading', { name: 'Inbox', exact: true })).toBeVisible();
     await expect(page.getByRole('list', { name: 'Messages' }).getByRole('listitem')).toHaveCount(5);
     await page.screenshot({ path: testInfo.outputPath('modern-inbox.png') });
+
+    const firstRow = page.getByRole('list', { name: 'Messages' }).getByRole('listitem').first();
+    await firstRow.click({ button: 'right' });
+    const conversationActions = page.getByRole('dialog', { name: 'Conversation actions' });
+    await expect(conversationActions.getByRole('button', { name: 'Move to folder' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(conversationActions).toBeHidden();
+    await firstRow.hover();
+    await firstRow.getByRole('button', { name: 'More conversation actions' }).click();
+    await expect(conversationActions).toBeVisible();
+    await page.keyboard.press('Escape');
 
     await page.getByRole('button', { name: 'View options', exact: true }).click();
     await page.screenshot({ path: testInfo.outputPath('modern-view-options.png') });
@@ -179,7 +191,8 @@ for (const mailbox of ['unified', 'folder'] as const) {
         `--user-data-dir=${test.info().outputPath('reply-profile')}`,
         ...(process.platform === 'linux' ? ['--no-sandbox'] : []),
       ],
-      env: { ...launchEnv, ELECTRON_DISABLE_SECURITY_WARNINGS: 'true' },
+      env: { ...launchEnv, ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
+        EMZERO_HIDDEN_WINDOWS: process.env.EMZERO_E2E_SHOW_WINDOWS === '1' ? '' : '1' },
     });
     try {
       // Replace mail IPC only in this isolated test process; no server is contacted.
@@ -334,9 +347,10 @@ for (const mailbox of ['unified', 'folder'] as const) {
       await expect(editor.locator('#Signature')).toHaveText('NickEmzero');
       await expect(editor).not.toContainText('--');
       await page.keyboard.type('Thanks');
-      await expect.poll(async () => (await readState()).saves.length).toBe(4);
-      const signed = (await readState()).saves[3];
-      expect(signed.text).toBe('Thanks\n\n-- \nNick\nEmzero');
+      // Under load the 1.2s debounce can fire mid-typing, so wait for the save of the full text.
+      await expect.poll(async () => (await readState()).saves.at(-1)?.text)
+        .toBe('Thanks\n\n-- \nNick\nEmzero');
+      const signed = (await readState()).saves.at(-1)!;
       expect(signed.html).toContain('<div id="Signature">Nick<br>Emzero</div>');
       expect(signed.html).not.toContain('--');
       await composer.getByRole('button', { name: 'Edit details', exact: true }).click();
@@ -365,8 +379,8 @@ for (const mailbox of ['unified', 'folder'] as const) {
       await page.getByRole('navigation', { name: 'Mailboxes' }).getByRole('button', { name: 'Inbox', exact: true }).first().click();
       await expect(newMessage).toHaveCount(0);
       await expect(page.getByRole('list', { name: 'Messages' })).toBeVisible();
-      await expect.poll(async () => (await readState()).completed).toBe(5);
-      expect((await readState()).saves[4].text).toBe('Room to write without covering the inbox.');
+      await expect.poll(async () => (await readState()).saves.at(-1)?.text)
+        .toBe('Room to write without covering the inbox.');
     } finally {
       await application.close();
     }

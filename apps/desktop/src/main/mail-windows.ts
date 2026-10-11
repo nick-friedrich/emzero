@@ -7,6 +7,7 @@ import {
   type MailSendDraft,
   type MailWindowContext,
 } from '../shared/accounts.js';
+import { hiddenWindowWebPreferences, revealWindow } from './window-visibility.js';
 
 const mailWindowContexts = new Map<string, { context: MailWindowContext; webContentsId: number }>();
 let settingsWindow: BrowserWindow | null = null;
@@ -66,8 +67,7 @@ export function registerMailWindowHandlers(): void {
     if (!trustedSender(event)) throw new Error('Untrusted IPC sender');
     if (settingsWindow && !settingsWindow.isDestroyed()) {
       if (settingsWindow.isMinimized()) settingsWindow.restore();
-      settingsWindow.show();
-      settingsWindow.focus();
+      revealWindow(settingsWindow, { focus: true });
       return true;
     }
     settingsWindow = new BrowserWindow({
@@ -85,10 +85,13 @@ export function registerMailWindowHandlers(): void {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        ...hiddenWindowWebPreferences,
       },
     });
     if (process.platform === 'linux') settingsWindow.setMenu(null);
-    settingsWindow.once('ready-to-show', () => settingsWindow?.show());
+    settingsWindow.once('ready-to-show', () => {
+      if (settingsWindow) revealWindow(settingsWindow);
+    });
     settingsWindow.once('closed', () => { settingsWindow = null; });
     settingsWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     settingsWindow.webContents.on('will-navigate', (navigationEvent) => navigationEvent.preventDefault());
@@ -130,10 +133,11 @@ export function registerMailWindowHandlers(): void {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        ...hiddenWindowWebPreferences,
       },
     });
     if (process.platform === 'linux') mailWindow.setMenu(null);
-    mailWindow.once('ready-to-show', () => mailWindow.show());
+    mailWindow.once('ready-to-show', () => revealWindow(mailWindow));
     mailWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     mailWindow.webContents.on('will-navigate', (navigationEvent) => navigationEvent.preventDefault());
 

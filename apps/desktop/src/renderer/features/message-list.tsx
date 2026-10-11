@@ -38,7 +38,6 @@ import {
 import {
   BulkActionToolbar,
   conversationAvatarUrl,
-  ConversationActions,
   SelectionCheckbox,
   conversationOpponent,
   conversationRepliedByMe,
@@ -64,6 +63,7 @@ import {
   type StartBulkOperation,
   useCompactMailList,
 } from './mail-common';
+import { ConversationActions } from './conversation-actions';
 import { MailSplitLayout } from './mail-split-layout';
 import { readerSelectionAfterRemoval } from './reader-selection';
 import { ConversationReader } from './conversation-reader';
@@ -116,6 +116,7 @@ export function MessageList({
   const unreadReadingQueue = useRef<readonly string[] | null>(null);
   const pendingActions = useRef(new Set<string>());
   const [busyConversations, setBusyConversations] = useState<ReadonlySet<string>>(new Set());
+  const [actionsMenuKey, setActionsMenuKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [selectedConversationIds, setSelectedConversationIds] = useState<ReadonlySet<string>>(new Set());
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
@@ -1049,6 +1050,11 @@ export function MessageList({
                   mailLayout === 'split' && selectedConversation?.id === conversation.id && 'bg-primary/10',
                 )}
                 role="listitem"
+                onContextMenu={(event) => {
+                  if (busyConversations.has(conversation.id)) return;
+                  event.preventDefault();
+                  setActionsMenuKey(conversation.id);
+                }}
               >
                 {unread && (
                   <span
@@ -1239,6 +1245,9 @@ export function MessageList({
                     supportsEmzeroKeywords={state.status === 'loaded' && state.supportsEmzeroKeywords}
                     busy={busyConversations.has(conversation.id)}
                     confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
+                    subject={conversation.subject}
+                    actionsOpen={actionsMenuKey === conversation.id}
+                    onActionsOpenChange={(open) => setActionsMenuKey(open ? conversation.id : null)}
                     onSetUnread={(nextUnread) =>
                       void runAction(conversation, nextUnread ? 'unread' : 'read')
                     }

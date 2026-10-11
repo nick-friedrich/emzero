@@ -59,6 +59,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache, bounded plain-text list previews from cached bodies, search (filterable by folder special use), server-search result storage, and AI insight/smart-inbox score storage joined onto listed messages.
 - `apps/desktop/src/main/message-html.ts` — sanitization and quoted-content detection for message HTML.
 - `apps/desktop/src/main/outgoing-html.ts` — safe outgoing rich-text HTML (keeping only the `id="Signature"` marker) and pasted-image size validation before MIME compilation.
+- `apps/desktop/src/main/window-visibility.ts` — the `EMZERO_HIDDEN_WINDOWS=1` test mode: every window stays hidden (unthrottled), and the macOS Dock icon is hidden.
 - `apps/desktop/src/main/mail-windows.ts` — validated creation of standalone message, composer, and single-instance settings windows.
 - `apps/desktop/src/main/provider-discovery.ts` — provider catalog lookup and domain/MX discovery.
 - `apps/desktop/src/main/folder-subscriptions.ts` — IMAP folder subscription and deletion helpers.
@@ -108,10 +109,11 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/ai-draft-assistant.tsx` — the AI-configured hook and reusable, dismissible prompt panel for AI drafting in reply, new-message, and saved-draft composers.
 - `features/smart-inboxes.tsx` — smart-inbox sidebar section and create/edit dialog, AI tag chips, the remove-sender row action, the settings toggle, and the shared settings hook.
 - `features/mail-search.tsx` — search form with account/folder scope, cached results, the on-demand server search that merges in uncached matches, and the selected-result reader.
-- `features/message-list.tsx` — one account-folder conversation list, selection, and folder-scoped actions.
-- `features/unified-inbox.tsx` — multi-account Inbox, Starred, Trash, and smart-inbox aggregation (including hiding skip-Inbox matches), selection, and actions.
+- `features/message-list.tsx` — one account-folder conversation list, selection, row right-click actions, and folder-scoped actions.
+- `features/unified-inbox.tsx` — multi-account Inbox, Starred, Trash, and smart-inbox aggregation (including hiding skip-Inbox matches), selection, row right-click actions, and actions.
 - `features/account-colors.tsx` — account color palette classes, the hover-labelled account dot shown on unified-inbox avatars, and the settings color picker.
-- `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: action controls, selection toolbar, replied-last detection and badge, and mail-view types/helpers.
+- `features/conversation-actions.tsx` — per-conversation inline read/delete buttons and the conversation-actions modal (opened from the "More" button or by right-clicking a list row) with star, important/due date, color, archive, move, and delete, plus their follow-up dialogs.
+- `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: selection toolbar, replied-last detection and badge, and mail-view types/helpers.
 - `features/inbox-view-options.tsx` — persisted icon filters and Starred/Unread inbox grouping shared by account and unified inboxes.
 - `features/mail-view-menu.tsx` — accessible dismissible popover for secondary mailbox layout and filter controls, shared by account, unified, and search headers.
 - `features/mail-split-layout.tsx` — persisted, pointer- and keyboard-resizable list/reader layout shared by three-column mail views.
@@ -139,6 +141,6 @@ All paths in this section are relative to `apps/desktop/src/renderer/`.
 - `apps/desktop/src/main/` tests cover cache, HTML sanitization, provider discovery, folder subscriptions, folder input rules, message parsing helpers, message-action rules, server-search folder scoping, draft-folder discovery, signature storage, and bulk-job validation/progress.
 - `apps/desktop/src/shared/` tests cover domain helpers and contracts.
 - `apps/desktop/src/renderer/` tests cover renderer utilities and theming.
-- `apps/desktop/e2e/` — Playwright smoke coverage for production Electron builds using the privacy-safe demo dataset, plus isolated mock-mail regression coverage for reply preservation, dedicated composition, and automatic HTML-email sizing with privacy/link controls.
+- `apps/desktop/e2e/` — Playwright runs with hidden windows by default (set `EMZERO_E2E_SHOW_WINDOWS=1` to watch them). It contains smoke coverage for production Electron builds using the privacy-safe demo dataset, plus isolated mock-mail regression coverage for reply preservation, dedicated composition, and automatic HTML-email sizing with privacy/link controls.
 - `apps/desktop/playwright.config.ts` — production Electron smoke-test configuration.
 - Run the complete suite with `pnpm check` from the repository root.
