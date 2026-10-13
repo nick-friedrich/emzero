@@ -1043,6 +1043,17 @@ export class MailCache {
     }
   }
 
+  /** Recounts a folder's unread messages from cached rows, for when the cache is authoritative. */
+  refreshUnreadCount(accountId: string, folderPath: string): void {
+    this.#database.prepare(`
+      UPDATE folders SET unread_count = (
+        SELECT COUNT(*) FROM messages
+        WHERE account_id = ? AND folder_path = ? AND unread = 1
+      )
+      WHERE account_id = ? AND path = ?
+    `).run(accountId, folderPath, accountId, folderPath);
+  }
+
   invalidateFolder(accountId: string, folderPath: string): void {
     this.#database.prepare(`
       UPDATE folders

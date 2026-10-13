@@ -47,21 +47,20 @@ export interface SmartInboxState {
   status: MailInsightsStatus;
 }
 
-export function useSmartInboxes(disabled = false): SmartInboxState {
+export function useSmartInboxes(): SmartInboxState {
   const [state, setState] = useState<SmartInboxState>({
-    loaded: disabled,
+    loaded: false,
     settings: { enabled: false, inboxes: [] },
     status: { state: 'idle' },
   });
   const [revision, setRevision] = useState(0);
 
-  useEffect(() => {
-    if (disabled) return;
-    return window.emzero.smartInboxes.onChanged(() => setRevision((current) => current + 1));
-  }, [disabled]);
+  useEffect(
+    () => window.emzero.smartInboxes.onChanged(() => setRevision((current) => current + 1)),
+    [],
+  );
 
   useEffect(() => {
-    if (disabled) return;
     let active = true;
     void Promise.all([
       window.emzero.smartInboxes.getSettings(),
@@ -76,7 +75,7 @@ export function useSmartInboxes(disabled = false): SmartInboxState {
     return () => {
       active = false;
     };
-  }, [disabled, revision]);
+  }, [revision]);
 
   return state;
 }

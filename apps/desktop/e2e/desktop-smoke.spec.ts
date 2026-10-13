@@ -18,10 +18,11 @@ test('navigates the desktop app and reads sample mail', async () => {
   const executablePath = packagedExecutable();
   expect(executablePath, 'Build the packaged Electron app before running smoke tests').toBeDefined();
   const launchArgs = executablePath
-    ? [`--user-data-dir=${profilePath}`]
+    ? [`--user-data-dir=${profilePath}`, '--demo']
     : [
         path.resolve('.vite/build/main.cjs'),
         `--user-data-dir=${profilePath}`,
+        '--demo',
       ];
   if (process.platform === 'linux') launchArgs.push('--no-sandbox');
   const launchEnv = { ...process.env };
@@ -39,13 +40,14 @@ test('navigates the desktop app and reads sample mail', async () => {
 
   try {
     const userDataPath = await application.evaluate(({ app }) => app.getPath('userData'));
-    expect(path.resolve(userDataPath)).toBe(path.resolve(profilePath));
+    expect(path.resolve(userDataPath)).toBe(path.join(path.resolve(profilePath), 'Demo'));
     const page = await application.firstWindow();
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.getByLabel('Emzero').click({ clickCount: 5 });
+    await expect(page.getByText('Demo', { exact: true })).toBeVisible();
 
     await expect(page.getByRole('heading', { name: 'Inbox', exact: true })).toBeVisible();
-    await expect(page.getByRole('list', { name: 'Messages' }).getByRole('listitem')).toHaveCount(5);
+    // Newsletters are filed into their smart inbox and hidden from Inbox.
+    await expect(page.getByRole('list', { name: 'Messages' }).getByRole('listitem')).toHaveCount(13);
     await page.screenshot({ path: testInfo.outputPath('modern-inbox.png') });
 
     const firstRow = page.getByRole('list', { name: 'Messages' }).getByRole('listitem').first();
@@ -129,8 +131,7 @@ test('navigates the desktop app and reads sample mail', async () => {
     await expect(page.getByText('launch-checklist.pdf')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('modern-reader.png') });
     const replyButton = page.getByRole('button', { name: 'Reply', exact: true });
-    await expect(replyButton).toBeVisible();
-    await expect(replyButton).toBeDisabled();
+    await expect(replyButton).toBeEnabled();
     const messageDetails = page.getByRole('button', { name: 'Details', exact: true });
     await expect(messageDetails).toHaveAttribute('aria-expanded', 'false');
     await expect(page.getByText(/Reply-To:/)).toHaveCount(0);
@@ -143,7 +144,8 @@ test('navigates the desktop app and reads sample mail', async () => {
 
     await page.getByRole('button', { name: 'View options', exact: true }).click();
     await page.getByRole('button', { name: 'Show unread only' }).click();
-    await expect(page.getByRole('list', { name: 'Messages' }).getByRole('listitem')).toHaveCount(2);
+    // Reading the launch conversation above marked it read in the demo mailbox.
+    await expect(page.getByRole('list', { name: 'Messages' }).getByRole('listitem')).toHaveCount(4);
     await expect(launchConversation).toHaveCount(0);
     await page.getByRole('button', { name: 'Show all mail' }).click();
     await page.keyboard.press('Escape');
@@ -153,7 +155,7 @@ test('navigates the desktop app and reads sample mail', async () => {
       .getByRole('button', { name: 'Starred', exact: true })
       .click();
     await expect(page.getByRole('heading', { name: 'Starred', exact: true })).toBeVisible();
-    await expect(page.getByRole('list', { name: 'Messages' }).getByRole('listitem')).toHaveCount(2);
+    await expect(page.getByRole('list', { name: 'Messages' }).getByRole('listitem')).toHaveCount(3);
 
     await page.getByRole('navigation', { name: 'Mailboxes' })
       .getByRole('button', { name: /^Drafts \d+ drafts$/ })
@@ -161,7 +163,7 @@ test('navigates the desktop app and reads sample mail', async () => {
       .click();
     await expect(page.getByRole('heading', { name: 'Drafts', exact: true })).toBeVisible();
     await expect(page.getByRole('checkbox', {
-      name: 'Select conversation: Partnership details', exact: true,
+      name: 'Select conversation: Wedding toast — draft v2', exact: true,
     })).toBeVisible();
 
     await page.getByRole('combobox', { name: 'Switch account' }).selectOption('demo-personal');
@@ -173,7 +175,7 @@ test('navigates the desktop app and reads sample mail', async () => {
       .getByRole('button', { name: 'Trash', exact: true })
       .first()
       .click();
-    await expect(page.getByRole('heading', { name: 'Your trash is empty' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Last chance: 40% off conference tickets/ })).toBeVisible();
   } finally {
     await application.close();
   }

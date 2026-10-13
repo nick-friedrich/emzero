@@ -207,6 +207,12 @@ export interface EmzeroDesktopApi {
   notifications: {
     setEnabled: (enabled: boolean) => Promise<boolean>;
   };
+  demo: {
+    /** Whether this session runs on the separate sample-mailbox profile. */
+    enabled: () => Promise<boolean>;
+    /** Restarts Emzero into or out of demo mode. */
+    setEnabled: (enabled: boolean) => Promise<void>;
+  };
   providers: {
     list: () => Promise<MailProvider[]>;
     discover: (email: string) => Promise<ProviderDiscoveryResult>;
@@ -386,6 +392,10 @@ contextBridge.exposeInMainWorld('emzero', {
   notifications: {
     setEnabled: (enabled) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.setNotificationsEnabled, enabled),
+  },
+  demo: {
+    enabled: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.demoModeEnabled),
+    setEnabled: (enabled) => ipcRenderer.invoke(ACCOUNT_CHANNELS.setDemoModeEnabled, enabled),
   },
   providers: {
     list: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.providers),

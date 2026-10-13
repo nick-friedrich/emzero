@@ -12,6 +12,8 @@ import {
 } from '../shared/accounts.js';
 import { listAccountFolders } from './account-folders.js';
 import { readAccounts, type StoredAccount } from './account-storage.js';
+import { deleteDemoMessages, moveDemoMessages } from './demo-mail.js';
+import { demoModeEnabled } from './demo-profile.js';
 import {
   moveDestination,
   transferFolderMessages,
@@ -93,11 +95,14 @@ async function processBulkMessageGroup(
   let password = '';
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
+  const demo = demoModeEnabled();
   try {
-    password = await resolveMailSecret(account);
-    imap = createImapClient(account, password);
-    await imap.connect();
-    lock = await imap.getMailboxLock(group.folderPath);
+    if (!demo) {
+      password = await resolveMailSecret(account);
+      imap = createImapClient(account, password);
+      await imap.connect();
+      lock = await imap.getMailboxLock(group.folderPath);
+    }
     const trash =
       job.action === 'delete'
         ? mailCache()
@@ -118,26 +123,29 @@ async function processBulkMessageGroup(
 
     for (const uids of chunkMessageUids(group.uids, bulkMessageChunkSize)) {
       if (job.cancelRequested) return;
-      const changed =
+      // Demo mail has no server; the cache updates below are the whole operation.
+      const changed = demo || (
         job.action === 'read'
-          ? await imap.messageFlagsAdd(uids, ['\\Seen'], { uid: true })
+          ? await imap!.messageFlagsAdd(uids, ['\\Seen'], { uid: true })
           : job.action === 'unread'
-            ? await imap.messageFlagsRemove(uids, ['\\Seen'], { uid: true })
+            ? await imap!.messageFlagsRemove(uids, ['\\Seen'], { uid: true })
             : job.action === 'star'
-              ? await imap.messageFlagsAdd(uids, ['\\Flagged'], { uid: true })
+              ? await imap!.messageFlagsAdd(uids, ['\\Flagged'], { uid: true })
               : job.action === 'unstar'
-                ? await imap.messageFlagsRemove(uids, ['\\Flagged'], { uid: true })
+                ? await imap!.messageFlagsRemove(uids, ['\\Flagged'], { uid: true })
             : moveTo
-              ? await imap.messageMove(uids, moveTo.path, { uid: true })
+              ? await imap!.messageMove(uids, moveTo.path, { uid: true })
               : trash && trash.path !== group.folderPath
-                ? await imap.messageMove(uids, trash.path, { uid: true })
-                : await imap.messageDelete(uids, { uid: true });
+                ? await imap!.messageMove(uids, trash.path, { uid: true })
+                : await imap!.messageDelete(uids, { uid: true }));
       if (!changed) throw new Error('The messages are no longer available.');
 
       if (job.action === 'delete') {
-        mailCache().deleteMessages(account.id, group.folderPath, uids);
+        if (demo) deleteDemoMessages(account.id, group.folderPath, uids);
+        else mailCache().deleteMessages(account.id, group.folderPath, uids);
       } else if (moveTo) {
-        mailCache().moveMessages(account.id, group.folderPath, moveTo.path, uids);
+        if (demo) moveDemoMessages(account.id, group.folderPath, uids, account.id, moveTo.path);
+        else mailCache().moveMessages(account.id, group.folderPath, moveTo.path, uids);
       } else if (job.action === 'read' || job.action === 'unread') {
         mailCache().setMessagesUnread(account.id, group.folderPath, uids, job.action === 'unread');
       } else {

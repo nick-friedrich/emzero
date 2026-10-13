@@ -73,7 +73,6 @@ import { ConversationReader } from './conversation-reader';
 import type { DraftDeletedEvent, DraftSavedEvent } from './compose-dialog';
 import { useMessagePrefetch } from './message-prefetch';
 import { useUndoableAction } from './undoable-delete';
-import type { DemoMailboxSnapshot } from './demo-mode';
 import { useTheme } from '@/theme';
 import {
   applyUnifiedInboxView,
@@ -92,21 +91,6 @@ import {
   RemoveFromSmartInboxButton,
   useSmartInboxes,
 } from './smart-inboxes';
-
-function demoLoadState(demo: DemoMailboxSnapshot): UnifiedInboxLoadState {
-  const messageCount = demo.items.reduce(
-    (total, item) => total + item.conversation.messages.length,
-    0,
-  );
-  return {
-    status: 'loaded',
-    items: demo.items,
-    failures: [],
-    notices: [],
-    loadedMessages: messageCount,
-    totalMessages: messageCount,
-  };
-}
 
 function conversationTime(conversation: MailConversation): number {
   const latest = conversation.messages[0];
@@ -131,7 +115,6 @@ export function UnifiedInbox({
   syncRevision = 0,
   draftSavedEvent,
   draftDeletedEvent,
-  demo,
   smartInboxId,
 }: {
   accounts: AccountSummary[];
@@ -147,10 +130,9 @@ export function UnifiedInbox({
   syncRevision?: number;
   draftSavedEvent?: DraftSavedEvent | null;
   draftDeletedEvent?: DraftDeletedEvent | null;
-  demo?: DemoMailboxSnapshot;
 }) {
   const { selectNextOnDelete } = useTheme();
-  const smart = useSmartInboxes(Boolean(demo));
+  const smart = useSmartInboxes();
   const smartInbox = smartInboxId
     ? smart.settings.inboxes.find((candidate) => candidate.id === smartInboxId)
     : undefined;
@@ -165,15 +147,13 @@ export function UnifiedInbox({
     }
     return null;
   }, [mailbox, smart.settings, smartInboxId]);
-  const title = smartInbox?.name ?? demo?.title ?? {
+  const title = smartInbox?.name ?? {
     inbox: 'Inbox',
     starred: 'Starred',
     drafts: 'Drafts',
     trash: 'Trash',
   }[mailbox];
-  const [state, setState] = useState<UnifiedInboxLoadState>(
-    () => demo ? demoLoadState(demo) : { status: 'loading' },
-  );
+  const [state, setState] = useState<UnifiedInboxLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedItem, setSelectedItem] = useState<UnifiedConversationItem | null>(null);
   const [readingOrderKeys, setReadingOrderKeys] = useState<readonly string[] | null>(null);
@@ -197,7 +177,7 @@ export function UnifiedInbox({
   const inboxView = useInboxViewOptions();
 
   useEffect(() => {
-    if (demo || !smart.loaded) return;
+    if (!smart.loaded) return;
     let active = true;
     void Promise.all(
       accounts.map(async (account) => {
@@ -343,19 +323,19 @@ export function UnifiedInbox({
     return () => {
       active = false;
     };
-  }, [accounts, demo, mailbox, messageFilter, refreshKey, smart.loaded, syncRevision, title]);
+  }, [accounts, mailbox, messageFilter, refreshKey, smart.loaded, syncRevision, title]);
 
   const refresh = () => {
     setSelectedItem(null);
     setSelectedItemKeys(new Set());
     setSelectionAnchorKey(null);
     setSelectionCursorKey(null);
-    setState(demo ? demoLoadState(demo) : { status: 'loading' });
+    setState({ status: 'loading' });
     setRefreshKey((current) => current + 1);
   };
 
   const applyDraftSaved = useCallback(async (event: DraftSavedEvent) => {
-    if (demo || !['inbox', 'drafts'].includes(mailbox)) return;
+    if (!['inbox', 'drafts'].includes(mailbox)) return;
     const account = accounts.find((candidate) => candidate.id === event.accountId);
     if (!account) return;
     const [folderResult, draftResult] = await Promise.all([
@@ -438,10 +418,10 @@ export function UnifiedInbox({
           : current.totalMessages,
       };
     });
-  }, [accounts, demo, mailbox]);
+  }, [accounts, mailbox]);
 
   const applyDraftDeleted = useCallback((event: DraftDeletedEvent) => {
-    if (demo || event.references.length === 0) return;
+    if (event.references.length === 0) return;
     const deleted = new Set(event.references.map(
       (reference) => `${reference.folderPath}:${reference.uid}`,
     ));
@@ -475,7 +455,7 @@ export function UnifiedInbox({
         totalMessages: Math.max(0, current.totalMessages - removedPrimaryMessages),
       };
     });
-  }, [demo, mailbox]);
+  }, [mailbox]);
 
   useEffect(() => {
     if (!draftSavedEvent) return;
@@ -524,9 +504,7 @@ export function UnifiedInbox({
       })),
     [availableItems],
   );
-  const { prefetchSoon, cancelPrefetch } = useMessagePrefetch(prefetchTargets, {
-    disabled: Boolean(demo),
-  });
+  const { prefetchSoon, cancelPrefetch } = useMessagePrefetch(prefetchTargets);
   const selectedItems = availableItems.filter((item) => selectedItemKeys.has(itemKey(item)));
   const selectedEmailCount = selectedItems.reduce(
     (total, item) =>
@@ -603,7 +581,6 @@ export function UnifiedInbox({
 
   useEffect(
     () => {
-      if (demo) return;
       return window.emzero.messages.onBulkJobProgress((progress) => {
         if (!progress.processedUids || !progress.accountId || !progress.folderPath) return;
         const processed = new Set(progress.processedUids);
@@ -670,7 +647,7 @@ export function UnifiedInbox({
         });
       });
     },
-    [demo, mailbox],
+    [mailbox],
   );
 
   const runAction = async (
@@ -778,44 +755,6 @@ export function UnifiedInbox({
         : current);
       setSelectedItem((current) => (current ? updateItem(current) : current));
     };
-
-    if (demo) {
-      if (action === 'read' || action === 'unread') {
-        const unread = action === 'unread';
-        updateUnread(new Map([...previousUnread.keys()].map((messageKey) => [messageKey, unread])));
-      } else if (action === 'star' || action === 'unstar') {
-        const flagged = action === 'star';
-        updateFlagged(new Map([...previousFlagged.keys()].map((messageKey) => [messageKey, flagged])));
-        if (mailbox === 'starred' && !flagged) {
-          setState((current) => current.status === 'loaded'
-            ? { ...current, items: current.items.filter((candidate) => itemKey(candidate) !== key) }
-            : current);
-          setSelectedItem(null);
-        }
-      } else if (action === 'mark-important' || action === 'clear-important') {
-        const important = action === 'mark-important';
-        const dueDate = important ? (metadata?.dueDate ?? tomorrowDateKey()) : null;
-        updateImportance(new Map([...previousImportance.keys()].map((messageKey) => [
-          messageKey,
-          { important, dueDate },
-        ])));
-      } else if (action === 'set-color' || action === 'clear-color') {
-        const color = action === 'set-color' ? (metadata?.color ?? null) : null;
-        updateColors(new Map([...previousColors.keys()].map((messageKey) => [messageKey, color])));
-      } else {
-        setState((current) => current.status === 'loaded'
-          ? { ...current, items: current.items.filter((candidate) => itemKey(candidate) !== key) }
-          : current);
-        setSelectedItem(null);
-      }
-      pendingActions.current.delete(key);
-      setBusyConversations((current) => {
-        const next = new Set(current);
-        next.delete(key);
-        return next;
-      });
-      return true;
-    }
 
     if (action === 'read' || action === 'unread') {
       const unread = action === 'unread';
@@ -992,12 +931,6 @@ export function UnifiedInbox({
     destination?: MessageMoveDestination,
   ) => {
     if (bulkBusy) return;
-    if (demo) {
-      setSelectedItemKeys(new Set());
-      setSelectionAnchorKey(null);
-      setSelectionCursorKey(null);
-      return;
-    }
     const groups = new Map<string, BulkMessageJobRequest['groups'][number]>();
     for (const item of selectedItems) {
       const { account, folder } = item.selection;
@@ -1097,7 +1030,6 @@ export function UnifiedInbox({
         }}
         onDraftSaved={applyDraftSaved}
         onDraftDeleted={applyDraftDeleted}
-        demoDetails={demo?.details}
       />
     ) : null;
 

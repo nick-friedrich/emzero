@@ -14,6 +14,7 @@ import {
   GripVertical,
   Inbox,
   LoaderCircle,
+  LogOut,
   PenLine,
   Plus,
   PanelLeftClose,
@@ -178,7 +179,6 @@ export function Sidebar({
   pinned,
   onPinnedChange,
   demoMode,
-  demoFolderMap,
   onDemoModeChange,
   className,
 }: {
@@ -194,14 +194,11 @@ export function Sidebar({
   pinned?: boolean;
   onPinnedChange?: (pinned: boolean) => void;
   demoMode: boolean;
-  demoFolderMap?: Record<string, MailFolderSummary[]>;
   onDemoModeChange: (enabled: boolean) => void;
   className?: string;
 }) {
   const demoClickTimes = useRef<number[]>([]);
-  const [expanded, setExpanded] = useState(
-    () => new Set(demoMode ? accounts.map((account) => account.id) : []),
-  );
+  const [expanded, setExpanded] = useState(() => new Set<string>());
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, Set<string>>>({});
   const [folderStates, setFolderStates] = useState<Record<string, FolderLoadState>>({});
   const [folderEditor, setFolderEditor] = useState<FolderEditorState | null>(null);
@@ -222,21 +219,12 @@ export function Sidebar({
     position: 'before' | 'after';
   } | null>(null);
   const [accountReorderError, setAccountReorderError] = useState<string | null>(null);
-  const displayedFolderStates: Record<string, FolderLoadState> =
-    demoMode && demoFolderMap
-      ? Object.fromEntries(
-          accounts.map((account) => [
-            account.id,
-            { status: 'loaded' as const, folders: demoFolderMap[account.id] ?? [] },
-          ]),
-        )
-      : folderStates;
   const unifiedInboxUnread = accounts.reduce((total, account) => {
-    const folderState = displayedFolderStates[account.id];
+    const folderState = folderStates[account.id];
     return total + (folderState?.status === 'loaded' ? inboxUnreadCount(folderState.folders) : 0);
   }, 0);
   const unifiedDraftCount = accounts.reduce((total, account) => {
-    const folderState = displayedFolderStates[account.id];
+    const folderState = folderStates[account.id];
     if (folderState?.status !== 'loaded') return total;
     return total + (folderState.folders.find(
       (folder) => folder.selectable && folder.specialUse === '\\Drafts',
@@ -339,7 +327,7 @@ export function Sidebar({
     target: FolderDropTarget,
   ) => {
     if (!draggedFolder || draggedFolder.accountId !== account.id || folderBusy) return;
-    const folderState = displayedFolderStates[account.id];
+    const folderState = folderStates[account.id];
     if (folderState?.status !== 'loaded') return;
     const source = folderState.folders.find((folder) => folder.path === draggedFolder.folderPath);
     if (!source) return;
@@ -403,15 +391,6 @@ export function Sidebar({
 
   const loadFolders = useCallback(
     (accountId: string, onLoaded?: (folders: MailFolderSummary[]) => void) => {
-      const localFolders = demoFolderMap?.[accountId];
-      if (demoMode && localFolders) {
-        setFolderStates((current) => ({
-          ...current,
-          [accountId]: { status: 'loaded', folders: localFolders },
-        }));
-        onLoaded?.(localFolders);
-        return;
-      }
       setFolderStates((current) => ({ ...current, [accountId]: { status: 'loading' } }));
       void window.emzero.folders
         .list(accountId)
@@ -431,11 +410,10 @@ export function Sidebar({
           }));
         });
     },
-    [demoFolderMap, demoMode],
+    [],
   );
 
   useEffect(() => {
-    if (demoMode) return;
     let active = true;
     void Promise.allSettled(accounts.map((account) => window.emzero.folders.list(account.id))).then(
       (results) => {
@@ -462,11 +440,10 @@ export function Sidebar({
     return () => {
       active = false;
     };
-  }, [accounts, demoFolderMap, demoMode, syncRevision]);
+  }, [accounts, syncRevision]);
 
   useEffect(
     () => {
-      if (demoMode) return;
       return window.emzero.messages.onBulkJobProgress((progress) => {
         if (!progress.accountId || !progress.folder) return;
         setFolderStates((current) => {
@@ -484,7 +461,7 @@ export function Sidebar({
         });
       });
     },
-    [demoMode],
+    [],
   );
 
   const selectAccountInbox = (account: AccountSummary) => {
@@ -492,7 +469,7 @@ export function Sidebar({
       const inbox = findInboxFolder(folders);
       if (inbox) onSelect({ kind: 'folder', account, folder: inbox });
     };
-    const folderState = displayedFolderStates[account.id];
+    const folderState = folderStates[account.id];
     if (folderState?.status === 'loaded') selectInbox(folderState.folders);
     else loadFolders(account.id, selectInbox);
   };
@@ -509,7 +486,7 @@ export function Sidebar({
       selectAccountInbox(account);
     }
   };
-  const editorFolderState = folderEditor ? displayedFolderStates[folderEditor.account.id] : undefined;
+  const editorFolderState = folderEditor ? folderStates[folderEditor.account.id] : undefined;
 
   const logoStyle = {
     '--emzero-logo-mask': `url("${emzeroLogoUrl}")`,
@@ -554,8 +531,16 @@ export function Sidebar({
             className="size-full object-contain"
           />
         </button>
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <p className="font-semibold tracking-tight">Emzero</p>
+          {demoMode && (
+            <span
+              className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
+              title="Sample mailbox. Your own accounts are not loaded."
+            >
+              Demo
+            </span>
+          )}
         </div>
         {onPinnedChange && pinned !== undefined && (
           <Button
@@ -629,18 +614,16 @@ export function Sidebar({
           <Trash2 className="size-4" />
           Trash
         </Button>
-        {!demoMode && (
-          <SmartInboxNav
-            selectedInboxId={selection.kind === 'smart' ? selection.inboxId : null}
-            syncRevision={syncRevision}
-            onSelect={(inboxId) => onSelect({ kind: 'smart', inboxId })}
-            onDeleted={(inboxId) => {
-              if (selection.kind === 'smart' && selection.inboxId === inboxId) {
-                onSelect({ kind: 'unified' });
-              }
-            }}
-          />
-        )}
+        <SmartInboxNav
+          selectedInboxId={selection.kind === 'smart' ? selection.inboxId : null}
+          syncRevision={syncRevision}
+          onSelect={(inboxId) => onSelect({ kind: 'smart', inboxId })}
+          onDeleted={(inboxId) => {
+            if (selection.kind === 'smart' && selection.inboxId === inboxId) {
+              onSelect({ kind: 'unified' });
+            }
+          }}
+        />
         {accounts.length > 0 && (
           <div className="pt-4">
             <label className="relative mb-4 block">
@@ -669,7 +652,7 @@ export function Sidebar({
             </p>
             {accounts.map((account) => {
               const isExpanded = expanded.has(account.id);
-              const folderState = displayedFolderStates[account.id];
+              const folderState = folderStates[account.id];
               const collapsedPaths = collapsedFolders[account.id] ?? new Set<string>();
               const accountUnread =
                 folderState?.status === 'loaded'
@@ -708,8 +691,8 @@ export function Sidebar({
                       variant="ghost"
                       className="h-9 w-full cursor-grab justify-start gap-2 rounded-lg py-1 focus-visible:ring-inset active:cursor-grabbing"
                       aria-expanded={isExpanded}
-                      draggable={!demoMode}
-                      title={`${account.email} · ${demoMode ? 'Sample account' : 'Drag to reorder account'}`}
+                      draggable
+                      title={`${account.email} · Drag to reorder account`}
                       onDragStart={(event) => {
                         event.dataTransfer.effectAllowed = 'move';
                         event.dataTransfer.setData('text/plain', account.id);
@@ -767,7 +750,7 @@ export function Sidebar({
                             (candidate) => candidate.parentPath === folder.path,
                           );
                           const isCollapsed = collapsedPaths.has(folder.path);
-                          const canManage = !demoMode && manageableFolder(folder);
+                          const canManage = manageableFolder(folder);
                           const isSelected =
                             selection.kind === 'folder' &&
                             selection.account.id === account.id &&
@@ -955,11 +938,8 @@ export function Sidebar({
           variant="ghost"
           className="mb-0.5 h-8 w-full justify-start text-xs text-muted-foreground"
           disabled={syncStatus.state === 'syncing' || accounts.length === 0}
-          aria-disabled={demoMode}
-          title={demoMode ? 'Unavailable in demo mode' : syncStatus.message}
-          onClick={() => {
-            if (!demoMode) void window.emzero.sync.now();
-          }}
+          title={syncStatus.message}
+          onClick={() => void window.emzero.sync.now()}
         >
           <RefreshCw
             className={`size-4 ${syncStatus.state === 'syncing' ? 'animate-spin' : ''}`}
@@ -975,27 +955,31 @@ export function Sidebar({
         <Button
           variant="ghost"
           className="mb-0.5 h-8 w-full justify-start text-xs text-muted-foreground"
-          aria-disabled={demoMode}
-          title={demoMode ? 'Unavailable in demo mode' : undefined}
-          onClick={() => {
-            if (!demoMode) onManage();
-          }}
+          onClick={onManage}
         >
           <Settings2 className="size-4" />
           Settings
         </Button>
-        <Button
-          variant="ghost"
-          className="h-8 w-full justify-start text-xs text-muted-foreground"
-          aria-disabled={demoMode}
-          title={demoMode ? 'Unavailable in demo mode' : undefined}
-          onClick={() => {
-            if (!demoMode) onAdd();
-          }}
-        >
-          <Plus className="size-4" />
-          Add account
-        </Button>
+        {demoMode ? (
+          <Button
+            variant="ghost"
+            className="h-8 w-full justify-start text-xs text-muted-foreground"
+            title="Restart Emzero with your own accounts"
+            onClick={() => onDemoModeChange(false)}
+          >
+            <LogOut className="size-4" />
+            Exit demo mode
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            className="h-8 w-full justify-start text-xs text-muted-foreground"
+            onClick={onAdd}
+          >
+            <Plus className="size-4" />
+            Add account
+          </Button>
+        )}
       </div>
       </aside>
       {folderEditor && (

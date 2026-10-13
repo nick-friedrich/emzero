@@ -79,12 +79,10 @@ function MessageBody({
   accountId,
   folderPath,
   message,
-  demo = false,
 }: {
   accountId: string;
   folderPath: string;
   message: MailMessageDetail;
-  demo?: boolean;
 }) {
   const { theme, alwaysLoadRemoteImages } = useTheme();
   const [view, setView] = useState<'html' | 'text'>('html');
@@ -226,7 +224,7 @@ function MessageBody({
                   <button
                     type="button"
                     className="flex items-center gap-2 px-3 py-2 text-left hover:bg-accent disabled:opacity-60"
-                    disabled={attachmentAction !== null || demo}
+                    disabled={attachmentAction !== null}
                     title={`Open ${attachment.filename}`}
                     onClick={() => {
                       setAttachmentAction({ index, kind: 'open' });
@@ -262,11 +260,10 @@ function MessageBody({
                   <button
                     type="button"
                     className="border-l border-border px-2.5 hover:bg-accent disabled:opacity-60"
-                    disabled={attachmentAction !== null || demo}
+                    disabled={attachmentAction !== null}
                     aria-label={`Save ${attachment.filename}`}
                     title={`Save ${attachment.filename}`}
                     onClick={() => {
-                      if (demo) return;
                       setAttachmentAction({ index, kind: 'save' });
                       setAttachmentStatus(null);
                       setSavedAttachmentId(null);
@@ -341,7 +338,6 @@ function ThreadMessageCard({
   onReplySent,
   onDraftSaved,
   onDraftDeleted,
-  demoDetail,
 }: {
   selection: FolderSelection;
   summary: MailMessageSummary;
@@ -355,17 +351,14 @@ function ThreadMessageCard({
   onReplySent: (message: MailMessageSummary) => void;
   onDraftSaved?: (event: DraftSavedEvent) => void;
   onDraftDeleted?: (event: DraftDeletedEvent) => void;
-  demoDetail?: MailMessageDetail;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const [state, setState] = useState<MessageDetailLoadState>(
-    demoDetail ? { status: 'loaded', message: demoDetail } : { status: 'loading' },
-  );
+  const [state, setState] = useState<MessageDetailLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
   const [draftAttachments, setDraftAttachments] = useState<MailOutgoingAttachment[] | null>(
-    isSavedDraft && !demoDetail ? null : [],
+    isSavedDraft ? null : [],
   );
-  const [draftHtml, setDraftHtml] = useState<string | undefined>(demoDetail?.html ?? undefined);
+  const [draftHtml, setDraftHtml] = useState<string | undefined>(undefined);
   const [draftAttachmentError, setDraftAttachmentError] = useState<string | null>(null);
   const [deleteDraftConfirmationOpen, setDeleteDraftConfirmationOpen] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
@@ -386,7 +379,6 @@ function ThreadMessageCard({
   };
 
   useEffect(() => {
-    if (demoDetail) return;
     if (!expanded || state.status !== 'loading') return;
     let active = true;
     void window.emzero.messages
@@ -405,11 +397,10 @@ function ThreadMessageCard({
     return () => {
       active = false;
     };
-  }, [demoDetail, expanded, isSavedDraft, refreshKey, selection.account.id, state.status, summary.folderPath, summary.uid]);
+  }, [expanded, isSavedDraft, refreshKey, selection.account.id, state.status, summary.folderPath, summary.uid]);
 
   useEffect(() => {
     if (
-      demoDetail ||
       !isSavedDraft ||
       !draftEditorOpen ||
       state.status !== 'loaded' ||
@@ -431,7 +422,7 @@ function ThreadMessageCard({
       setDraftAttachmentError('Could not load draft attachments.');
     });
     return () => { active = false; };
-  }, [demoDetail, draftAttachments, draftEditorOpen, isSavedDraft, selection.account.id, state.status, summary.folderPath, summary.uid]);
+  }, [draftAttachments, draftEditorOpen, isSavedDraft, selection.account.id, state.status, summary.folderPath, summary.uid]);
 
   const retry = () => {
     setState({ status: 'loading' });
@@ -468,12 +459,8 @@ function ThreadMessageCard({
             <Button
               variant="ghost"
               className="h-8 px-3 text-muted-foreground"
-              disabled={Boolean(demoDetail) || replyOpen || !canReply}
-              title={demoDetail
-                ? 'Sending is disabled for sample messages'
-                : !canReply
-                  ? 'This message has no valid reply address.'
-                  : undefined}
+              disabled={replyOpen || !canReply}
+              title={!canReply ? 'This message has no valid reply address.' : undefined}
               onClick={() => openReply('reply')}
             >
               <Reply className="size-4" />
@@ -484,8 +471,7 @@ function ThreadMessageCard({
             <Button
               variant="ghost"
               className="h-8 px-3 text-muted-foreground"
-              disabled={Boolean(demoDetail) || replyOpen}
-              title={demoDetail ? 'Sending is disabled for sample messages' : undefined}
+              disabled={replyOpen}
               onClick={() => openReply('replyAll')}
             >
               <ReplyAll className="size-4" />
@@ -569,7 +555,6 @@ function ThreadMessageCard({
                 accountId={selection.account.id}
                 folderPath={summary.folderPath}
                 message={state.message}
-                demo={Boolean(demoDetail)}
               />}
               {!draftEditorOpen && isSavedDraft ? (
                 <div className="mt-6 flex justify-end gap-2 border-t border-border pt-5">
@@ -590,7 +575,7 @@ function ThreadMessageCard({
                     Edit draft
                   </Button>
                 </div>
-              ) : !draftEditorOpen && !demoDetail ? <ReplyComposer
+              ) : !draftEditorOpen ? <ReplyComposer
                 key={replySession}
                 account={selection.account}
                 summary={summary}
@@ -680,7 +665,6 @@ export function ConversationReader({
   onReplySent,
   onDraftSaved,
   onDraftDeleted,
-  demoDetails,
 }: {
   accounts: AccountSummary[];
   selection: FolderSelection;
@@ -701,7 +685,6 @@ export function ConversationReader({
   onReplySent: (message: MailMessageSummary) => void;
   onDraftSaved?: (event: DraftSavedEvent) => void;
   onDraftDeleted?: (event: DraftDeletedEvent) => void;
-  demoDetails?: ReadonlyMap<string, MailMessageDetail>;
 }) {
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
   const { markReadOnOpen } = useTheme();
@@ -734,8 +717,6 @@ export function ConversationReader({
       const details: MailMessageDetail[] = [];
       for (let offset = 0; offset < ordered.length; offset += 4) {
         const batch = await Promise.all(ordered.slice(offset, offset + 4).map(async (message) => {
-          const demo = demoDetails?.get(`${selection.account.id}:${message.folderPath}:${message.uid}`);
-          if (demo) return demo;
           const result = await window.emzero.messages.get(selection.account.id, message.folderPath, message.uid);
           if (!result.ok || !result.messageDetail) {
             throw new Error(result.message ?? 'Could not load every message in this conversation.');
@@ -917,9 +898,6 @@ export function ConversationReader({
                   onReplySent={onReplySent}
                   onDraftSaved={onDraftSaved}
                   onDraftDeleted={onDraftDeleted}
-                  demoDetail={demoDetails?.get(
-                    `${selection.account.id}:${message.folderPath}:${message.uid}`,
-                  )}
                 />
               );
             })}

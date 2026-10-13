@@ -59,6 +59,9 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache, bounded plain-text list previews from cached bodies, search (filterable by folder special use), server-search result storage, and AI insight/smart-inbox score storage joined onto listed messages.
 - `apps/desktop/src/main/message-html.ts` — sanitization and quoted-content detection for message HTML.
 - `apps/desktop/src/main/outgoing-html.ts` — safe outgoing rich-text HTML (keeping only the `id="Signature"` marker) and pasted-image size validation before MIME compilation.
+- `apps/desktop/src/main/demo-profile.ts` — the `--demo` / `EMZERO_DEMO=1` switch to the separate demo profile, the real profile path that still owns AI settings, and restarting into or out of demo mode.
+- `apps/desktop/src/main/demo-mail.ts` — the demo mail server: in demo mode, mail services apply their IMAP/SMTP effects (store, move, delete, folder changes, drafts, sending with local delivery, attachment contents) straight to the mail cache. Each service checks `demoModeEnabled()` at its network boundary and delegates here.
+- `apps/desktop/src/main/demo-dataset.ts` — the privacy-safe sample accounts, folders, threads, smart inboxes, insights, and signatures seeded fresh on every demo start.
 - `apps/desktop/src/main/window-visibility.ts` — the macOS-only `EMZERO_HIDDEN_WINDOWS=1` test mode: every window stays hidden (unthrottled), and the macOS Dock icon is hidden.
 - `apps/desktop/src/main/mail-windows.ts` — validated creation of standalone message, composer, and single-instance settings windows.
 - `apps/desktop/src/main/provider-discovery.ts` — provider catalog lookup and domain/MX discovery.
@@ -91,10 +94,9 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 
 ## Renderer features
 
-- `features/sidebar.tsx` — desktop/mobile navigation with a compact brand header and account switcher, action footer, scrollable mailbox/account navigation, drag-to-reorder accounts, folder CRUD, drag-and-drop folder moves, and sync status.
-- `features/demo-mode.tsx` — persistent, privacy-safe show-off dataset injected into the existing mailbox and conversation UI for screenshots.
+- `features/sidebar.tsx` — desktop/mobile navigation with a compact brand header (demo badge and five-click demo toggle) and account switcher, action footer, scrollable mailbox/account navigation, drag-to-reorder accounts, folder CRUD, drag-and-drop folder moves, and sync status.
 - `features/account-setup.tsx` — provider detection, password/app-password setup, and personal Microsoft device-code connection flow.
-- `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior, account names/colors, signatures, and encrypted backup/restore.
+- `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior and demo mode, account names/colors, signatures, and encrypted backup/restore.
 - `features/appearance-switcher.tsx` — global keyboard shortcut and accessible quick theme/font picker, shared by all renderer windows; owns the settings shortcut label.
 - `features/signatures.ts` — main-process-backed signature cache and cross-window refresh, the one-time migration off origin-scoped browser storage, account-to-signature assignments, and the plain-text signature form with the RFC 3676 "-- " delimiter.
 - `features/signature-html.ts` — the Outlook-style `<div id="Signature">` block in the editor and HTML part (no visible divider), and the delimited plain-text part derived from it.
@@ -141,6 +143,6 @@ All paths in this section are relative to `apps/desktop/src/renderer/`.
 - `apps/desktop/src/main/` tests cover cache, HTML sanitization, provider discovery, folder subscriptions, folder input rules, message parsing helpers, message-action rules, server-search folder scoping, draft-folder discovery, signature storage, and bulk-job validation/progress.
 - `apps/desktop/src/shared/` tests cover domain helpers and contracts.
 - `apps/desktop/src/renderer/` tests cover renderer utilities and theming.
-- `apps/desktop/e2e/` — Playwright runs with hidden windows by default (set `EMZERO_E2E_SHOW_WINDOWS=1` to watch them). It contains smoke coverage for production Electron builds using the privacy-safe demo dataset, plus isolated mock-mail regression coverage for reply preservation, dedicated composition, and automatic HTML-email sizing with privacy/link controls.
+- `apps/desktop/e2e/` — Playwright runs with hidden windows by default (set `EMZERO_E2E_SHOW_WINDOWS=1` to watch them). It contains smoke coverage for production Electron builds launched with `--demo`, plus isolated mock-mail regression coverage for reply preservation, dedicated composition, and automatic HTML-email sizing with privacy/link controls.
 - `apps/desktop/playwright.config.ts` — production Electron smoke-test configuration.
 - Run the complete suite with `pnpm check` from the repository root.

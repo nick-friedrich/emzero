@@ -28,6 +28,7 @@ import {
 } from '../shared/mail-insights.js';
 import { readOpenRouterApiKey } from './ai-assistant.js';
 import { readAccounts, type StoredAccount } from './account-storage.js';
+import { demoModeEnabled } from './demo-profile.js';
 import { mailCache, withAccountImap } from './mail-runtime.js';
 import type { BaseMessageInsights, InsightCandidate } from './mail-cache.js';
 
@@ -52,7 +53,7 @@ export async function readSmartInboxSettings(): Promise<SmartInboxSettings> {
   }
 }
 
-async function writeSmartInboxSettings(settings: SmartInboxSettings): Promise<void> {
+export async function writeSmartInboxSettings(settings: SmartInboxSettings): Promise<void> {
   const target = settingsPath();
   const temporary = `${target}.${process.pid}.tmp`;
   await writeFile(temporary, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });
@@ -196,6 +197,7 @@ async function fetchPreviews(
 ): Promise<Map<number, MessagePreview>> {
   const previews = new Map<number, MessagePreview>();
   try {
+    if (demoModeEnabled()) throw new Error('Demo mail has no server to fetch from.');
     await withAccountImap(
       account,
       async (imap) => {
@@ -361,6 +363,11 @@ async function classifyAll(): Promise<void> {
     return;
   }
   const apiKey = await readOpenRouterApiKey();
+  // Demo mail arrives already classified, so a missing key only matters for mail sent during the demo.
+  if (!apiKey && demoModeEnabled()) {
+    setStatus({ state: 'idle' });
+    return;
+  }
   if (!apiKey) {
     setStatus({
       state: 'error',

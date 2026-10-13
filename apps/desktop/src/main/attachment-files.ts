@@ -11,7 +11,9 @@ import type {
   MailOutgoingAttachment,
 } from '../shared/accounts.js';
 import type { StoredAccount } from './account-storage.js';
-import { closeImap, createImapClient, errorMessage, resolveMailSecret } from './mail-runtime.js';
+import { demoAttachment } from './demo-mail.js';
+import { demoModeEnabled } from './demo-profile.js';
+import { closeImap, createImapClient, errorMessage, mailCache, resolveMailSecret } from './mail-runtime.js';
 import { outgoingHtml } from './outgoing-html.js';
 
 interface SelectedAttachment extends MailOutgoingAttachment {
@@ -32,6 +34,7 @@ async function loadMessageAttachment(
   uid: number,
   attachmentIndex: number,
 ): Promise<{ filename: string; content: Buffer }> {
+  if (demoModeEnabled()) return demoAttachment(account.id, folderPath, uid, attachmentIndex);
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
   try {
@@ -134,6 +137,11 @@ export async function prepareDraftAttachments(
   folderPath: string,
   uid: number,
 ): Promise<AttachmentSelectionResult> {
+  if (demoModeEnabled()) {
+    // Demo drafts keep only attachment names, so there are no files to restore.
+    const html = mailCache().getMessageBody(account.id, folderPath, uid)?.html;
+    return { ok: true, attachments: [], html: html ? outgoingHtml(html) : undefined };
+  }
   let password = '';
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;

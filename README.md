@@ -65,6 +65,13 @@ The initial application lives in `apps/desktop`. Electron main and preload own d
 - `pnpm check` — run linting, type checks, unit tests, and packaged Electron smoke tests
 - `pnpm build` — create an unpacked application in `apps/desktop/out`
 - `pnpm --filter @emzero/desktop make` — create platform installers
+- `EMZERO_DEMO=1 pnpm dev` — start in demo mode
+
+## Demo mode
+
+Demo mode runs Emzero on a sample mailbox, for presentations and screenshots. It uses a separate `Demo` profile inside the app's data directory. Your accounts and mail are never loaded, and nothing is sent over the network. Reading, replying, sending, drafts, starring, moving, deleting, folders, search, and smart inboxes all work on the sample mail. Mail sent to one of the demo addresses arrives in that account's Inbox. AI drafting keeps using the provider configured in your own profile.
+
+You can start demo mode in three ways: launch with `--demo` (or `EMZERO_DEMO=1`), click **Restart in demo mode** in Settings → General, or click the logo five times. The sample mailbox resets every time demo mode starts. Exit it from the sidebar or from Settings.
 
 See [plan.md](./plan.md) for the current product scope.
 

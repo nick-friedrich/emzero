@@ -8,6 +8,7 @@ import type {
   MessageListResult,
 } from '../shared/accounts.js';
 import type { StoredAccount } from './account-storage.js';
+import { demoModeEnabled } from './demo-profile.js';
 import { hasQuotedHtml, sanitizedMessageHtml } from './message-html.js';
 import {
   errorMessage,
@@ -167,7 +168,7 @@ export async function listFolderMessages(
   let password = '';
   const cached = mailCache().getFolderSyncState(account.id, folderPath);
 
-  if (cached.syncedAt && cached.supportsEmzeroKeywords !== undefined && !refresh) {
+  if (demoModeEnabled() || (cached.syncedAt && cached.supportsEmzeroKeywords !== undefined && !refresh)) {
     return { ok: true, ...cached, source: 'cache' };
   }
 
@@ -305,6 +306,9 @@ export function getFolderMessage(
   const cachedBody = mailCache().getMessageBody(account.id, folderPath, uid);
   if (cachedBody) {
     return Promise.resolve({ ok: true, messageDetail: cachedBody, source: 'cache' });
+  }
+  if (demoModeEnabled()) {
+    return Promise.resolve({ ok: false, message: 'This message is no longer available.' });
   }
 
   const requestKey = `${account.id}\u0000${folderPath}\u0000${uid}`;

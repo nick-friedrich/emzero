@@ -9,6 +9,8 @@ import type {
 import { validateReplyDraft, validateSendDraft } from '../shared/replies.js';
 import type { StoredAccount } from './account-storage.js';
 import { releaseOutgoingAttachments, resolveOutgoingAttachments } from './attachment-files.js';
+import { sendDemoMessage } from './demo-mail.js';
+import { demoModeEnabled } from './demo-profile.js';
 import { outgoingHtml } from './outgoing-html.js';
 import { hasQuotedHtml, sanitizedMessageHtml } from './message-html.js';
 import {
@@ -28,6 +30,7 @@ export async function sendMessage(
   const validationError = kind === 'reply' ? validateReplyDraft(draft) : validateSendDraft(draft);
   if (validationError) return { ok: false, message: validationError };
   const sentLabel = kind === 'reply' ? 'Reply' : 'Message';
+  if (demoModeEnabled()) return sendDemoMessage(account, draft, sentLabel);
 
   let password = '';
   try {

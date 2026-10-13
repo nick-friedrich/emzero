@@ -638,6 +638,8 @@ export const ACCOUNT_CHANNELS = {
   syncChanged: 'sync:changed',
   syncMailboxChanged: 'sync:mailbox-changed',
   setNotificationsEnabled: 'notifications:set-enabled',
+  demoModeEnabled: 'demo:enabled',
+  setDemoModeEnabled: 'demo:set-enabled',
 } as const;
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

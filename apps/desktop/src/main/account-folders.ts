@@ -9,6 +9,8 @@ import {
   type MailFolderSummary,
 } from '../shared/accounts.js';
 import type { StoredAccount } from './account-storage.js';
+import { applyDemoFolderChange } from './demo-mail.js';
+import { demoModeEnabled } from './demo-profile.js';
 import { deleteSubscribedFolder, subscribeListedFolders } from './folder-subscriptions.js';
 import {
   closeImap,
@@ -43,7 +45,7 @@ export async function listAccountFolders(
   let imap: ImapFlow | null = null;
   const cachedFolders = mailCache().listFolders(account.id);
 
-  if (cachedFolders.length > 0 && !refresh) {
+  if ((cachedFolders.length > 0 && !refresh) || demoModeEnabled()) {
     return { ok: true, folders: cachedFolders, source: 'cache' };
   }
 
@@ -86,17 +88,27 @@ export function childFolderPath(parentPath: string, name: string, delimiter: str
   return parentPath ? `${parentPath}${delimiter}${name}` : name;
 }
 
+export type FolderChange =
+  | { kind: 'create'; path: string }
+  | { kind: 'rename'; from: string; to: string }
+  | { kind: 'delete'; path: string };
+
 async function mutateAccountFolders(
   account: StoredAccount,
-  operation: (imap: ImapFlow) => Promise<void>,
+  change: FolderChange,
 ): Promise<FolderMutationResult> {
+  if (demoModeEnabled()) {
+    return { ok: true, folders: applyDemoFolderChange(account.id, change), source: 'cache' };
+  }
   let password = '';
   let imap: ImapFlow | null = null;
   try {
     password = await resolveMailSecret(account);
     imap = createImapClient(account, password);
     await imap.connect();
-    await operation(imap);
+    if (change.kind === 'create') await imap.mailboxCreate(change.path);
+    else if (change.kind === 'rename') await imap.mailboxRename(change.from, change.to);
+    else await deleteSubscribedFolder(imap, change.path);
     return { ok: true, folders: await refreshedFolders(imap, account.id), source: 'server' };
   } catch (error) {
     return {
@@ -129,9 +141,7 @@ export async function createAccountFolder(
   if (folders.some((folder) => folder.path === path)) {
     return { ok: false, folders, message: 'A folder with this name already exists here.' };
   }
-  return mutateAccountFolders(account, async (imap) => {
-    await imap.mailboxCreate(path);
-  });
+  return mutateAccountFolders(account, { kind: 'create', path });
 }
 
 export async function renameAccountFolder(
@@ -155,9 +165,7 @@ export async function renameAccountFolder(
   const siblings = folders.filter((candidate) => candidate.parentPath === folder.parentPath);
   const currentIndex = siblings.findIndex((candidate) => candidate.path === folder.path);
   const beforePath = siblings[currentIndex + 1]?.path ?? null;
-  const result = await mutateAccountFolders(account, async (imap) => {
-    await imap.mailboxRename(folder.path, nextPath);
-  });
+  const result = await mutateAccountFolders(account, { kind: 'rename', from: folder.path, to: nextPath });
   if (!result.ok) return result;
   const orderedPaths = result.folders
     .filter((candidate) => candidate.parentPath === folder.parentPath && candidate.path !== nextPath)
@@ -217,9 +225,7 @@ export async function moveAccountFolder(
     }
   }
 
-  const result = await mutateAccountFolders(account, async (imap) => {
-    await imap.mailboxRename(folder.path, nextPath);
-  });
+  const result = await mutateAccountFolders(account, { kind: 'rename', from: folder.path, to: nextPath });
   if (!result.ok) return result;
   try {
     applyOrder(result.folders, nextPath);
@@ -238,7 +244,5 @@ export async function deleteAccountFolder(
   if (!folder || !manageableFolder(folder)) {
     return { ok: false, folders, message: 'This provider-managed folder cannot be deleted.' };
   }
-  return mutateAccountFolders(account, async (imap) => {
-    await deleteSubscribedFolder(imap, folder.path);
-  });
+  return mutateAccountFolders(account, { kind: 'delete', path: folder.path });
 }

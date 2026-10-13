@@ -2,6 +2,7 @@ import path from 'node:path';
 import { app, safeStorage } from 'electron';
 import { ImapFlow } from 'imapflow';
 import { readAccounts, writeAccounts, type StoredAccount } from './account-storage.js';
+import { demoModeEnabled } from './demo-profile.js';
 import { MailCache } from './mail-cache.js';
 import { refreshMicrosoftAccessToken } from './microsoft-oauth.js';
 
@@ -84,6 +85,8 @@ async function refreshAccountMicrosoftToken(account: StoredAccount): Promise<str
 }
 
 export async function resolveMailSecret(account: StoredAccount): Promise<string> {
+  // Demo accounts have no credentials, and their servers use unresolvable `.invalid` hosts.
+  if (demoModeEnabled()) return '';
   if (account.authentication === 'password') {
     const cachedPassword = passwordCache.get(account.id);
     if (cachedPassword) return cachedPassword;

@@ -34,6 +34,7 @@ import {
 } from '../shared/accounts.js';
 import { SIGNATURE_CHANNELS, validMailSignatures } from '../shared/signatures.js';
 import { verifyConnections, verifyMicrosoftConnections } from './account-connection.js';
+import { demoModeEnabled, relaunchWithDemoMode } from './demo-profile.js';
 import {
   draftAiMessage,
   getAiSettings,
@@ -304,6 +305,17 @@ export function registerAccountHandlers(): void {
     return true;
   });
 
+  ipcMain.handle(ACCOUNT_CHANNELS.demoModeEnabled, (event) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    return demoModeEnabled();
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.setDemoModeEnabled, (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (typeof value !== 'boolean' || value === demoModeEnabled()) return;
+    relaunchWithDemoMode(value);
+  });
+
   ipcMain.handle(ACCOUNT_CHANNELS.providers, (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     return listProviders();
@@ -321,6 +333,9 @@ export function registerAccountHandlers(): void {
 
   ipcMain.handle(ACCOUNT_CHANNELS.exportBackup, async (event, value: unknown) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (demoModeEnabled()) {
+      return { ok: false, message: 'Backups are turned off in demo mode.' } satisfies AccountBackupResult;
+    }
     const request = value as { password?: unknown; includeCredentials?: unknown; includeAppSettings?: unknown; appSettings?: unknown } | null;
     if (!request || typeof request.password !== 'string' ||
       typeof request.includeCredentials !== 'boolean' ||
@@ -344,6 +359,9 @@ export function registerAccountHandlers(): void {
 
   ipcMain.handle(ACCOUNT_CHANNELS.importBackup, async (event, value: unknown) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (demoModeEnabled()) {
+      return { ok: false, message: 'Backups are turned off in demo mode.' } satisfies AccountBackupResult;
+    }
     const request = value as { selectionId?: unknown; password?: unknown } | null;
     if (!request || typeof request.selectionId !== 'string' || typeof request.password !== 'string') {
       return { ok: false, message: 'Invalid backup import request.' } satisfies AccountBackupResult;
@@ -894,11 +912,13 @@ export function registerAccountHandlers(): void {
 
   ipcMain.handle(ACCOUNT_CHANNELS.test, async (event, draft: AccountDraft) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (demoModeEnabled()) return { ok: false, message: 'Adding accounts is turned off in demo mode.' } satisfies AccountOperationResult;
     return verifyConnections(draft);
   });
 
   ipcMain.handle(ACCOUNT_CHANNELS.save, async (event, draft: AccountDraft) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (demoModeEnabled()) return { ok: false, message: 'Adding accounts is turned off in demo mode.' } satisfies AccountOperationResult;
     if (!draft?.credentials || draft.credentials.type !== 'password') {
       return { ok: false, message: 'Use Microsoft sign-in to connect this account.' };
     }
@@ -909,6 +929,7 @@ export function registerAccountHandlers(): void {
 
   ipcMain.handle(ACCOUNT_CHANNELS.beginMicrosoftAuth, async (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (demoModeEnabled()) return { ok: false, message: 'Adding accounts is turned off in demo mode.' } satisfies AccountOperationResult;
     return beginMicrosoftAuth(MICROSOFT_CLIENT_ID);
   });
 

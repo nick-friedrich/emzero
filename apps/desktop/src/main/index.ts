@@ -3,6 +3,8 @@ import path from 'node:path';
 import { app, BrowserWindow, Menu, powerMonitor } from 'electron';
 import { registerAccountHandlers } from './accounts.js';
 import { startBackgroundSync, stopBackgroundSync } from './background-sync.js';
+import { seedDemoProfile } from './demo-dataset.js';
+import { demoModeEnabled, useDemoProfileWhenRequested } from './demo-profile.js';
 import { closeMailCache, disconnectPooledImapConnections } from './mail-runtime.js';
 import { registerMailWindowHandlers } from './mail-windows.js';
 import { setMailNotificationActivationHandler } from './mail-notifications.js';
@@ -20,6 +22,7 @@ const assetsDirectory = existsSync(bundledAssets)
 const appAsset = (fileName: string) => path.join(assetsDirectory, fileName);
 
 app.setName('Emzero');
+useDemoProfileWhenRequested();
 
 const linuxDesktop = process.env.XDG_CURRENT_DESKTOP?.toLowerCase().split(':') ?? [];
 if (
@@ -71,7 +74,7 @@ const createWindow = (): void => {
   }
 };
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
   if (process.platform === 'darwin') {
     // A runtime Dock icon is a static image that overrides the bundle's Icon
     // Composer icon and its appearance variants, so only set it in development.
@@ -83,6 +86,7 @@ void app.whenReady().then(() => {
     }
   }
   hideDockForHiddenWindows();
+  if (demoModeEnabled()) await seedDemoProfile();
   registerAccountHandlers();
   registerMailWindowHandlers();
   setMailNotificationActivationHandler(() => {
@@ -91,7 +95,7 @@ void app.whenReady().then(() => {
     if (mainWindow) revealWindow(mainWindow, { focus: true });
   });
   createWindow();
-  startBackgroundSync();
+  if (!demoModeEnabled()) startBackgroundSync();
   scheduleMailInsights(5_000);
   powerMonitor.on('suspend', disconnectPooledImapConnections);
 

@@ -8,6 +8,8 @@ import type {
 } from '../shared/accounts.js';
 import type { StoredAccount } from './account-storage.js';
 import { resolveOutgoingAttachments } from './attachment-files.js';
+import { saveDemoDraft } from './demo-mail.js';
+import { demoModeEnabled } from './demo-profile.js';
 import { outgoingHtml } from './outgoing-html.js';
 import { closeImap, createImapClient, errorMessage, mailCache, resolveMailSecret } from './mail-runtime.js';
 
@@ -24,6 +26,7 @@ export async function saveMailDraft(
   draft: MailSendDraft,
   previous?: MailDraftReference,
 ): Promise<MailDraftSaveResult> {
+  if (demoModeEnabled()) return saveDemoDraft(account, draft, previous);
   let password = '';
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
@@ -79,6 +82,10 @@ export async function deleteMailDraft(
   account: StoredAccount,
   draft: MailDraftReference,
 ): Promise<MessageOperationResult> {
+  if (demoModeEnabled()) {
+    mailCache().deleteMessages(account.id, draft.folderPath, [draft.uid]);
+    return { ok: true };
+  }
   let password = '';
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;

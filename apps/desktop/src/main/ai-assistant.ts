@@ -1,6 +1,6 @@
 import { readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { app, safeStorage } from 'electron';
+import { safeStorage } from 'electron';
 import {
   DEFAULT_AI_BASE_URL,
   DEFAULT_AI_MODEL,
@@ -17,6 +17,7 @@ import {
   type AiSettingsUpdate,
 } from '../shared/ai.js';
 import { parseChatCompletionStreamChunk, takeSseDataEvents } from './ai-stream.js';
+import { primaryUserDataPath } from './demo-profile.js';
 
 interface StoredAiSettings {
   provider: AiProvider;
@@ -25,7 +26,8 @@ interface StoredAiSettings {
   encryptedApiKey: string;
 }
 
-const settingsPath = () => path.join(app.getPath('userData'), 'ai-settings.json');
+// Demo mode keeps using the real profile's provider so AI drafting works in presentations.
+const settingsPath = () => path.join(primaryUserDataPath(), 'ai-settings.json');
 
 function settingsSummary(settings: StoredAiSettings | null): AiSettingsSummary {
   return {

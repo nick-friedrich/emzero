@@ -5,6 +5,8 @@ import {
   type MessageOperationResult,
 } from '../shared/accounts.js';
 import type { StoredAccount } from './account-storage.js';
+import { deleteDemoMessages, moveDemoMessages } from './demo-mail.js';
+import { demoModeEnabled } from './demo-profile.js';
 import {
   closeImap,
   createImapClient,
@@ -67,6 +69,10 @@ export async function changeMessageUnread(
   uids: number[],
   unread: boolean,
 ): Promise<MessageOperationResult> {
+  if (demoModeEnabled()) {
+    mailCache().setMessagesUnread(account.id, folderPath, uids, unread);
+    return { ok: true };
+  }
   let password = '';
   try {
     return await withAccountImap(account, async (imap, secret) => {
@@ -94,6 +100,10 @@ export async function changeMessageFlagged(
   uids: number[],
   flagged: boolean,
 ): Promise<MessageOperationResult> {
+  if (demoModeEnabled()) {
+    mailCache().setMessagesFlagged(account.id, folderPath, uids, flagged);
+    return { ok: true };
+  }
   let password = '';
   try {
     return await withAccountImap(account, async (imap, secret) => {
@@ -124,6 +134,10 @@ export async function changeMessageImportant(
 ): Promise<MessageOperationResult> {
   const dueDate = important ? (requestedDueDate ?? tomorrowDateKey()) : null;
   if (dueDate && !validDateKey(dueDate)) return { ok: false, message: 'Choose a valid due date.' };
+  if (demoModeEnabled()) {
+    mailCache().setMessagesImportant(account.id, folderPath, uids, important, dueDate);
+    return { ok: true };
+  }
   let password = '';
   try {
     return await withAccountImap(account, async (imap, secret) => {
@@ -180,6 +194,10 @@ export async function changeMessageColor(
   if (color !== null && !isEmzeroMessageColor(color)) {
     return { ok: false, message: 'Choose a valid message color.' };
   }
+  if (demoModeEnabled()) {
+    mailCache().setMessagesColor(account.id, folderPath, uids, color);
+    return { ok: true };
+  }
   let password = '';
   try {
     return await withAccountImap(account, async (imap, secret) => {
@@ -222,6 +240,10 @@ export async function deleteFolderMessages(
   folderPath: string,
   uids: number[],
 ): Promise<MessageOperationResult> {
+  if (demoModeEnabled()) {
+    deleteDemoMessages(account.id, folderPath, uids);
+    return { ok: true };
+  }
   let password = '';
   try {
     return await withAccountImap(account, async (imap, secret) => {
@@ -264,6 +286,10 @@ export async function moveFolderMessages(
   }
   const destination = moveDestination(account.id, folderPath, 'move', destinationPath);
   if (!destination) return { ok: false, message: 'Choose a different destination folder.' };
+  if (demoModeEnabled()) {
+    moveDemoMessages(account.id, folderPath, uids, account.id, destination.path);
+    return { ok: true };
+  }
 
   let password = '';
   try {
@@ -302,6 +328,14 @@ export async function transferFolderMessages(
     .listFolders(destinationAccount.id)
     .find((folder) => folder.path === destinationPath && folder.selectable);
   if (!destination) throw new Error('Choose a valid destination folder.');
+  if (demoModeEnabled()) {
+    for (const uid of uids) {
+      if (shouldStop?.()) return;
+      moveDemoMessages(sourceAccount.id, sourcePath, [uid], destinationAccount.id, destination.path);
+      onTransferred?.(uid);
+    }
+    return;
+  }
 
   let sourcePassword = '';
   let destinationPassword = '';

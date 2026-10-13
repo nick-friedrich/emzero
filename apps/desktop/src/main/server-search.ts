@@ -6,6 +6,7 @@ import type {
 } from '../shared/accounts.js';
 import { listAccountFolders } from './account-folders.js';
 import type { StoredAccount } from './account-storage.js';
+import { demoModeEnabled } from './demo-profile.js';
 import { errorMessage, mailCache, withAccountImap } from './mail-runtime.js';
 import { fetchSummaries } from './message-reader.js';
 
@@ -99,7 +100,8 @@ export async function searchServerMessages(
   request: MailSearchRequest,
 ): Promise<MailSearchResult> {
   const tokens = serverSearchTokens(request.query);
-  if (tokens.length === 0) return { ok: true, items: [] };
+  // The demo cache already holds every message, so local search has found them all.
+  if (tokens.length === 0 || demoModeEnabled()) return { ok: true, items: [] };
   const targets = request.accountId
     ? accounts.filter((account) => account.id === request.accountId)
     : accounts;

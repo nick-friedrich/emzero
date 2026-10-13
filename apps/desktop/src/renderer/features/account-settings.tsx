@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bot, CheckCircle2, CircleAlert, Download, Eye, EyeOff, KeyRound, LoaderCircle, Palette, Plus, Search, Trash2, Type, Upload } from 'lucide-react';
+import { Bot, CheckCircle2, CircleAlert, Download, Eye, EyeOff, KeyRound, LoaderCircle, Palette, Plus, Presentation, Search, Trash2, Type, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
@@ -249,7 +249,21 @@ function GeneralSettings() {
       <Toggle checked={preferences.desktopNotifications} onChange={preferences.setDesktopNotifications} title="Show desktop notifications" description="Show the sender and subject when new unread mail arrives while Emzero is in the background." />
       <Toggle checked={preferences.alwaysLoadRemoteImages} onChange={preferences.setAlwaysLoadRemoteImages} title="Always load remote images" description="Remote senders may use images to learn when you open a message. Leave this off for better privacy." />
     </section>
+    <DemoModeSection />
   </>;
+}
+
+function DemoModeSection() {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [restarting, setRestarting] = useState(false);
+  useEffect(() => { void window.emzero.demo.enabled().then(setEnabled).catch(() => setEnabled(false)); }, []);
+  if (enabled === null) return null;
+  return <section className="mt-5 rounded-lg border border-border bg-card p-5"><div className="flex items-center gap-3"><Presentation className="size-5 text-muted-foreground" /><h3 className="text-sm font-medium">Demo mode</h3></div>
+    <p className="mt-2 text-xs leading-5 text-muted-foreground">{enabled
+      ? 'Emzero is showing a sample mailbox. Everything works on sample mail, which resets each time demo mode starts. Your own accounts are not loaded.'
+      : 'Restart Emzero with a sample mailbox to show it off safely. Your accounts and mail stay hidden and untouched. AI drafting keeps using your provider from AI assistant.'}</p>
+    <Button className="mt-4" variant="secondary" disabled={restarting} onClick={() => { setRestarting(true); void window.emzero.demo.setEnabled(!enabled); }}>{restarting && <LoaderCircle className="size-4 animate-spin" />}{enabled ? 'Exit demo mode' : 'Restart in demo mode'}</Button>
+  </section>;
 }
 
 function AccountsSettings({ accounts, onChange }: { accounts: AccountSummary[]; onChange: (accounts: AccountSummary[]) => void }) {

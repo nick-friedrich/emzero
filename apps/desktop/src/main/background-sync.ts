@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron';
 import { ACCOUNT_CHANNELS, type MailSyncStatus } from '../shared/accounts.js';
 import { listAccountFolders } from './account-folders.js';
 import { readAccounts, type StoredAccount } from './account-storage.js';
+import { demoModeEnabled } from './demo-profile.js';
 import { errorMessage, mailCache } from './mail-runtime.js';
 import { listFolderMessages } from './message-reader.js';
 import { scheduleMailInsights } from './mail-insights.js';
@@ -68,6 +69,10 @@ export function getBackgroundSyncStatus(): MailSyncStatus {
 }
 
 export function runBackgroundSync(): Promise<MailSyncStatus> {
+  if (demoModeEnabled()) {
+    publishSyncStatus({ state: 'idle', lastSyncedAt: new Date().toISOString() });
+    return Promise.resolve(syncStatus);
+  }
   if (activeSync) return activeSync;
   publishSyncStatus({ state: 'syncing', lastSyncedAt: syncStatus.lastSyncedAt });
   activeSync = (async () => {
