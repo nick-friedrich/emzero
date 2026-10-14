@@ -6,6 +6,7 @@ import type {
   MailSendDraft,
   MessageOperationResult,
 } from '../shared/accounts.js';
+import { sendingIdentity } from '../shared/aliases.js';
 import type { StoredAccount } from './account-storage.js';
 import { resolveOutgoingAttachments } from './attachment-files.js';
 import { saveDemoDraft } from './demo-mail.js';
@@ -26,7 +27,9 @@ export async function saveMailDraft(
   draft: MailSendDraft,
   previous?: MailDraftReference,
 ): Promise<MailDraftSaveResult> {
-  if (demoModeEnabled()) return saveDemoDraft(account, draft, previous);
+  // A draft written from an alias that was later removed falls back to the account's address.
+  const from = sendingIdentity(account, draft.from) ?? sendingIdentity(account)!;
+  if (demoModeEnabled()) return saveDemoDraft(account, draft, from, previous);
   let password = '';
   let imap: ImapFlow | null = null;
   let lock: Awaited<ReturnType<ImapFlow['getMailboxLock']>> | null = null;
@@ -35,7 +38,7 @@ export async function saveMailDraft(
     const attachments = await resolveOutgoingAttachments(draft.attachments);
     const compiler = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: 'windows' });
     const compiled = await compiler.sendMail({
-      from: { name: account.name, address: account.email },
+      from,
       to: draft.to.map(({ name, address }) => ({ name: name ?? '', address: address! })),
       cc: draft.cc.map(({ name, address }) => ({ name: name ?? '', address: address! })),
       bcc: draft.bcc.map(({ name, address }) => ({ name: name ?? '', address: address! })),

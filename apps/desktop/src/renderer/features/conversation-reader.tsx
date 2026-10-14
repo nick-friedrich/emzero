@@ -48,6 +48,7 @@ import {
   type MailConversation,
 } from '../../shared/conversations';
 import {
+  aliasSender,
   replyAllCcRecipients,
   replyRecipients,
   type ReplyMode,
@@ -542,6 +543,7 @@ function ThreadMessageCard({
                     inReplyTo: summary.inReplyTo,
                     references: summary.references,
                     attachments: draftAttachments ?? [],
+                    ...aliasSender(selection.account, state.message.from),
                   }}
                   initialDraftReference={{ folderPath: summary.folderPath, uid: summary.uid }}
                   onOpenChange={(open) => { if (!open) onCloseDraft(); }}

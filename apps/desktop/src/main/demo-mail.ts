@@ -3,6 +3,7 @@ import { BrowserWindow } from 'electron';
 import {
   ACCOUNT_CHANNELS,
   findInboxFolder,
+  type MailAddressSummary,
   type MailDraftReference,
   type MailDraftSaveResult,
   type MailFolderSummary,
@@ -11,6 +12,7 @@ import {
   type MailSendDraft,
   type MailSendResult,
 } from '../shared/accounts.js';
+import { accountAddresses } from '../shared/aliases.js';
 import type { FolderChange } from './account-folders.js';
 import type { StoredAccount } from './account-storage.js';
 import { readAccounts } from './account-storage.js';
@@ -169,13 +171,14 @@ function specialFolder(accountId: string, specialUse: string): MailFolderSummary
 function composedDemoMessage(
   account: StoredAccount,
   draft: MailSendDraft,
+  sender: MailAddressSummary,
   sentAt: Date,
   unread: boolean,
 ): DemoMessage {
   const html = outgoingHtml(draft.html);
   const sanitizedHtml = html ? sanitizedMessageHtml(html) : null;
   const messageId = `<${randomUUID()}@demo.emzero.invalid>`;
-  const from = [{ name: account.name, address: account.email }];
+  const from = [sender];
   return {
     summary: {
       messageId,
@@ -217,13 +220,14 @@ function composedDemoMessage(
 export function saveDemoDraft(
   account: StoredAccount,
   draft: MailSendDraft,
+  sender: MailAddressSummary,
   previous?: MailDraftReference,
 ): MailDraftSaveResult {
   const drafts = specialFolder(account.id, '\\Drafts');
   if (!drafts) return { ok: false, message: 'Could not save draft: this account does not have a Drafts folder.' };
   if (previous?.folderPath === drafts.path) mailCache().deleteMessages(account.id, drafts.path, [previous.uid]);
   const [stored] = storeDemoMessages(account.id, drafts.path, [
-    composedDemoMessage(account, draft, new Date(), false),
+    composedDemoMessage(account, draft, sender, new Date(), false),
   ]);
   return { ok: true, draft: { folderPath: drafts.path, uid: stored.uid }, message: 'Draft saved.' };
 }
@@ -242,11 +246,12 @@ export async function sendDemoMessage(
   account: StoredAccount,
   draft: MailSendDraft,
   sentLabel: string,
+  sender: MailAddressSummary,
 ): Promise<MailSendResult> {
   const sent = specialFolder(account.id, '\\Sent');
   if (!sent) return { ok: false, message: `Could not send: this account does not have a Sent folder.` };
   const sentAt = new Date();
-  const message = composedDemoMessage(account, draft, sentAt, false);
+  const message = composedDemoMessage(account, draft, sender, sentAt, false);
   const [sentMessage] = storeDemoMessages(account.id, sent.path, [message]);
   releaseOutgoingAttachments(draft.attachments);
 
@@ -255,7 +260,7 @@ export async function sendDemoMessage(
   );
   let delivered = false;
   for (const recipient of await readAccounts()) {
-    if (!recipients.has(recipient.email.toLowerCase())) continue;
+    if (![...accountAddresses(recipient)].some((address) => recipients.has(address))) continue;
     const inbox = findInboxFolder(mailCache().listFolders(recipient.id));
     if (!inbox) continue;
     storeDemoMessages(recipient.id, inbox.path, [{

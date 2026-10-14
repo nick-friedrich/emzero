@@ -201,7 +201,7 @@ for (const mailbox of ['unified', 'folder'] as const) {
       await application.evaluate(({ ipcMain }) => {
         const account = {
           id: 'reply-test', name: 'Reply Test', email: 'me@example.test',
-          username: 'me@example.test', authentication: 'password', createdAt: '', color: 'blue',
+          username: 'me@example.test', authentication: 'password', createdAt: '', color: 'blue', aliases: [],
           imap: { host: 'example.test', port: 993, secure: true },
           smtp: { host: 'example.test', port: 465, secure: true },
         };

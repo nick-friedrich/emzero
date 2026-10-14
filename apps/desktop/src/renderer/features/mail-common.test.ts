@@ -76,7 +76,7 @@ describe('HTML email documents', () => {
 });
 
 describe('replied conversations', () => {
-  const account = { email: 'me@example.com', username: 'me@example.com' } as AccountSummary;
+  const account = { email: 'me@example.com', username: 'me@example.com', aliases: [] as AccountSummary['aliases'] } as AccountSummary;
   const message = (from: string, folderPath: string, sentAt: string): MailMessageSummary => ({
     folderPath,
     uid: 1,

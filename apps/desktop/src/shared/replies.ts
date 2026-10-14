@@ -6,6 +6,7 @@ import type {
   MailReplyDraft,
   MailSendDraft,
 } from './accounts.js';
+import { accountAddresses, matchingAlias } from './aliases.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -22,9 +23,7 @@ export function replyRecipients(
   account: AccountSummary,
   message: Pick<MailMessageDetail, 'from' | 'to' | 'replyTo'>,
 ): MailAddressSummary[] {
-  const ownAddresses = new Set(
-    [account.email, account.username].map((value) => value.trim().toLowerCase()),
-  );
+  const ownAddresses = accountAddresses(account);
   const preferred = message.replyTo.length > 0 ? message.replyTo : message.from;
   const candidates = preferred.some((address) => {
     const normalized = normalizedAddress(address);
@@ -48,10 +47,10 @@ export function replyAllCcRecipients(
   account: AccountSummary,
   message: Pick<MailMessageDetail, 'from' | 'to' | 'cc' | 'replyTo'>,
 ): MailAddressSummary[] {
-  const excluded = new Set(
-    [account.email, account.username, ...replyRecipients(account, message).map(normalizedAddress)]
-      .map((value) => value.trim().toLowerCase()),
-  );
+  const excluded = new Set([
+    ...accountAddresses(account),
+    ...replyRecipients(account, message).map(normalizedAddress),
+  ]);
   return [...message.to, ...message.cc].filter((address) => {
     const normalized = normalizedAddress(address);
     if (!emailPattern.test(normalized) || excluded.has(normalized)) return false;
@@ -78,7 +77,17 @@ export function createReplyDraft(
     inReplyTo: detail.messageId,
     references: [...new Set([...summary.references, detail.messageId].filter(Boolean) as string[])],
     attachments: [],
+    ...aliasSender(account, [...detail.to, ...detail.cc]),
   };
+}
+
+/** The `from` field that keeps sending as the alias found in `addresses`, if any. */
+export function aliasSender(
+  account: AccountSummary,
+  addresses: MailAddressSummary[],
+): Pick<MailSendDraft, 'from'> {
+  const from = matchingAlias(account, addresses);
+  return from ? { from } : {};
 }
 
 export function parseAddressList(value: string): MailAddressSummary[] {

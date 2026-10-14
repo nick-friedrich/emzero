@@ -2,6 +2,7 @@ import { readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { app } from 'electron';
 import { withAccountColors, type AccountSummary } from '../shared/accounts.js';
+import { storedAliases } from '../shared/aliases.js';
 
 export interface StoredAccount extends AccountSummary {
   encryptedSecret: string;
@@ -27,6 +28,7 @@ export async function readAccounts(): Promise<StoredAccount[]> {
           account.authentication === 'microsoft-oauth' ? 'microsoft-oauth' : 'password',
         createdAt: account.createdAt,
         color: account.color,
+        aliases: storedAliases(account.aliases, account.email),
         encryptedSecret: account.encryptedSecret ?? account.encryptedPassword ?? '',
         ...(account.oauthClientId ? { oauthClientId: account.oauthClientId } : {}),
       };
@@ -55,5 +57,6 @@ export function toAccountSummary(account: StoredAccount): AccountSummary {
     authentication: account.authentication,
     createdAt: account.createdAt,
     color: account.color,
+    aliases: account.aliases,
   };
 }

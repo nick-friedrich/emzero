@@ -32,6 +32,7 @@ import {
   type MessageListResult,
   type MessageOperationResult,
 } from '../shared/accounts.js';
+import { validateAliases } from '../shared/aliases.js';
 import { SIGNATURE_CHANNELS, validMailSignatures } from '../shared/signatures.js';
 import { verifyConnections, verifyMicrosoftConnections } from './account-connection.js';
 import { demoModeEnabled, relaunchWithDemoMode } from './demo-profile.js';
@@ -121,6 +122,7 @@ async function saveConnectedAccount(
     authentication,
     createdAt: new Date().toISOString(),
     color: withAccountColors([...accounts, { createdAt: new Date().toISOString() }]).at(-1)!.color,
+    aliases: [],
     encryptedSecret: (await safeStorage.encryptStringAsync(secret)).toString('base64'),
     ...(authentication === 'microsoft-oauth' ? { oauthClientId: MICROSOFT_CLIENT_ID } : {}),
   };
@@ -155,6 +157,7 @@ function validSendDraft(value: unknown): value is MailSendDraft {
     typeof draft.text === 'string' &&
     (draft.html === undefined || (typeof draft.html === 'string' && draft.html.length <= 30 * 1024 * 1024)) &&
     (draft.inReplyTo === null || typeof draft.inReplyTo === 'string') &&
+    (draft.from === undefined || typeof draft.from === 'string') &&
     Array.isArray(draft.references) &&
     draft.references.every((reference) => typeof reference === 'string') &&
     Array.isArray(draft.attachments) &&
@@ -387,18 +390,27 @@ export function registerAccountHandlers(): void {
       if (index < 0) {
         return { ok: false, message: 'Account not found.' } satisfies AccountOperationResult;
       }
+      const aliases = update.aliases === undefined
+        ? undefined
+        : validateAliases(update.aliases, accounts[index].email);
+      if (aliases && 'error' in aliases) {
+        return { ok: false, message: aliases.error } satisfies AccountOperationResult;
+      }
       const account = {
         ...accounts[index],
         ...(update.name !== undefined ? { name: update.name.trim() } : {}),
         ...(update.color !== undefined ? { color: update.color } : {}),
+        ...(aliases ? { aliases: aliases.aliases } : {}),
       };
       accounts[index] = account;
       await writeAccounts(accounts);
       return {
         ok: true,
-        message: update.color !== undefined && update.name === undefined
-          ? 'Account color updated.'
-          : 'Account name updated.',
+        message: aliases
+          ? 'Aliases updated.'
+          : update.color !== undefined && update.name === undefined
+            ? 'Account color updated.'
+            : 'Account name updated.',
         account: toAccountSummary(account),
       } satisfies AccountOperationResult;
     },

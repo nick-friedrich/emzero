@@ -51,6 +51,7 @@ import {
   type MessageMoveDestination,
   findArchiveFolder,
 } from '../../shared/accounts';
+import { accountAddresses } from '../../shared/aliases';
 import type { MailConversation } from '../../shared/conversations';
 import {
   localDateKeyAfter,
@@ -229,11 +230,7 @@ export function conversationAvatarUrl(
   messages: MailMessageSummary[],
   account: AccountSummary,
 ): string | null {
-  const ownAddresses = new Set(
-    [account.email, account.username]
-      .map((value) => value.trim().toLowerCase())
-      .filter(Boolean),
-  );
+  const ownAddresses = accountAddresses(account);
   const addresses = messages.flatMap((message) => [...message.from, ...message.to]);
   const opponentAvatar = addresses.find(({ address, avatarUrl }) =>
     Boolean(
@@ -282,9 +279,7 @@ export function conversationOpponent(
   account: AccountSummary,
 ): string {
   const ownAddresses = new Set(
-    [account.email, account.username, account.name]
-      .map((value) => value.trim().toLowerCase())
-      .filter(Boolean),
+    [...accountAddresses(account), account.name.trim().toLowerCase()].filter(Boolean),
   );
   const opponents = messages
     .flatMap((message) => [...message.from, ...message.to])
@@ -311,11 +306,7 @@ export function conversationRepliedByMe(
   account: AccountSummary,
   draftFolderPaths: ReadonlySet<string>,
 ): boolean {
-  const ownAddresses = new Set(
-    [account.email, account.username]
-      .map((value) => value.trim().toLowerCase())
-      .filter(Boolean),
-  );
+  const ownAddresses = accountAddresses(account);
   const isOwn = (message: MailMessageSummary) =>
     message.from.some(({ address }) => Boolean(address && ownAddresses.has(address.trim().toLowerCase())));
   const sent = messages.filter((message) => !draftFolderPaths.has(message.folderPath));

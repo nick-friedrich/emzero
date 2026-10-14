@@ -62,6 +62,11 @@ export interface DraftDeletedEvent {
   references: MailDraftReference[];
 }
 
+/** A From option's value: the sending account plus the alias address, empty for its own. */
+function senderValue(accountId: string, address: string) {
+  return JSON.stringify([accountId, address]);
+}
+
 export function ComposeDialog({
   open,
   accounts,
@@ -97,6 +102,7 @@ export function ComposeDialog({
       ? defaultAccountId!
       : (accounts[0]?.id ?? ''),
   );
+  const [fromAddress, setFromAddress] = useState(initialDraft?.from ?? '');
   const [to, setTo] = useState(() => initialRecipientValue(initialDraft?.to ?? []));
   const [cc, setCc] = useState(() => initialRecipientValue(initialDraft?.cc ?? []));
   const [bcc, setBcc] = useState(() => initialRecipientValue(initialDraft?.bcc ?? []));
@@ -151,6 +157,11 @@ export function ComposeDialog({
   const sectionRef = useRef<HTMLElement>(null);
   const editorRef = useRef<RichTextEditorHandle>(null);
   const allowWindowCloseRef = useRef(false);
+  const fromAccount = accounts.find((account) => account.id === accountId);
+  // An alias removed in Settings while composing falls back to the account's own address.
+  const sendAs = fromAccount?.aliases.find(
+    (alias) => alias.address.toLowerCase() === fromAddress.trim().toLowerCase(),
+  )?.address ?? '';
   const currentDraft: MailSendDraft = {
     to: parseAddressList(to),
     cc: parseAddressList(cc),
@@ -161,6 +172,7 @@ export function ComposeDialog({
     inReplyTo: initialDraft?.inReplyTo ?? null,
     references: initialDraft?.references ?? [],
     attachments,
+    ...(sendAs ? { from: sendAs } : {}),
   };
   const hasDraftContent = Boolean(
     to.trim() || cc.trim() || bcc.trim() || subject.trim() || body.trim() || /<img\b/i.test(bodyHtml) || attachments.length,
@@ -294,7 +306,7 @@ export function ComposeDialog({
     return window.emzero.ai.draftMessage({
       kind: composerKind,
       prompt: instruction,
-      accountEmail: account.email,
+      accountEmail: sendAs || account.email,
       subject,
       to: currentDraft.to,
       cc: currentDraft.cc,
@@ -386,7 +398,6 @@ export function ComposeDialog({
 
 
   const disabled = busy || aiBusy;
-  const fromAccount = accounts.find((account) => account.id === accountId);
   const detailsVisible = !compactReply || replyDetailsOpen;
   const ccVisible = Boolean(cc) || showCc || (compactReply && replyDetailsOpen);
   const bccVisible = Boolean(bcc) || showBcc || (compactReply && replyDetailsOpen);
@@ -508,27 +519,35 @@ export function ComposeDialog({
         <form className={cn('flex flex-col', scrolls && 'min-h-0 flex-1')} onSubmit={submit}>
           <div className={cn(scrolls && 'min-h-0 flex-1 overflow-y-auto')}>
             <div className={cn('flex min-h-full flex-col', variant === 'page' && 'mx-auto max-w-3xl')}>
-              {detailsVisible && accounts.length > 1 && (
+              {detailsVisible && (accounts.length > 1 || (fromAccount?.aliases.length ?? 0) > 0) && (
                 <div className="flex min-h-11 items-center gap-2 border-b border-border/70 px-4 sm:px-5">
                   <span className="w-14 shrink-0 text-sm text-muted-foreground" aria-hidden="true">From</span>
                   <div className="relative min-w-0 flex-1">
                     <select
                       className="h-10 w-full min-w-0 cursor-pointer appearance-none truncate bg-transparent pr-7 text-sm outline-none"
-                      value={accountId}
+                      value={senderValue(accountId, sendAs)}
                       disabled={disabled}
                       aria-label="From"
                       onChange={(event) => {
-                        const nextAccountId = event.target.value;
-                        changeSignature(signatureIdForAccount(nextAccountId));
-                        setAccountId(nextAccountId);
+                        const [nextAccountId, nextAddress] = JSON.parse(event.target.value) as [string, string];
+                        if (nextAccountId !== accountId) {
+                          changeSignature(signatureIdForAccount(nextAccountId));
+                          setAccountId(nextAccountId);
+                        }
+                        setFromAddress(nextAddress);
                         setStatus(null);
                       }}
                     >
-                      {accounts.map((account) => (
-                        <option key={account.id} value={account.id}>
+                      {accounts.flatMap((account) => [
+                        <option key={account.id} value={senderValue(account.id, '')}>
                           {account.name} — {account.email}
-                        </option>
-                      ))}
+                        </option>,
+                        ...account.aliases.map((alias) => (
+                          <option key={`${account.id}:${alias.address}`} value={senderValue(account.id, alias.address)}>
+                            {alias.name || account.name} — {alias.address}
+                          </option>
+                        )),
+                      ])}
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-1 top-3 size-4 text-muted-foreground" />
                   </div>

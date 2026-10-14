@@ -37,7 +37,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/assets/` — renderer and native package branding assets. `emzero-logo-macos.png` supplies the development-only Dock icon and the macOS `.icns` fallback: 824-pixel artwork centered on a transparent 1024-pixel canvas. The Linux PNG and 192-pixel header WebP use the unpadded artwork.
 - `media/` — source Icon Composer project and exported logo used to generate the desktop branding assets. Packaging compiles `media/icon_composer.icon` into the macOS bundle's `Assets.car` for the macOS 26 dark, clear, and tinted icon appearances, which requires packaging on macOS 26 with Xcode 26+.
 - `apps/desktop/src/main/accounts.ts` — trusted IPC validation and handler registration; delegates privileged work to focused main-process services.
-- `apps/desktop/src/main/account-storage.ts` — persisted, user-ordered account records and conversion to renderer-safe account summaries.
+- `apps/desktop/src/main/account-storage.ts` — persisted, user-ordered account records (including sanitized send-as aliases) and conversion to renderer-safe account summaries.
 - `apps/desktop/src/main/signature-storage.ts` — mail signatures persisted in the user data directory, validated and reduced to signature fields on every read and write.
 - `apps/desktop/src/main/ai-assistant.ts` — encrypted OpenAI-compatible provider settings and prompt-driven reply, new-message, and saved-draft generation.
 - `apps/desktop/src/main/ai-stream.ts` — incremental OpenAI-compatible SSE parsing for streamed AI draft generation.
@@ -50,7 +50,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/mail-notifications.ts` — new-mail detection, notification preference state, native desktop alerts, and notification activation behavior.
 - `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential caching, safe error formatting, and sleep-safe isolated interactive/background per-account IMAP connections.
 - `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization with periodic full reconciliation, message parsing, and cached/server message reading.
-- `apps/desktop/src/main/message-sender.ts` — SMTP delivery, IMAP Sent-copy persistence, and sent-message cache updates.
+- `apps/desktop/src/main/message-sender.ts` — SMTP delivery from the account or a chosen alias, IMAP Sent-copy persistence, and sent-message cache updates.
 - `apps/desktop/src/main/mail-drafts.ts` — MIME draft compilation plus append-first IMAP draft autosave and deletion.
 - `apps/desktop/src/main/attachment-files.ts` — native file selection, byte-backed registration of files dropped or pasted into a composer, opaque outgoing-file authorization, attachment limits, retained-draft attachment authorization, and received-attachment saving.
 - `apps/desktop/src/main/server-search.ts` — on-demand IMAP TEXT search scoped by account, folder, or special use (All Mail/Trash/Spam on Gmail-style servers), caching found summaries for later local search.
@@ -75,6 +75,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/shared/ai.ts` — AI provider/draft IPC contracts, defaults, and renderer-to-main input validation.
 - `apps/desktop/src/shared/mail-insights.ts` — every Jev question and threshold, tag derivation, smart-inbox templates, membership rules, settings validation, and IPC contract.
 - `apps/desktop/src/shared/appearance.ts` — theme and interface-font identifiers shared by the renderer theme provider and backup validation.
+- `apps/desktop/src/shared/aliases.ts` — account send-as aliases: validation, the account's own-address set, resolving a draft's From identity, and picking the alias a reply or draft should keep sending as.
 - `apps/desktop/src/shared/signatures.ts` — signature IPC contract, size limits, and the validation shared by main-process storage, backups, and the renderer.
 - `apps/desktop/src/shared/conversations.ts` — conversation grouping and quoted-text splitting.
 - `apps/desktop/src/shared/replies.ts` — reply and reply-all construction, address parsing, and outgoing-draft validation.
@@ -96,13 +97,14 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 
 - `features/sidebar.tsx` — desktop/mobile navigation with a compact brand header (demo badge and five-click demo toggle) and account switcher, action footer, scrollable mailbox/account navigation, drag-to-reorder accounts, folder CRUD, drag-and-drop folder moves, and sync status.
 - `features/account-setup.tsx` — provider detection, password/app-password setup, and personal Microsoft device-code connection flow.
-- `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior and demo mode, account names/colors, signatures, and encrypted backup/restore.
+- `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior and demo mode, account names/colors/aliases, signatures, and encrypted backup/restore.
+- `features/account-aliases.tsx` — per-account alias editor shown in the Accounts settings tab.
 - `features/appearance-switcher.tsx` — global keyboard shortcut and accessible quick theme/font picker, shared by all renderer windows; owns the settings shortcut label.
 - `features/signatures.ts` — main-process-backed signature cache and cross-window refresh, the one-time migration off origin-scoped browser storage, account-to-signature assignments, and the plain-text signature form with the RFC 3676 "-- " delimiter.
 - `features/signature-html.ts` — the Outlook-style `<div id="Signature">` block in the editor and HTML part (no visible divider), and the delimited plain-text part derived from it.
 - `features/signature-html.test.ts` — renderer tests for signature markup and the delimited plain-text part.
 - `features/signature-picker.tsx` — compact compose-time signature selection for the composer action bar.
-- `features/compose-dialog.tsx` — dedicated new-message page, expanding inline reply/draft editor, and standalone composer: header rows, action bar, scroll-into-view and focus on open, drag-and-drop attachments, draft autosave, validation, and sending.
+- `features/compose-dialog.tsx` — dedicated new-message page, expanding inline reply/draft editor, and standalone composer: header rows (including the account-and-alias From picker), action bar, scroll-into-view and focus on open, drag-and-drop attachments, draft autosave, validation, and sending.
 - `features/compose-confirmations.tsx` — send, delete-draft, and keep-draft confirmation dialogs used by the composer.
 - `features/recipient-input.tsx` — chip-based To/Cc/Bcc rows with recipient suggestions over a plain comma-separated value.
 - `features/rich-text-editor.tsx` — borderless message editor with a portaled formatting toolbar (active states, links, quotes, lists, clear formatting), Markdown-style line shortcuts, plain-text paste, and clipboard image insertion, with a plain-text copy for AI drafting and multipart email.

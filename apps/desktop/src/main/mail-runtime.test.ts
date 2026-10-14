@@ -12,6 +12,7 @@ const account: StoredAccount = {
   encryptedSecret: 'encrypted',
   createdAt: '2026-01-01T00:00:00.000Z',
   color: 'blue',
+  aliases: [],
   imap: { host: 'imap.example.com', port: 993, secure: true },
   smtp: { host: 'smtp.example.com', port: 465, secure: true },
 };

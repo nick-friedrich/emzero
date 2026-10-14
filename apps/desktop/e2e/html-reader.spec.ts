@@ -16,7 +16,7 @@ test('HTML mail grows with content and uses only the reader scrollbar', async ()
     await application.evaluate(({ ipcMain }) => {
       const account = {
         id: 'html-test', name: 'HTML Test', email: 'me@example.test', username: 'me@example.test',
-        authentication: 'password', createdAt: '', color: 'blue',
+        authentication: 'password', createdAt: '', color: 'blue', aliases: [],
         imap: { host: 'example.test', port: 993, secure: true },
         smtp: { host: 'example.test', port: 465, secure: true },
       };

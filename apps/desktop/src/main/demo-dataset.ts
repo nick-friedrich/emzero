@@ -34,6 +34,7 @@ const demoAccounts: Record<DemoAccountKey, StoredAccount> = {
     smtp: { ...unreachableServer('smtp.northstar.invalid'), port: 465 },
     createdAt: '2026-01-10T09:00:00.000Z',
     color: 'blue',
+    aliases: [{ address: 'hello@northstar.example', name: 'Northstar Studio' }],
     encryptedSecret: '',
   },
   personal: {
@@ -47,6 +48,7 @@ const demoAccounts: Record<DemoAccountKey, StoredAccount> = {
     smtp: { ...unreachableServer('smtp.mail.invalid'), port: 465 },
     createdAt: '2026-01-11T09:00:00.000Z',
     color: 'orange',
+    aliases: [],
     encryptedSecret: '',
   },
 };

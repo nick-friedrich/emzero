@@ -1,3 +1,4 @@
+import type { MailAlias } from './aliases.js';
 import type { MailSignature } from './signatures.js';
 
 export interface MailServerSettings {
@@ -30,6 +31,8 @@ export interface AccountSummary {
   createdAt: string;
   /** Identifies the account in mixed-account views such as the unified inbox. */
   color: AccountColor;
+  /** Extra addresses this account can send as. */
+  aliases: MailAlias[];
 }
 
 export const ACCOUNT_COLORS = [
@@ -454,6 +457,8 @@ export interface MailSendDraft {
   inReplyTo: string | null;
   references: string[];
   attachments: MailOutgoingAttachment[];
+  /** Send as this alias address; omitted sends from the account's own address. */
+  from?: string;
 }
 
 export type MailReplyDraft = MailSendDraft;
@@ -549,6 +554,7 @@ export interface AccountBackupResult {
 export interface AccountUpdate {
   name?: string;
   color?: AccountColor;
+  aliases?: MailAlias[];
 }
 
 export interface MicrosoftAuthStartResult {

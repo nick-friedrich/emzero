@@ -7,6 +7,7 @@ import {
   type MailSendResult,
   usesImplicitTls,
 } from '../shared/accounts.js';
+import { sendingIdentity } from '../shared/aliases.js';
 import { validateReplyDraft, validateSendDraft } from '../shared/replies.js';
 import type { StoredAccount } from './account-storage.js';
 import { releaseOutgoingAttachments, resolveOutgoingAttachments } from './attachment-files.js';
@@ -30,8 +31,10 @@ export async function sendMessage(
 ): Promise<MailSendResult> {
   const validationError = kind === 'reply' ? validateReplyDraft(draft) : validateSendDraft(draft);
   if (validationError) return { ok: false, message: validationError };
+  const from = sendingIdentity(account, draft.from);
+  if (!from) return { ok: false, message: 'Choose an address from this account to send from.' };
   const sentLabel = kind === 'reply' ? 'Reply' : 'Message';
-  if (demoModeEnabled()) return sendDemoMessage(account, draft, sentLabel);
+  if (demoModeEnabled()) return sendDemoMessage(account, draft, sentLabel, from);
 
   let password = '';
   try {
@@ -39,7 +42,7 @@ export async function sendMessage(
     const sentAt = new Date();
     const attachments = await resolveOutgoingAttachments(draft.attachments);
     const messageOptions = {
-      from: { name: account.name, address: account.email },
+      from,
       to: draft.to.map(({ name, address }) => ({ name: name ?? '', address: address! })),
       cc: draft.cc.map(({ name, address }) => ({ name: name ?? '', address: address! })),
       bcc: draft.bcc.map(({ name, address }) => ({ name: name ?? '', address: address! })),
@@ -73,7 +76,7 @@ export async function sendMessage(
     try {
       const result = await smtp.sendMail({
         raw: compiled.message,
-        // The compiled envelope always carries this account's address, but nodemailer types a
+        // The compiled envelope always carries the sending address, but nodemailer types a
         // sender as `string | false`, `false` being the null reverse-path that sending rejects.
         envelope: { ...compiled.envelope, from: compiled.envelope.from || undefined },
       });
@@ -128,7 +131,7 @@ export async function sendMessage(
             inReplyTo: draft.inReplyTo,
             references: draft.references,
             subject: draft.subject.trim(),
-            from: [{ name: account.name, address: account.email }],
+            from: [from],
             to: draft.to,
             sentAt: sentAt.toISOString(),
             receivedAt: null,
