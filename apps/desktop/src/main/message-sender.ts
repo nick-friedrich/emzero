@@ -1,10 +1,11 @@
 import { ImapFlow } from 'imapflow';
 import nodemailer from 'nodemailer';
 import { simpleParser } from 'mailparser';
-import type {
-  MailMessageSummary,
-  MailSendDraft,
-  MailSendResult,
+import {
+  type MailMessageSummary,
+  type MailSendDraft,
+  type MailSendResult,
+  usesImplicitTls,
 } from '../shared/accounts.js';
 import { validateReplyDraft, validateSendDraft } from '../shared/replies.js';
 import type { StoredAccount } from './account-storage.js';
@@ -62,7 +63,7 @@ export async function sendMessage(
     const smtp = nodemailer.createTransport({
       host: account.smtp.host,
       port: account.smtp.port,
-      secure: account.smtp.secure,
+      secure: usesImplicitTls(account.smtp),
       auth: smtpAuthentication(account, password),
       connectionTimeout: 12_000,
       greetingTimeout: 12_000,

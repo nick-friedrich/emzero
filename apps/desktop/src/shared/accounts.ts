@@ -648,6 +648,19 @@ export function defaultAccountName(email: string): string {
   return email.trim();
 }
 
+const IMPLICIT_TLS_PORTS = new Set([465, 993]);
+const STARTTLS_PORTS = new Set([25, 143, 587]);
+
+/**
+ * Whether to open the connection with implicit TLS. Well-known ports only work one way,
+ * so they override the checkbox: implicit TLS on 587 fails with WRONG_VERSION_NUMBER.
+ */
+export function usesImplicitTls(server: MailServerSettings): boolean {
+  if (IMPLICIT_TLS_PORTS.has(server.port)) return true;
+  if (STARTTLS_PORTS.has(server.port)) return false;
+  return server.secure;
+}
+
 export function validateAccountDraft(value: AccountDraft): string | null {
   if (!value.name.trim()) return 'Enter a name for this account.';
   if (!emailPattern.test(value.email.trim())) return 'Enter a valid email address.';

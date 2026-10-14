@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { app, safeStorage } from 'electron';
 import { ImapFlow } from 'imapflow';
+import { usesImplicitTls } from '../shared/accounts.js';
 import { readAccounts, writeAccounts, type StoredAccount } from './account-storage.js';
 import { demoModeEnabled } from './demo-profile.js';
 import { MailCache } from './mail-cache.js';
@@ -47,7 +48,15 @@ export function disconnectPooledImapConnections(): void {
 }
 
 export function errorMessage(error: unknown, secret: string): string {
-  const message = error instanceof Error ? error.message : 'Unknown connection error';
+  let message = error instanceof Error ? error.message : 'Unknown connection error';
+  // ImapFlow rejects with a generic "Command failed"; the server's reason is attached separately.
+  const details = error as { authenticationFailed?: boolean; responseText?: string };
+  if (details.authenticationFailed) {
+    message =
+      'Authentication failed. Check the username, and use an app-specific password if your provider requires one.';
+  } else if (typeof details.responseText === 'string' && details.responseText) {
+    message = `${message}: ${details.responseText}`;
+  }
   return secret ? message.replaceAll(secret, '••••••••') : message;
 }
 
@@ -171,7 +180,7 @@ export function createImapClient(
   const imap = new ImapFlow({
     host: account.imap.host,
     port: account.imap.port,
-    secure: account.imap.secure,
+    secure: usesImplicitTls(account.imap),
     auth:
       account.authentication === 'microsoft-oauth'
         ? { user: account.username, accessToken: secret }

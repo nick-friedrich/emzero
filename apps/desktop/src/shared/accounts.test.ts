@@ -17,6 +17,7 @@ import {
   type AccountDraft,
   type MailFolderSummary,
   validateAccountDraft,
+  usesImplicitTls,
 } from './accounts.js';
 
 const validDraft: AccountDraft = {
@@ -292,5 +293,22 @@ describe('account colors', () => {
     expect(new Set(accounts.slice(0, ACCOUNT_COLORS.length).map(({ color }) => color)).size)
       .toBe(ACCOUNT_COLORS.length);
     expect(accounts.every(({ color }) => ACCOUNT_COLORS.includes(color))).toBe(true);
+  });
+});
+
+describe('usesImplicitTls', () => {
+  it('uses STARTTLS on submission ports even when implicit TLS is checked', () => {
+    expect(usesImplicitTls({ host: 'smtp.mail.me.com', port: 587, secure: true })).toBe(false);
+    expect(usesImplicitTls({ host: 'imap.example.com', port: 143, secure: true })).toBe(false);
+  });
+
+  it('uses implicit TLS on 465 and 993', () => {
+    expect(usesImplicitTls({ host: 'smtp.example.com', port: 465, secure: false })).toBe(true);
+    expect(usesImplicitTls({ host: 'imap.example.com', port: 993, secure: false })).toBe(true);
+  });
+
+  it('respects the setting on other ports', () => {
+    expect(usesImplicitTls({ host: 'mail.example.com', port: 2525, secure: true })).toBe(true);
+    expect(usesImplicitTls({ host: 'mail.example.com', port: 2525, secure: false })).toBe(false);
   });
 });

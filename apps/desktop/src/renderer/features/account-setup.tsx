@@ -21,6 +21,7 @@ import {
   type AccountSummary,
   type MailProvider,
   defaultAccountName,
+  usesImplicitTls,
   validateAccountDraft,
 } from '../../shared/accounts';
 import type { Status } from './app-shared';
@@ -198,10 +199,11 @@ export function AccountSetup({
     key: 'host' | 'port' | 'secure',
     value: string | number | boolean,
   ) => {
-    setDraft((current) => ({
-      ...current,
-      [protocol]: { ...current[protocol], [key]: value },
-    }));
+    setDraft((current) => {
+      const server = { ...current[protocol], [key]: value };
+      if (key === 'port') server.secure = usesImplicitTls(server);
+      return { ...current, [protocol]: server };
+    });
     setStatus(null);
   };
 

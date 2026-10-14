@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer';
 import {
   type AccountDraft,
   type AccountOperationResult,
+  usesImplicitTls,
   validateAccountDraft,
 } from '../shared/accounts.js';
 import { errorMessage } from './mail-runtime.js';
@@ -19,7 +20,7 @@ async function verifyConnectionsWithSecret(
   const imap = new ImapFlow({
     host: draft.imap.host.trim(),
     port: draft.imap.port,
-    secure: draft.imap.secure,
+    secure: usesImplicitTls(draft.imap),
     auth: oauth
       ? { user: draft.username.trim(), accessToken: secret }
       : { user: draft.username.trim(), pass: secret },
@@ -35,7 +36,7 @@ async function verifyConnectionsWithSecret(
   const smtp = nodemailer.createTransport({
     host: draft.smtp.host.trim(),
     port: draft.smtp.port,
-    secure: draft.smtp.secure,
+    secure: usesImplicitTls(draft.smtp),
     auth: oauth
       ? { type: 'OAuth2', user: draft.username.trim(), accessToken: secret }
       : { user: draft.username.trim(), pass: secret },
