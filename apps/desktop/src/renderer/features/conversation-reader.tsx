@@ -1,4 +1,5 @@
 import { MessageHtmlFrame } from './message-html-frame';
+import { LinkifiedText } from './linkified-text';
 import {
   useCallback,
   useEffect,
@@ -166,10 +167,12 @@ function MessageBody({
         </>
       ) : (
         <div className="mt-4 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
-          {textParts.visible || 'No new text in this reply.'}
+          {textParts.visible
+            ? <LinkifiedText text={textParts.visible} onOpenLink={setPendingLink} />
+            : 'No new text in this reply.'}
           {showQuoted && textParts.quoted && (
             <div className="mt-5 border-l-2 border-border pl-4 text-muted-foreground">
-              {textParts.quoted}
+              <LinkifiedText text={textParts.quoted} onOpenLink={setPendingLink} />
             </div>
           )}
         </div>
