@@ -47,6 +47,26 @@ export function disconnectPooledImapConnections(): void {
   }
 }
 
+/**
+ * Drops an account's cached credentials and closes its pooled connections once their
+ * queued operations finish, so the next operation signs in with the account's saved
+ * settings.
+ */
+export function forgetAccountConnections(accountId: string): void {
+  passwordCache.delete(accountId);
+  microsoftTokenCache.delete(accountId);
+  for (const [key, connection] of pooledImapConnections) {
+    if (!key.startsWith(`${accountId}:`)) continue;
+    void connection.queue.then(() => {
+      if (connection.idleTimer) clearTimeout(connection.idleTimer);
+      connection.idleTimer = null;
+      const imap = connection.imap;
+      connection.imap = null;
+      void closeImap(imap);
+    });
+  }
+}
+
 export function errorMessage(error: unknown, secret: string): string {
   let message = error instanceof Error ? error.message : 'Unknown connection error';
   // ImapFlow rejects with a generic "Command failed"; the server's reason is attached separately.

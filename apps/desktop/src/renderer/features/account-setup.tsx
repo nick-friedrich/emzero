@@ -38,15 +38,18 @@ const initialDraft: AccountDraft = {
 };
 
 
-function ServerFields({
+/** Host, port, and TLS inputs for one mail server; also used when editing an account. */
+export function ServerFields({
   title,
   protocol,
   server,
+  disabled,
   onChange,
 }: {
   title: string;
   protocol: 'imap' | 'smtp';
   server: AccountDraft['imap'];
+  disabled?: boolean;
   onChange: (
     protocol: 'imap' | 'smtp',
     key: 'host' | 'port' | 'secure',
@@ -62,6 +65,7 @@ function ServerFields({
             className="field"
             placeholder={`${protocol}.example.com`}
             value={server.host}
+            disabled={disabled}
             onChange={(event) => onChange(protocol, 'host', event.target.value)}
           />
         </Field>
@@ -72,6 +76,7 @@ function ServerFields({
             min="1"
             max="65535"
             value={server.port}
+            disabled={disabled}
             onChange={(event) => onChange(protocol, 'port', Number(event.target.value))}
           />
         </Field>
@@ -81,6 +86,7 @@ function ServerFields({
           className="size-4 accent-primary"
           type="checkbox"
           checked={server.secure}
+          disabled={disabled}
           onChange={(event) => onChange(protocol, 'secure', event.target.checked)}
         />
         Use implicit TLS

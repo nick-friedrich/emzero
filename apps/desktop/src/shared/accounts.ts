@@ -557,6 +557,15 @@ export interface AccountUpdate {
   aliases?: MailAlias[];
 }
 
+/** Changed sign-in and server details for an existing account; verified before saving. */
+export interface AccountConnectionUpdate {
+  username: string;
+  imap: MailServerSettings;
+  smtp: MailServerSettings;
+  /** A new password; omit or leave empty to keep the stored one. */
+  password?: string;
+}
+
 export interface MicrosoftAuthStartResult {
   ok: boolean;
   message: string;
@@ -602,6 +611,7 @@ export const ACCOUNT_CHANNELS = {
   openSettingsWindow: 'window:open-settings',
   getMailWindowContext: 'window:get-mail-context',
   update: 'accounts:update',
+  updateConnection: 'accounts:update-connection',
   reorder: 'accounts:reorder',
   remove: 'accounts:remove',
   exportBackup: 'accounts:backup-export',

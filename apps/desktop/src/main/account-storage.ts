@@ -1,6 +1,6 @@
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { app } from 'electron';
+import { app, safeStorage } from 'electron';
 import { withAccountColors, type AccountSummary } from '../shared/accounts.js';
 import { storedAliases } from '../shared/aliases.js';
 
@@ -45,6 +45,20 @@ export async function writeAccounts(accounts: StoredAccount[]): Promise<void> {
   await writeFile(temporary, `${JSON.stringify(accounts, null, 2)}\n`, { mode: 0o600 });
   await rename(temporary, target);
 }
+
+/** Encrypts an account secret, or returns null when no secure system keyring is available. */
+export async function encryptAccountSecret(secret: string): Promise<string | null> {
+  const insecureLinuxBackend =
+    process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text';
+  const asyncEncryptionAvailable = await safeStorage.isAsyncEncryptionAvailable();
+  if (!safeStorage.isEncryptionAvailable() || !asyncEncryptionAvailable || insecureLinuxBackend) {
+    return null;
+  }
+  return (await safeStorage.encryptStringAsync(secret)).toString('base64');
+}
+
+export const SECURE_STORAGE_UNAVAILABLE =
+  'Secure credential storage is unavailable. Unlock or configure your system keyring and try again.';
 
 export function toAccountSummary(account: StoredAccount): AccountSummary {
   return {

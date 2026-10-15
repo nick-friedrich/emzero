@@ -37,18 +37,19 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/assets/` — renderer and native package branding assets. `emzero-logo-macos.png` supplies the development-only Dock icon and the macOS `.icns` fallback: 824-pixel artwork centered on a transparent 1024-pixel canvas. The Linux PNG and 192-pixel header WebP use the unpadded artwork.
 - `media/` — source Icon Composer project and exported logo used to generate the desktop branding assets. Packaging compiles `media/icon_composer.icon` into the macOS bundle's `Assets.car` for the macOS 26 dark, clear, and tinted icon appearances, which requires packaging on macOS 26 with Xcode 26+.
 - `apps/desktop/src/main/accounts.ts` — trusted IPC validation and handler registration; delegates privileged work to focused main-process services.
-- `apps/desktop/src/main/account-storage.ts` — persisted, user-ordered account records (including sanitized send-as aliases) and conversion to renderer-safe account summaries.
+- `apps/desktop/src/main/account-storage.ts` — persisted, user-ordered account records (including sanitized send-as aliases), keyring-backed secret encryption, and conversion to renderer-safe account summaries.
 - `apps/desktop/src/main/signature-storage.ts` — mail signatures persisted in the user data directory, validated and reduced to signature fields on every read and write.
 - `apps/desktop/src/main/ai-assistant.ts` — encrypted OpenAI-compatible provider settings and prompt-driven reply, new-message, and saved-draft generation.
 - `apps/desktop/src/main/ai-stream.ts` — incremental OpenAI-compatible SSE parsing for streamed AI draft generation.
 - `apps/desktop/src/main/mail-insights.ts` — smart-inbox settings storage and IPC, plus the background classifier that sends new Inbox mail previews to TypeSafe Jev through OpenRouter's Decisions API and stores tags and rule scores in the mail cache.
 - `apps/desktop/src/main/account-backup.ts` — backward-compatible password-encrypted backup export/import for accounts, optional app settings and signatures, destination-machine credential re-wrapping, and signature account-ID remapping.
 - `apps/desktop/src/main/account-connection.ts` — IMAP/SMTP account connectivity verification.
+- `apps/desktop/src/main/account-connection-update.ts` — validated, connection-verified changes to an existing password account's username, password, and IMAP/SMTP servers.
 - `apps/desktop/src/main/microsoft-oauth.ts` — personal Microsoft device-code authorization, token exchange, and refresh-token renewal.
 - `apps/desktop/src/main/account-folders.ts` — cached/server folder listing, validation, creation, rename, move, deletion, and ordering.
 - `apps/desktop/src/main/background-sync.ts` — foreground-safe scheduled and on-demand Inbox/Sent synchronization state and execution.
 - `apps/desktop/src/main/mail-notifications.ts` — new-mail detection, notification preference state, native desktop alerts, and notification activation behavior.
-- `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential caching, safe error formatting, and sleep-safe isolated interactive/background per-account IMAP connections.
+- `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential caching and per-account invalidation, safe error formatting, and sleep-safe isolated interactive/background per-account IMAP connections.
 - `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization with periodic full reconciliation, message parsing, and cached/server message reading.
 - `apps/desktop/src/main/message-sender.ts` — SMTP delivery from the account or a chosen alias, IMAP Sent-copy persistence, and sent-message cache updates.
 - `apps/desktop/src/main/mail-drafts.ts` — MIME draft compilation plus append-first IMAP draft autosave and deletion.
@@ -96,8 +97,9 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 ## Renderer features
 
 - `features/sidebar.tsx` — desktop/mobile navigation with a compact brand header (demo badge and five-click demo toggle) and account switcher, action footer, scrollable mailbox/account navigation, drag-to-reorder accounts, folder CRUD, drag-and-drop folder moves, and sync status.
-- `features/account-setup.tsx` — provider detection, password/app-password setup, and personal Microsoft device-code connection flow.
-- `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior and demo mode, account names/colors/aliases, signatures, and encrypted backup/restore.
+- `features/account-setup.tsx` — provider detection, password/app-password setup, personal Microsoft device-code connection flow, and the shared IMAP/SMTP server fields.
+- `features/account-connection-editor.tsx` — per-account username, password, and server editor shown in the Accounts settings tab.
+- `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior and demo mode, account names/colors/connection details/aliases, signatures, and encrypted backup/restore.
 - `features/account-aliases.tsx` — per-account alias editor shown in the Accounts settings tab.
 - `features/appearance-switcher.tsx` — global keyboard shortcut and accessible quick theme/font picker, shared by all renderer windows; owns the settings shortcut label.
 - `features/signatures.ts` — main-process-backed signature cache and cross-window refresh, the one-time migration off origin-scoped browser storage, account-to-signature assignments, and the plain-text signature form with the RFC 3676 "-- " delimiter.

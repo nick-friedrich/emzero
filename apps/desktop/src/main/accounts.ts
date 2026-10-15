@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ipcMain, safeStorage, shell } from 'electron';
+import { ipcMain, shell } from 'electron';
 import {
   AI_CHANNELS,
   validAiDraftMessageRequest,
@@ -62,8 +62,11 @@ import {
   moveAccountFolder,
   renameAccountFolder,
 } from './account-folders.js';
+import { updateAccountConnection } from './account-connection-update.js';
 import {
+  encryptAccountSecret,
   readAccounts,
+  SECURE_STORAGE_UNAVAILABLE,
   toAccountSummary,
   writeAccounts,
   type StoredAccount,
@@ -96,21 +99,12 @@ async function saveConnectedAccount(
   draft: AccountDraft,
   secret: string,
 ): Promise<AccountOperationResult> {
-  const insecureLinuxBackend =
-    process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text';
-  const asyncEncryptionAvailable = await safeStorage.isAsyncEncryptionAvailable();
-  if (!safeStorage.isEncryptionAvailable() || !asyncEncryptionAvailable || insecureLinuxBackend) {
-    return {
-      ok: false,
-      message:
-        'Secure credential storage is unavailable. Unlock or configure your system keyring and try again.',
-    };
-  }
-
   const accounts = await readAccounts();
   if (accounts.some((account) => account.email.toLowerCase() === draft.email.toLowerCase())) {
     return { ok: false, message: 'An account with this email address already exists.' };
   }
+  const encryptedSecret = await encryptAccountSecret(secret);
+  if (!encryptedSecret) return { ok: false, message: SECURE_STORAGE_UNAVAILABLE };
   const authentication = draft.credentials.type;
   const account: StoredAccount = {
     id: randomUUID(),
@@ -123,7 +117,7 @@ async function saveConnectedAccount(
     createdAt: new Date().toISOString(),
     color: withAccountColors([...accounts, { createdAt: new Date().toISOString() }]).at(-1)!.color,
     aliases: [],
-    encryptedSecret: (await safeStorage.encryptStringAsync(secret)).toString('base64'),
+    encryptedSecret,
     ...(authentication === 'microsoft-oauth' ? { oauthClientId: MICROSOFT_CLIENT_ID } : {}),
   };
 
@@ -413,6 +407,17 @@ export function registerAccountHandlers(): void {
             : 'Account name updated.',
         account: toAccountSummary(account),
       } satisfies AccountOperationResult;
+    },
+  );
+
+  ipcMain.handle(
+    ACCOUNT_CHANNELS.updateConnection,
+    async (event, accountId: unknown, update: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (demoModeEnabled()) {
+        return { ok: false, message: 'Server settings cannot be changed in demo mode.' } satisfies AccountOperationResult;
+      }
+      return updateAccountConnection(accountId, update);
     },
   );
 
