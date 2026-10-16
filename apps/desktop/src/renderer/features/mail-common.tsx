@@ -392,7 +392,7 @@ export interface UnifiedConversationItem {
   supportsEmzeroKeywords: boolean;
 }
 
-interface UnifiedAccountFailure {
+export interface UnifiedAccountFailure {
   account: AccountSummary;
   message: string;
 }

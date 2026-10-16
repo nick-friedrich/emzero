@@ -2,13 +2,11 @@ import { MailViewMenu } from './mail-view-menu';
 import {
   useCallback,
   useEffect,
-  useEffectEvent,
   useMemo,
   useRef,
   useState,
 } from 'react';
 import {
-  CircleAlert,
   FileText,
   Inbox,
   LoaderCircle,
@@ -19,10 +17,7 @@ import {
 import {
   Button,
 } from '@/components/ui/button';
-import {
-  cn,
-  keysInRange,
-} from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import {
   type AccountSummary,
   type BulkMessageJobRequest,
@@ -32,22 +27,13 @@ import {
   findInboxFolder,
 } from '../../shared/accounts';
 import {
-  groupMessagesWithRelated,
-  type MailConversation,
-} from '../../shared/conversations';
-import {
   BulkActionToolbar,
   conversationWithMessage,
-  conversationWithFlaggedValues,
-  conversationWithImportanceValues,
-  conversationWithUnreadValues,
-  isEditableTarget,
   MailLayoutToggle,
   SidebarHeaderToggle,
   messageCountInFolder,
   performConversationAction,
   type ConversationAction,
-  type FolderSelection,
   type StartBulkOperation,
   type MailLayout,
   type UnifiedConversationItem,
@@ -55,9 +41,20 @@ import {
   useCompactMailList,
 } from './mail-common';
 import { ConversationActions } from './conversation-actions';
-import { accountColorDotClass } from './account-colors';
+import { AccountFilterBar, AccountMessages } from './unified-account-bar';
 import { ConversationRow, conversationRowFacts, ConversationSections } from './conversation-row';
-import { MailSplitLayout } from './mail-split-layout';
+import { optimisticPatches, patchConversation, type MessagePatches } from './conversation-patches';
+import { useListSelection, useReadToggleShortcut } from './list-selection';
+import {
+  loadUnifiedAccount,
+  unifiedInboxState,
+  unifiedItemKey as itemKey,
+  unifiedStateWithoutDrafts,
+  unifiedStateWithSavedDrafts,
+  type UnifiedAccountLoad,
+  type UnifiedMailbox,
+} from './unified-inbox-data';
+import { MailReaderPlaceholder, MailSplitLayout } from './mail-split-layout';
 import { readerSelectionAfterRemoval } from './reader-selection';
 import { ConversationReader } from './conversation-reader';
 import type { DraftDeletedEvent, DraftSavedEvent } from './compose-dialog';
@@ -74,65 +71,13 @@ import {
   InboxViewOptions,
   useInboxViewOptions,
 } from './inbox-view-options';
-import { tomorrowDateKey, type EmzeroMessageColor } from '../../shared/message-keywords';
+import type { EmzeroMessageColor } from '../../shared/message-keywords';
 import { smartInboxContains, skipsUnifiedInbox } from '../../shared/mail-insights';
 import {
   conversationInsightMessage,
   RemoveFromSmartInboxButton,
   useSmartInboxes,
 } from './smart-inboxes';
-
-function conversationTime(conversation: MailConversation): number {
-  const latest = conversation.messages[0];
-  const value = latest?.sentAt ?? latest?.receivedAt;
-  const time = value ? new Date(value).getTime() : 0;
-  return Number.isNaN(time) ? 0 : time;
-}
-
-function itemKey(item: UnifiedConversationItem): string {
-  return `${item.selection.account.id}:${item.conversation.id}`;
-}
-
-function AccountFilterBar({
-  accounts,
-  value,
-  onChange,
-}: {
-  accounts: AccountSummary[];
-  value: string | null;
-  onChange: (accountId: string | null) => void;
-}) {
-  const chip = (active: boolean) => cn(
-    'flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-    active
-      ? 'border-border bg-secondary font-medium text-foreground'
-      : 'border-transparent text-muted-foreground hover:bg-secondary/60 hover:text-foreground',
-  );
-  return (
-    <div
-      className="flex min-w-0 items-center gap-1 overflow-x-auto border-b border-border/60 px-4 py-2 lg:px-6"
-      role="toolbar"
-      aria-label="Filter by account"
-    >
-      <button type="button" className={chip(value === null)} aria-pressed={value === null} onClick={() => onChange(null)}>
-        All accounts
-      </button>
-      {accounts.map((account) => (
-        <button
-          key={account.id}
-          type="button"
-          className={chip(value === account.id)}
-          aria-pressed={value === account.id}
-          title={account.email}
-          onClick={() => onChange(value === account.id ? null : account.id)}
-        >
-          <span className={cn('size-2 rounded-full', accountColorDotClass(account.color))} aria-hidden="true" />
-          {account.name}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 export function UnifiedInbox({
   accounts,
@@ -149,7 +94,7 @@ export function UnifiedInbox({
   smartInboxId,
 }: {
   accounts: AccountSummary[];
-  mailbox: 'inbox' | 'starred' | 'drafts' | 'trash';
+  mailbox: UnifiedMailbox;
   /** Show only Inbox mail that AI filed into this smart inbox. */
   smartInboxId?: string;
   onStartBulkOperation: StartBulkOperation;
@@ -201,11 +146,6 @@ export function UnifiedInbox({
   const [busyConversations, setBusyConversations] = useState<ReadonlySet<string>>(new Set());
   const [actionsMenuKey, setActionsMenuKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [selectedItemKeys, setSelectedItemKeys] = useState<ReadonlySet<string>>(new Set());
-  const [selectionAnchorKey, setSelectionAnchorKey] = useState<string | null>(null);
-  const [selectionCursorKey, setSelectionCursorKey] = useState<string | null>(null);
-  const unifiedRowRefs = useRef(new Map<string, HTMLButtonElement>());
-  const unifiedDeleteButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingUnifiedFocusKey = useRef<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const { scheduleAction, isHidden, undoBar } = useUndoableAction();
@@ -219,168 +159,28 @@ export function UnifiedInbox({
   useEffect(() => {
     if (!smart.loaded) return;
     let active = true;
-    const loadAccount = async (account: AccountSummary) => {
-      try {
-        const folderResult = await window.emzero.folders.list(account.id, refreshKey > 0);
-        if (!folderResult.ok) {
-          return {
-            failure: {
-              account,
-              message: folderResult.message ?? 'Could not load folders.',
-            },
-          };
-        }
-
-        const designatedFolder = mailbox === 'inbox'
-          ? findInboxFolder(folderResult.folders)
-          : folderResult.folders.find((candidate) =>
-              candidate.selectable && candidate.specialUse === {
-                starred: '\\Flagged',
-                drafts: '\\Drafts',
-                trash: '\\Trash',
-              }[mailbox],
-            );
-        const sourceFolders = designatedFolder
-          ? [designatedFolder]
-          : mailbox === 'starred'
-            ? folderResult.folders.filter((candidate) => candidate.selectable && candidate.specialUse !== '\\Trash')
-            : [];
-        if (sourceFolders.length === 0) {
-          return { failure: { account, message: `No selectable ${title.toLowerCase()} folder was found.` } };
-        }
-
-        const sentFolder = folderResult.folders.find(
-          (candidate) => candidate.selectable && candidate.specialUse === '\\Sent',
-        );
-        const inboxFolder = findInboxFolder(folderResult.folders);
-        const draftsFolder = folderResult.folders.find(
-          (candidate) => candidate.selectable && candidate.specialUse === '\\Drafts',
-        );
-        const relatedFolders = mailbox === 'inbox'
-          ? [sentFolder, draftsFolder]
-          : mailbox === 'drafts'
-            ? [sentFolder, inboxFolder]
-            : [];
-        const [sourceResults, relatedResults] = await Promise.all([
-          Promise.all(sourceFolders.map((folder) =>
-            window.emzero.messages.list(account.id, folder.path, refreshKey > 0)
-              .then((result) => ({ folder, result })),
-          )),
-          Promise.all(relatedFolders.flatMap((folder) =>
-            folder && folder.path !== designatedFolder?.path
-              ? [window.emzero.messages.list(account.id, folder.path, refreshKey > 0)
-                  .then((result) => ({ folder, result }))]
-              : [],
-          )),
-        ]);
-        const failedResult = sourceResults.find(({ result }) => !result.ok);
-        if (failedResult) {
-          return {
-            failure: {
-              account,
-              message: failedResult.result.message ?? `Could not load ${title.toLowerCase()} messages.`,
-            },
-          };
-        }
-
-        const loadedSources = sourceResults.map(({ folder, result }) => {
-          const messages = result.messages
-            .filter((message) => mailbox !== 'starred' || message.flagged)
-            .filter((message) => !messageFilter || messageFilter(message))
-            .map((message) => ({ ...message, folderPath: folder.path }));
-          return {
-            folder,
-            supportsEmzeroKeywords: Boolean(result.supportsEmzeroKeywords),
-            messages,
-            total: mailbox === 'starred' || messageFilter ? messages.length : result.total,
-            notice: result.message,
-          };
-        });
-        const relatedMessages = relatedResults.flatMap(({ folder, result }) =>
-          result.ok
-            ? result.messages.map((message) => ({
-                ...message,
-                folderPath: folder.path,
-              }))
-            : [],
-        );
-        return {
-          account,
-          items: loadedSources.flatMap(({ folder, messages, supportsEmzeroKeywords }) => {
-            const selection: FolderSelection = { kind: 'folder', account, folder };
-            return groupMessagesWithRelated(
-              messages,
-              ['inbox', 'drafts'].includes(mailbox) ? relatedMessages : [],
-            ).map((conversation) => ({
-              selection,
-              folders: folderResult.folders,
-              conversation,
-              supportsEmzeroKeywords,
-            }));
-          }),
-          loadedMessages: loadedSources.reduce((total, source) => total + source.messages.length, 0),
-          totalMessages: loadedSources.reduce((total, source) => total + source.total, 0),
-          notices: [folderResult.message, ...loadedSources.map(({ notice }) => notice), ...relatedResults.map(({ result }) => result.message)].filter(
-            (message): message is string => Boolean(message),
-          ),
-        };
-      } catch {
-        return { failure: { account, message: 'Could not connect to this account.' } };
-      }
-    };
-    type AccountLoad = Awaited<ReturnType<typeof loadAccount>>;
-    const buildState = (results: AccountLoad[], pendingAccounts: number): UnifiedInboxLoadState => {
-      const items = results
-        .flatMap((result) => ('items' in result && result.items ? result.items : []))
-        .filter((item) => !isHidden(itemKey(item)))
-        .sort(
-          (left, right) =>
-            conversationTime(right.conversation) - conversationTime(left.conversation),
-        );
-      const failures = results.flatMap((result) =>
-        'failure' in result && result.failure ? [result.failure] : [],
-      );
-      const notices = results.flatMap((result) =>
-        'notices' in result && result.notices
-          ? result.notices.map((message) => ({ account: result.account, message }))
-          : [],
-      );
-      return {
-        status: 'loaded',
-        items,
-        failures,
-        notices,
-        loadedMessages: results.reduce(
-          (total, result) => total + ('loadedMessages' in result ? (result.loadedMessages ?? 0) : 0),
-          0,
-        ),
-        totalMessages: results.reduce(
-          (total, result) => total + ('totalMessages' in result ? (result.totalMessages ?? 0) : 0),
-          0,
-        ),
-        pendingAccounts,
-      };
-    };
-
     // Accounts report in as they finish so one slow server does not hold up the
     // others. A complete list already on screen is kept until every account is done.
-    const settled = new Map<number, AccountLoad>();
+    const options = { mailbox, title, messageFilter, force: refreshKey > 0 };
+    const settled = new Map<number, UnifiedAccountLoad>();
     const publish = () => {
       if (!active) return;
       const results = loadAccounts.flatMap((_, index) => settled.get(index) ?? []);
       const pending = loadAccounts.length - settled.size;
       if (pending === 0) {
-        setState(buildState(results, 0));
+        setState(unifiedInboxState(results, 0, isHidden));
         setRefreshing(false);
         return;
       }
       setState((current) =>
-        current.status === 'loaded' && !current.pendingAccounts ? current : buildState(results, pending),
+        current.status === 'loaded' && !current.pendingAccounts
+          ? current
+          : unifiedInboxState(results, pending, isHidden),
       );
     };
     if (loadAccounts.length === 0) void Promise.resolve().then(publish);
     loadAccounts.forEach((account, index) => {
-      void loadAccount(account).then((result) => {
+      void loadUnifiedAccount(account, options).then((result) => {
         settled.set(index, result);
         publish();
       });
@@ -391,9 +191,7 @@ export function UnifiedInbox({
   }, [loadAccounts, mailbox, messageFilter, refreshKey, smart.loaded, syncRevision, title]);
 
   const refresh = () => {
-    setSelectedItemKeys(new Set());
-    setSelectionAnchorKey(null);
-    setSelectionCursorKey(null);
+    listSelection.clear();
     // Keep the list and any open conversation on screen; the header spinner shows the reload.
     setRefreshing(true);
     setRefreshKey((current) => current + 1);
@@ -426,99 +224,36 @@ export function UnifiedInbox({
     }));
     setState((current) => {
       if (current.status !== 'loaded') return current;
-      const accountItems = current.items.filter(
-        (item) => item.selection.account.id === account.id,
-      );
-      const existingByKey = new Map(
-        accountItems.flatMap((item) => item.conversation.messages).map(
-          (message) => [`${message.folderPath}:${message.uid}`, message] as const,
-        ),
-      );
-      const existingMessages = [...existingByKey.values()];
-      const primaryMessages = mailbox === 'drafts'
-        ? draftMessages
-        : existingMessages.filter((message) => message.folderPath === sourceFolder.path);
-      const relatedMessages = [
-        ...(mailbox === 'inbox' ? draftMessages : []),
-        ...existingMessages.filter(
-          (message) =>
-            message.folderPath !== sourceFolder.path &&
-            message.folderPath !== event.reference.folderPath,
-        ),
-      ];
-      const selection: FolderSelection = { kind: 'folder', account, folder: sourceFolder };
-      const replacementItems = groupMessagesWithRelated(primaryMessages, relatedMessages).map(
-        (conversation) => ({
-          selection,
-          folders: folderResult.folders,
-          conversation,
-          supportsEmzeroKeywords: mailbox === 'drafts'
-            ? Boolean(draftResult.supportsEmzeroKeywords)
-            : Boolean(sourceFolder.supportsEmzeroKeywords),
-        }),
-      );
-      const items = [
-        ...current.items.filter((item) => item.selection.account.id !== account.id),
-        ...replacementItems,
-      ].sort(
-        (left, right) => conversationTime(right.conversation) - conversationTime(left.conversation),
-      );
+      const { state: next, replacementItems } = unifiedStateWithSavedDrafts(current, {
+        mailbox,
+        account,
+        folders: folderResult.folders,
+        sourceFolder,
+        draftFolderPath: event.reference.folderPath,
+        draftMessages,
+        draftTotal: draftResult.total,
+        draftsSupportEmzeroKeywords: Boolean(draftResult.supportsEmzeroKeywords),
+      });
       setSelectedItem((selected) => {
         if (!selected || selected.selection.account.id !== account.id) return selected;
         return replacementItems.find(
           (item) => item.conversation.id === selected.conversation.id,
         ) ?? selected;
       });
-      const previousPrimaryCount = existingMessages.filter(
-        (message) => message.folderPath === sourceFolder.path,
-      ).length;
-      return {
-        ...current,
-        items,
-        loadedMessages: mailbox === 'drafts'
-          ? current.loadedMessages - previousPrimaryCount + draftMessages.length
-          : current.loadedMessages,
-        totalMessages: mailbox === 'drafts'
-          ? current.totalMessages - previousPrimaryCount + draftResult.total
-          : current.totalMessages,
-      };
+      return next;
     });
-  }, [accounts, mailbox]);
+  }, [accounts, mailbox, setActionError]);
 
   const applyDraftDeleted = useCallback((event: DraftDeletedEvent) => {
     if (event.references.length === 0) return;
-    const deleted = new Set(event.references.map(
-      (reference) => `${reference.folderPath}:${reference.uid}`,
-    ));
-    const draftFolderPaths = new Set(event.references.map((reference) => reference.folderPath));
     setState((current) => {
       if (current.status !== 'loaded') return current;
-      let removedMessages = 0;
-      const items = current.items.flatMap((item) => {
-        if (item.selection.account.id !== event.accountId) return [item];
-        const messages = item.conversation.messages.filter((message) => {
-          const remove = deleted.has(`${message.folderPath}:${message.uid}`);
-          if (remove) removedMessages += 1;
-          return !remove;
-        });
-        const remainsInDrafts = mailbox !== 'drafts' || messages.some(
-          (message) => draftFolderPaths.has(message.folderPath),
-        );
-        return messages.length > 0 && remainsInDrafts
-          ? [{ ...item, conversation: { ...item.conversation, messages } }]
-          : [];
-      });
+      const next = unifiedStateWithoutDrafts(current, mailbox, event);
       setSelectedItem((selected) => {
         if (!selected || selected.selection.account.id !== event.accountId) return selected;
-        return items.find((item) => itemKey(item) === itemKey(selected)) ?? null;
+        return next.items.find((item) => itemKey(item) === itemKey(selected)) ?? null;
       });
-      const removedPrimaryMessages = mailbox === 'drafts' ? removedMessages : 0;
-      return {
-        ...current,
-        items,
-        loadedMessages: Math.max(0, current.loadedMessages - removedPrimaryMessages),
-        totalMessages: Math.max(0, current.totalMessages - removedPrimaryMessages),
-      };
+      return next;
     });
   }, [mailbox]);
 
@@ -576,6 +311,15 @@ export function UnifiedInbox({
       : orderedItems,
     [collapsedGroups.collapsed, groupOf, mailbox, orderedItems],
   );
+  const availableKeys = useMemo(() => availableItems.map(itemKey), [availableItems]);
+  const listSelection = useListSelection(availableKeys);
+  const {
+    selectedKeys: selectedItemKeys,
+    cursorKey: selectionCursorKey,
+    setCursorKey: setSelectionCursorKey,
+    rowRefs: unifiedRowRefs,
+    deleteButtonRefs: unifiedDeleteButtonRefs,
+  } = listSelection;
   useEffect(() => {
     const pendingKey = pendingUnifiedFocusKey.current;
     if (!pendingKey) return;
@@ -583,7 +327,7 @@ export function UnifiedInbox({
     if (!row) return;
     pendingUnifiedFocusKey.current = null;
     row.focus();
-  }, [availableItems]);
+  }, [availableItems, unifiedRowRefs]);
   const prefetchTargets = useMemo(
     () =>
       availableItems.map((item) => ({
@@ -602,71 +346,6 @@ export function UnifiedInbox({
   );
   const bulkMoveFolders = selectedItems[0]?.folders ?? [];
   const bulkMoveSourcePath = selectedItems[0]?.selection.folder.path ?? '';
-
-  useEffect(() => {
-    const handleSelectionShortcut = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || isEditableTarget(event.target)) return;
-      if (event.key === 'Escape' && selectedItemKeys.size > 0) {
-        event.preventDefault();
-        setSelectedItemKeys(new Set());
-        setSelectionAnchorKey(null);
-        setSelectionCursorKey(null);
-        return;
-      }
-      const keys = availableItems.map((item) => itemKey(item));
-      if (event.key.toLowerCase() === 'a' && (event.ctrlKey || event.metaKey)) {
-        event.preventDefault();
-        setSelectedItemKeys(new Set(keys));
-        setSelectionAnchorKey(keys[0] ?? null);
-        setSelectionCursorKey(keys.at(-1) ?? null);
-        return;
-      }
-      const cursorIndex = selectionCursorKey ? keys.indexOf(selectionCursorKey) : -1;
-      const cursorItem = cursorIndex >= 0 ? availableItems[cursorIndex] : undefined;
-      if (event.key === 'Delete' && cursorItem) {
-        event.preventDefault();
-        unifiedDeleteButtonRefs.current.get(itemKey(cursorItem))?.click();
-        return;
-      }
-      if (
-        !event.shiftKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.altKey &&
-        ['ArrowUp', 'ArrowDown'].includes(event.key) &&
-        keys.length > 0
-      ) {
-        event.preventDefault();
-        const nextIndex = cursorIndex < 0
-          ? event.key === 'ArrowDown' ? 0 : keys.length - 1
-          : Math.max(
-              0,
-              Math.min(keys.length - 1, cursorIndex + (event.key === 'ArrowDown' ? 1 : -1)),
-            );
-        setSelectionCursorKey(keys[nextIndex]);
-        unifiedRowRefs.current.get(keys[nextIndex])?.focus();
-        return;
-      }
-      if (!event.shiftKey || !['ArrowUp', 'ArrowDown'].includes(event.key) || keys.length === 0) return;
-      event.preventDefault();
-      let rangeCursorIndex = selectionCursorKey
-        ? keys.indexOf(selectionCursorKey)
-        : keys.findIndex((key) => selectedItemKeys.has(key));
-      if (rangeCursorIndex < 0) rangeCursorIndex = event.key === 'ArrowDown' ? 0 : keys.length - 1;
-      const anchorIndex = selectionAnchorKey ? keys.indexOf(selectionAnchorKey) : rangeCursorIndex;
-      const nextIndex = Math.max(
-        0,
-        Math.min(keys.length - 1, rangeCursorIndex + (event.key === 'ArrowDown' ? 1 : -1)),
-      );
-      const safeAnchorIndex = anchorIndex < 0 ? rangeCursorIndex : anchorIndex;
-      setSelectedItemKeys(keysInRange(keys, safeAnchorIndex, nextIndex));
-      setSelectionAnchorKey(keys[safeAnchorIndex]);
-      setSelectionCursorKey(keys[nextIndex]);
-      unifiedRowRefs.current.get(keys[nextIndex])?.focus();
-    };
-    window.addEventListener('keydown', handleSelectionShortcut);
-    return () => window.removeEventListener('keydown', handleSelectionShortcut);
-  }, [availableItems, selectedItemKeys, selectionAnchorKey, selectionCursorKey]);
 
   useEffect(
     () => {
@@ -756,115 +435,21 @@ export function UnifiedInbox({
       setBusyConversations((current) => new Set(current).add(key));
     }
     setActionError(null);
-    const previousUnread = new Map(
-      item.conversation.messages
-        .filter((message) => message.folderPath === item.selection.folder.path)
-        .map((message) => [`${message.folderPath}:${message.uid}`, message.unread]),
+    const folderMessages = item.conversation.messages.filter(
+      (message) => message.folderPath === item.selection.folder.path,
     );
-    const previousFlagged = new Map(
-      item.conversation.messages
-        .filter((message) => message.folderPath === item.selection.folder.path)
-        .map((message) => [`${message.folderPath}:${message.uid}`, message.flagged]),
-    );
-    const previousImportance = new Map(
-      item.conversation.messages
-        .filter((message) => message.folderPath === item.selection.folder.path)
-        .map((message) => [
-          `${message.folderPath}:${message.uid}`,
-          { important: message.important, dueDate: message.dueDate },
-        ]),
-    );
-    const previousColors = new Map(
-      item.conversation.messages
-        .filter((message) => message.folderPath === item.selection.folder.path)
-        .map((message) => [`${message.folderPath}:${message.uid}`, message.color]),
-    );
-    const updateUnread = (unreadByMessage: ReadonlyMap<string, boolean>) => {
+    const patches = optimisticPatches(folderMessages, action, metadata);
+    const applyPatches = (next: MessagePatches) => {
       const updateItem = (candidate: UnifiedConversationItem): UnifiedConversationItem =>
         itemKey(candidate) === key
-          ? {
-              ...candidate,
-              conversation: conversationWithUnreadValues(
-                candidate.conversation,
-                unreadByMessage,
-              ),
-            }
-          : candidate;
-      setState((current) =>
-        current.status === 'loaded'
-          ? { ...current, items: current.items.map(updateItem) }
-          : current,
-      );
-      setSelectedItem((current) => (current ? updateItem(current) : current));
-    };
-    const updateFlagged = (flaggedByMessage: ReadonlyMap<string, boolean>) => {
-      const updateItem = (candidate: UnifiedConversationItem): UnifiedConversationItem =>
-        itemKey(candidate) === key
-          ? {
-              ...candidate,
-              conversation: conversationWithFlaggedValues(
-                candidate.conversation,
-                flaggedByMessage,
-              ),
-            }
+          ? { ...candidate, conversation: patchConversation(candidate.conversation, next) }
           : candidate;
       setState((current) =>
         current.status === 'loaded' ? { ...current, items: current.items.map(updateItem) } : current,
       );
       setSelectedItem((current) => (current ? updateItem(current) : current));
     };
-    const updateImportance = (
-      importanceByMessage: ReadonlyMap<string, { important: boolean; dueDate: string | null }>,
-    ) => {
-      const updateItem = (candidate: UnifiedConversationItem): UnifiedConversationItem =>
-        itemKey(candidate) === key
-          ? { ...candidate, conversation: conversationWithImportanceValues(candidate.conversation, importanceByMessage) }
-          : candidate;
-      setState((current) => current.status === 'loaded'
-        ? { ...current, items: current.items.map(updateItem) }
-        : current);
-      setSelectedItem((current) => (current ? updateItem(current) : current));
-    };
-    const updateColors = (colors: ReadonlyMap<string, EmzeroMessageColor | null>) => {
-      const updateItem = (candidate: UnifiedConversationItem): UnifiedConversationItem =>
-        itemKey(candidate) === key
-          ? {
-              ...candidate,
-              conversation: {
-                ...candidate.conversation,
-                messages: candidate.conversation.messages.map((message) => {
-                  const color = colors.get(`${message.folderPath}:${message.uid}`);
-                  return color === undefined ? message : { ...message, color };
-                }),
-              },
-            }
-          : candidate;
-      setState((current) => current.status === 'loaded'
-        ? { ...current, items: current.items.map(updateItem) }
-        : current);
-      setSelectedItem((current) => (current ? updateItem(current) : current));
-    };
-
-    if (action === 'read' || action === 'unread') {
-      const unread = action === 'unread';
-      updateUnread(new Map([...previousUnread.keys()].map((messageKey) => [messageKey, unread])));
-    }
-    if (action === 'star' || action === 'unstar') {
-      const flagged = action === 'star';
-      updateFlagged(new Map([...previousFlagged.keys()].map((messageKey) => [messageKey, flagged])));
-    }
-    if (action === 'mark-important' || action === 'clear-important') {
-      const important = action === 'mark-important';
-      const dueDate = important ? (metadata?.dueDate ?? tomorrowDateKey()) : null;
-      updateImportance(new Map([...previousImportance.keys()].map((messageKey) => [
-        messageKey,
-        { important, dueDate },
-      ])));
-    }
-    if (action === 'set-color' || action === 'clear-color') {
-      const color = action === 'set-color' ? (metadata?.color ?? null) : null;
-      updateColors(new Map([...previousColors.keys()].map((messageKey) => [messageKey, color])));
-    }
+    if (patches) applyPatches(patches.apply);
 
     const previousState = state;
     const previousSelection = selectedItem;
@@ -963,10 +548,7 @@ export function UnifiedInbox({
       );
       if (error) {
         setActionError(error);
-        if (action === 'read' || action === 'unread') updateUnread(previousUnread);
-        if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
-        if (action === 'mark-important' || action === 'clear-important') updateImportance(previousImportance);
-        if (action === 'set-color' || action === 'clear-color') updateColors(previousColors);
+        if (patches) applyPatches(patches.revert);
         return false;
       }
       onFoldersChanged?.();
@@ -974,10 +556,7 @@ export function UnifiedInbox({
       return true;
     } catch {
       setActionError('The action could not be completed.');
-      if (action === 'read' || action === 'unread') updateUnread(previousUnread);
-      if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
-      if (action === 'mark-important' || action === 'clear-important') updateImportance(previousImportance);
-      if (action === 'set-color' || action === 'clear-color') updateColors(previousColors);
+      if (patches) applyPatches(patches.revert);
       return false;
     } finally {
       pendingActions.current.delete(key);
@@ -989,32 +568,15 @@ export function UnifiedInbox({
     }
   };
 
-  const runShortcutAction = useEffectEvent(runAction);
-
-  useEffect(() => {
-    if (selectedItem) return;
-    const handleReadShortcut = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        isEditableTarget(event.target) ||
-        event.key.toLowerCase() !== 'q' ||
-        !event.ctrlKey ||
-        event.altKey ||
-        event.shiftKey
-      ) {
-        return;
-      }
-      const item = availableItems.find((candidate) => itemKey(candidate) === selectionCursorKey);
-      if (!item) return;
-      event.preventDefault();
-      const unread = item.conversation.messages.some(
-        (message) => message.folderPath === item.selection.folder.path && message.unread,
-      );
-      void runShortcutAction(item, unread ? 'read' : 'unread');
-    };
-    window.addEventListener('keydown', handleReadShortcut);
-    return () => window.removeEventListener('keydown', handleReadShortcut);
-  }, [availableItems, selectedItem, selectionCursorKey]);
+  useReadToggleShortcut(!selectedItem, () => {
+    const item = availableItems.find((candidate) => itemKey(candidate) === selectionCursorKey);
+    if (!item) return false;
+    const unread = item.conversation.messages.some(
+      (message) => message.folderPath === item.selection.folder.path && message.unread,
+    );
+    void runAction(item, unread ? 'read' : 'unread');
+    return true;
+  });
 
   const runBulkAction = async (
     action: BulkMessageJobRequest['action'],
@@ -1056,9 +618,7 @@ export function UnifiedInbox({
         title,
       );
       if (result.ok) {
-        setSelectedItemKeys(new Set());
-        setSelectionAnchorKey(null);
-        setSelectionCursorKey(null);
+        listSelection.clear();
       } else {
         setActionError(result.message ?? 'The bulk action could not be started.');
       }
@@ -1159,9 +719,7 @@ export function UnifiedInbox({
                 filter={inboxView.filter}
                 onFilterChange={(filter) => {
                   inboxView.setFilter(filter);
-                  setSelectedItemKeys(new Set());
-                  setSelectionAnchorKey(null);
-                  setSelectionCursorKey(null);
+                  listSelection.clear();
                 }}
               />
             )}
@@ -1194,9 +752,7 @@ export function UnifiedInbox({
           value={activeAccountFilter}
           onChange={(accountId) => {
             setAccountFilter(accountId);
-            setSelectedItemKeys(new Set());
-            setSelectionAnchorKey(null);
-            setSelectionCursorKey(null);
+            listSelection.clear();
           }}
         />
       )}
@@ -1210,34 +766,11 @@ export function UnifiedInbox({
         </div>
       )}
 
-      {state.status === 'loaded' && state.failures.length > 0 && (
-        <div className="border-b border-danger/20 bg-danger/8 px-4 py-3 text-xs text-danger lg:px-6">
-          <div className="flex items-start gap-2">
-            <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
-            <div>
-              {state.failures.map(({ account, message }) => (
-                <p key={account.id} title={message}>
-                  <span className="font-semibold">{account.name}:</span> {message}
-                </p>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {state.status === 'loaded' && state.notices.length > 0 && (
-        <div className="border-b border-border bg-secondary px-4 py-3 text-xs text-muted-foreground lg:px-6">
-          <div className="flex items-start gap-2">
-            <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
-            <div>
-              {state.notices.map(({ account, message }) => (
-                <p key={`${account.id}:${message}`}>
-                  <span className="font-semibold">{account.name}:</span> {message}
-                </p>
-              ))}
-            </div>
-          </div>
-        </div>
+      {state.status === 'loaded' && (
+        <>
+          <AccountMessages tone="error" messages={state.failures} />
+          <AccountMessages tone="notice" messages={state.notices} />
+        </>
       )}
 
       {state.status === 'loaded' && actionError && (
@@ -1265,23 +798,8 @@ export function UnifiedInbox({
           totalRows={availableItems.length}
           busy={bulkBusy}
           permanentDelete={mailbox === 'trash'}
-          onToggleAll={() => {
-            const keys = availableItems.map((item) => itemKey(item));
-            if (selectedItemKeys.size === availableItems.length) {
-              setSelectedItemKeys(new Set());
-              setSelectionAnchorKey(null);
-              setSelectionCursorKey(null);
-            } else {
-              setSelectedItemKeys(new Set(keys));
-              setSelectionAnchorKey(keys[0] ?? null);
-              setSelectionCursorKey(keys.at(-1) ?? null);
-            }
-          }}
-          onClear={() => {
-            setSelectedItemKeys(new Set());
-            setSelectionAnchorKey(null);
-            setSelectionCursorKey(null);
-          }}
+          onToggleAll={listSelection.toggleAll}
+          onClear={listSelection.clear}
           onAction={(action) => void runBulkAction(action)}
           onMove={(destination) => void runBulkAction('move', destination)}
         />
@@ -1380,48 +898,9 @@ export function UnifiedInbox({
                     setActionsMenuKey(key);
                   }}
                   onFocus={() => setSelectionCursorKey(key)}
-                  onToggleChecked={(shiftKey) => {
-                    const keys = availableItems.map((candidate) => itemKey(candidate));
-                    const key = itemKey(item);
-                    const targetIndex = keys.indexOf(key);
-                    const anchorIndex = selectionAnchorKey ? keys.indexOf(selectionAnchorKey) : -1;
-                    if (shiftKey && anchorIndex >= 0) {
-                      setSelectedItemKeys(keysInRange(keys, anchorIndex, targetIndex));
-                    } else {
-                      setSelectedItemKeys((current) => {
-                      const key = itemKey(item);
-                      const next = new Set(current);
-                      if (next.has(key)) next.delete(key);
-                      else next.add(key);
-                      return next;
-                      });
-                      setSelectionAnchorKey(key);
-                    }
-                    setSelectionCursorKey(key);
-                  }}
+                  onToggleChecked={(shiftKey) => listSelection.toggleChecked(key, shiftKey)}
                   onClick={(event) => {
-                    if (event.shiftKey) {
-                      const keys = availableItems.map((candidate) => itemKey(candidate));
-                      const key = itemKey(item);
-                      const targetIndex = keys.indexOf(key);
-                      const anchorIndex = selectionAnchorKey ? keys.indexOf(selectionAnchorKey) : targetIndex;
-                      setSelectedItemKeys(keysInRange(keys, anchorIndex, targetIndex));
-                      setSelectionAnchorKey(keys[anchorIndex]);
-                      setSelectionCursorKey(key);
-                      return;
-                    }
-                    if (event.ctrlKey || event.metaKey) {
-                      const key = itemKey(item);
-                      setSelectedItemKeys((current) => {
-                        const next = new Set(current);
-                        if (next.has(key)) next.delete(key);
-                        else next.add(key);
-                        return next;
-                      });
-                      setSelectionAnchorKey(key);
-                      setSelectionCursorKey(key);
-                      return;
-                    }
+                    if (listSelection.handleModifierClick(event, key)) return;
                     setActionError(null);
                     const openedUnread = item.conversation.messages.some(
                       (message) => message.folderPath === item.selection.folder.path && message.unread,
@@ -1499,17 +978,7 @@ export function UnifiedInbox({
   return (
     <MailSplitLayout
       list={list}
-      reader={reader ?? (
-          <div className="relative grid h-full place-items-center p-8 text-center text-muted-foreground">
-            {window.emzero?.platform === 'darwin' && (
-              <div className="macos-titlebar-drag absolute inset-x-0 top-0 h-12" aria-hidden="true" />
-            )}
-            <div>
-              <Inbox className="mx-auto size-8" />
-              <p className="mt-3 text-sm">Select a conversation to read it here.</p>
-            </div>
-          </div>
-      )}
+      reader={reader ?? <MailReaderPlaceholder icon={Inbox} />}
     />
   );
 }

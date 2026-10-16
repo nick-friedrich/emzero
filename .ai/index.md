@@ -96,7 +96,9 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 
 ## Renderer features
 
-- `features/sidebar.tsx` — desktop/mobile navigation with a compact brand header (demo badge and five-click demo toggle), action footer, scrollable mailbox/account navigation, drag-to-reorder accounts, folder CRUD, drag-and-drop folder moves, and sync status.
+- `features/sidebar.tsx` — desktop/mobile navigation: scrollable mailbox/account navigation, drag-to-reorder accounts, folder CRUD state, and drag-and-drop folder moves.
+- `features/sidebar-chrome.tsx` — sidebar brand header (demo badge, five-click demo toggle, pin toggle) and action footer with sync status.
+- `features/folder-dialogs.tsx` — create/rename folder dialog and delete-folder confirmation used by the sidebar.
 - `features/account-setup.tsx` — provider detection, password/app-password setup, personal Microsoft device-code connection flow, and the shared IMAP/SMTP server fields.
 - `features/account-connection-editor.tsx` — per-account username, password, and server editor shown in the Accounts settings tab.
 - `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior and demo mode, account names/colors/connection details/aliases, signatures, and encrypted backup/restore.
@@ -118,13 +120,18 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/message-list.tsx` — one account-folder conversation list (loading messages and folders in parallel, keeping the list visible during refresh), selection, row right-click actions, and folder-scoped actions.
 - `features/conversation-row.tsx` — the conversation row shared by folder and unified lists (row facts, starred highlight, unread bar, metadata) and the rounded section cards with collapsible Starred/Unread/Everything else headers and date sub-headings.
 - `features/conversation-row.test.ts` — renderer tests for date buckets and inbox-group ordering.
-- `features/unified-inbox.tsx` — multi-account Inbox, Starred, Trash, and smart-inbox aggregation (including hiding skip-Inbox matches) that shows each account as it finishes loading, the account filter bar, selection, row right-click actions, and actions.
+- `features/list-selection.ts` — multi-select state and keyboard handling shared by folder and unified lists (checkbox and modifier clicks, Escape, select all, Delete, arrow navigation) plus the Ctrl+Q read toggle.
+- `features/conversation-patches.ts` — optimistic read/star/importance/color patches for one conversation and the patches that revert them.
+- `features/conversation-patches.test.ts` — renderer tests for optimistic patches and their reverts.
+- `features/unified-inbox.tsx` — multi-account Inbox, Starred, Trash, and smart-inbox view: shows each account as it finishes loading, account filtering, selection, row right-click actions, and actions.
+- `features/unified-inbox-data.ts` — per-account unified mailbox loading (including hiding skip-Inbox matches), combining results into list state, and saved/deleted draft state updates.
+- `features/unified-account-bar.tsx` — unified-inbox account filter chips and per-account failure/notice banners.
 - `features/account-colors.tsx` — account color palette classes, the hover-labelled account dot shown on unified-inbox avatars, and the settings color picker.
 - `features/conversation-actions.tsx` — per-conversation inline read/delete buttons and the conversation-actions modal (opened from the "More" button or by right-clicking a list row) with star, important/due date, color, archive, move, and delete, plus their follow-up dialogs.
 - `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: selection toolbar, replied-last detection and badge, and mail-view types/helpers.
 - `features/inbox-view-options.tsx` — persisted icon filters, Starred/Unread inbox grouping and ordering, and persisted collapsed sections shared by account and unified inboxes.
 - `features/mail-view-menu.tsx` — accessible dismissible popover for secondary mailbox layout and filter controls, shared by account, unified, and search headers.
-- `features/mail-split-layout.tsx` — persisted, pointer- and keyboard-resizable list/reader layout shared by three-column mail views.
+- `features/mail-split-layout.tsx` — persisted, pointer- and keyboard-resizable list/reader layout shared by three-column mail views, and the empty reader placeholder.
 - `features/reader-selection.ts` — decides which conversation the reader keeps after a delete or move, so unopened rows are never opened (and auto-marked read) behind the user.
 - `features/reader-selection.test.ts` — renderer tests for post-delete reader selection.
 - `features/mail-common.test.ts` — renderer tests for isolated HTML-email document generation, remote-image privacy controls, and replied-conversation detection.

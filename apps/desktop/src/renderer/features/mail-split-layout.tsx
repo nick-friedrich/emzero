@@ -5,6 +5,7 @@ import {
   type PointerEvent,
   type ReactNode,
 } from 'react';
+import type { LucideIcon } from 'lucide-react';
 
 const mailListWidthStorageKey = 'emzero.mail-list-width';
 const defaultMailListWidth = 384;
@@ -97,6 +98,21 @@ export function MailSplitLayout({
         }}
       >
         <div className="mx-auto h-full w-px bg-border transition-colors group-hover:bg-primary/60 group-focus-visible:bg-primary" />
+      </div>
+    </div>
+  );
+}
+
+/** Empty reader pane shown beside the list until a conversation is opened. */
+export function MailReaderPlaceholder({ icon: Icon }: { icon: LucideIcon }) {
+  return (
+    <div className="relative grid h-full place-items-center p-8 text-center text-muted-foreground">
+      {window.emzero?.platform === 'darwin' && (
+        <div className="macos-titlebar-drag absolute inset-x-0 top-0 h-12" aria-hidden="true" />
+      )}
+      <div>
+        <Icon className="mx-auto size-8" />
+        <p className="mt-3 text-sm">Select a conversation to read it here.</p>
       </div>
     </div>
   );

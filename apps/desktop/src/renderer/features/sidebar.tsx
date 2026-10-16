@@ -1,9 +1,7 @@
 import {
   useCallback,
   useEffect,
-  useRef,
   useState,
-  type CSSProperties,
   type DragEvent,
 } from 'react';
 import {
@@ -14,37 +12,15 @@ import {
   GripVertical,
   Inbox,
   LoaderCircle,
-  LogOut,
   PenLine,
   Plus,
-  PanelLeftClose,
-  PanelLeftOpen,
-  RefreshCw,
   Search,
-  Settings2,
   Star,
   Trash2,
 } from 'lucide-react';
 import {
   Button,
 } from '@/components/ui/button';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import {
   cn,
 } from '@/lib/utils';
@@ -61,11 +37,10 @@ import {
   inboxUnreadCount,
   manageableFolder,
   optimisticFolderMove,
-  orderedFolderTree,
   visibleFolderTree,
 } from '../../shared/accounts';
-import emzeroLogoUrl from '../../../assets/emzero-logo-header.webp';
-import { Field } from './form-field';
+import { DeleteFolderDialog, FolderEditorDialog, type FolderEditorState } from './folder-dialogs';
+import { SidebarBrand, SidebarFooter } from './sidebar-chrome';
 import { SmartInboxNav } from './smart-inboxes';
 import { accountColorDotClass } from './account-colors';
 import {
@@ -73,92 +48,9 @@ import {
   CountBadge,
   UnreadBadge,
   joinedFolderPath,
-  messageDate,
   type FolderLoadState,
   type MailboxSelection,
 } from './mail-common';
-
-type FolderEditorState =
-  | { kind: 'create'; account: AccountSummary; parentPath: string }
-  | { kind: 'rename'; account: AccountSummary; folder: MailFolderSummary };
-
-function FolderEditorDialog({
-  state,
-  folders,
-  busy,
-  error,
-  onClose,
-  onSubmit,
-}: {
-  state: FolderEditorState;
-  folders: MailFolderSummary[];
-  busy: boolean;
-  error: string | null;
-  onClose: () => void;
-  onSubmit: (name: string, parentPath: string) => void;
-}) {
-  const [name, setName] = useState(state.kind === 'rename' ? state.folder.name : '');
-  const [parentPath, setParentPath] = useState(
-    state.kind === 'create' ? state.parentPath : state.folder.parentPath,
-  );
-  const create = state.kind === 'create';
-
-  return (
-    <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{create ? 'Create folder' : 'Rename folder'}</DialogTitle>
-          <DialogDescription>
-            {create
-              ? `Add a mail folder to ${state.account.name}.`
-              : `Change the name of ${state.folder.name}.`}
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="mt-2 space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (name.trim()) onSubmit(name, parentPath);
-          }}
-        >
-          <Field label="Folder name">
-            <input
-              autoFocus
-              className="field"
-              value={name}
-              maxLength={200}
-              disabled={busy}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </Field>
-          {create && (
-            <Field label="Location">
-              <select
-                className="field"
-                value={parentPath}
-                disabled={busy}
-                onChange={(event) => setParentPath(event.target.value)}
-              >
-                <option value="">Top level</option>
-                {orderedFolderTree(folders).map((folder) => (
-                  <option key={folder.path} value={folder.path}>{folder.path}</option>
-                ))}
-              </select>
-            </Field>
-          )}
-          {error && <p className="text-sm text-danger">{error}</p>}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={busy || !name.trim()}>
-              {busy && <LoaderCircle className="size-4 animate-spin" />}
-              {create ? 'Create' : 'Rename'}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 type FolderDropTarget = {
   accountId: string;
@@ -197,7 +89,6 @@ export function Sidebar({
   onDemoModeChange: (enabled: boolean) => void;
   className?: string;
 }) {
-  const demoClickTimes = useRef<number[]>([]);
   const [expanded, setExpanded] = useState(() => new Set<string>());
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, Set<string>>>({});
   const [folderStates, setFolderStates] = useState<Record<string, FolderLoadState>>({});
@@ -488,9 +379,6 @@ export function Sidebar({
   };
   const editorFolderState = folderEditor ? folderStates[folderEditor.account.id] : undefined;
 
-  const logoStyle = {
-    '--emzero-logo-mask': `url("${emzeroLogoUrl}")`,
-  } as CSSProperties;
 
   return (
     <>
@@ -503,59 +391,12 @@ export function Sidebar({
       {window.emzero?.platform === 'darwin' && (
         <div className="macos-titlebar-drag absolute inset-x-0 top-0 h-6 shrink-0" />
       )}
-      <div className="mb-5 flex shrink-0 items-center gap-2.5 px-2">
-        <button
-          type="button"
-          className="emzero-logo size-7 shrink-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          style={logoStyle}
-          aria-label="Emzero"
-          onClick={() => {
-            const now = Date.now();
-            const recentClicks = demoClickTimes.current.filter(
-              (clickedAt) => now - clickedAt < 2_000,
-            );
-            recentClicks.push(now);
-            demoClickTimes.current = recentClicks;
-            if (recentClicks.length >= 5) {
-              demoClickTimes.current = [];
-              onDemoModeChange(!demoMode);
-            }
-          }}
-        >
-          <img
-            src={emzeroLogoUrl}
-            alt=""
-            width={192}
-            height={192}
-            draggable={false}
-            className="size-full object-contain"
-          />
-        </button>
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <p className="font-semibold tracking-tight">Emzero</p>
-          {demoMode && (
-            <span
-              className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
-              title="Sample mailbox. Your own accounts are not loaded."
-            >
-              Demo
-            </span>
-          )}
-        </div>
-        {onPinnedChange && pinned !== undefined && (
-          <Button
-            variant="ghost"
-            className="size-8 shrink-0 px-0"
-            aria-label={pinned ? 'Unpin navigation' : 'Pin navigation'}
-            title={pinned ? 'Unpin navigation' : 'Keep navigation open'}
-            onClick={() => onPinnedChange(!pinned)}
-          >
-            {pinned
-              ? <PanelLeftClose className="size-4" />
-              : <PanelLeftOpen className="size-4" />}
-          </Button>
-        )}
-      </div>
+      <SidebarBrand
+        demoMode={demoMode}
+        onDemoModeChange={onDemoModeChange}
+        pinned={pinned}
+        onPinnedChange={onPinnedChange}
+      />
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         <Button
@@ -912,54 +753,14 @@ export function Sidebar({
         </nav>
       </div>
 
-      <div className="mt-3 shrink-0 border-t border-border/60 pt-2">
-        <Button
-          variant="ghost"
-          className="mb-0.5 h-8 w-full justify-start text-xs text-muted-foreground"
-          disabled={syncStatus.state === 'syncing' || accounts.length === 0}
-          title={syncStatus.message}
-          onClick={() => void window.emzero.sync.now()}
-        >
-          <RefreshCw
-            className={`size-4 ${syncStatus.state === 'syncing' ? 'animate-spin' : ''}`}
-          />
-          {syncStatus.state === 'syncing'
-            ? 'Syncing mail'
-            : syncStatus.state === 'error'
-              ? 'Sync needs attention'
-              : syncStatus.lastSyncedAt
-                ? `Synced ${messageDate(syncStatus.lastSyncedAt)}`
-                : 'Sync mail'}
-        </Button>
-        <Button
-          variant="ghost"
-          className="mb-0.5 h-8 w-full justify-start text-xs text-muted-foreground"
-          onClick={onManage}
-        >
-          <Settings2 className="size-4" />
-          Settings
-        </Button>
-        {demoMode ? (
-          <Button
-            variant="ghost"
-            className="h-8 w-full justify-start text-xs text-muted-foreground"
-            title="Restart Emzero with your own accounts"
-            onClick={() => onDemoModeChange(false)}
-          >
-            <LogOut className="size-4" />
-            Exit demo mode
-          </Button>
-        ) : (
-          <Button
-            variant="ghost"
-            className="h-8 w-full justify-start text-xs text-muted-foreground"
-            onClick={onAdd}
-          >
-            <Plus className="size-4" />
-            Add account
-          </Button>
-        )}
-      </div>
+      <SidebarFooter
+        syncStatus={syncStatus}
+        hasAccounts={accounts.length > 0}
+        demoMode={demoMode}
+        onManage={onManage}
+        onAdd={onAdd}
+        onDemoModeChange={onDemoModeChange}
+      />
       </aside>
       {folderEditor && (
         <FolderEditorDialog
@@ -979,40 +780,16 @@ export function Sidebar({
           onSubmit={(name, parentPath) => void submitFolderEditor(name, parentPath)}
         />
       )}
-      <AlertDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !folderBusy) {
-            setDeleteTarget(null);
-            setFolderError(null);
-          }
+      <DeleteFolderDialog
+        folder={deleteTarget?.folder ?? null}
+        busy={folderBusy}
+        error={folderError}
+        onCancel={() => {
+          setDeleteTarget(null);
+          setFolderError(null);
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete “{deleteTarget?.folder.name}”?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The folder and any messages it contains will be deleted from the mail server. This
-              cannot be undone in Emzero.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {folderError && <p className="text-sm text-danger">{folderError}</p>}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={folderBusy}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={folderBusy}
-              onClick={(event) => {
-                event.preventDefault();
-                void deleteFolder();
-              }}
-            >
-              {folderBusy && <LoaderCircle className="size-4 animate-spin" />}
-              Delete folder
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onConfirm={() => void deleteFolder()}
+      />
     </>
   );
 }

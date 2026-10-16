@@ -2,7 +2,6 @@ import { MailViewMenu } from './mail-view-menu';
 import {
   useCallback,
   useEffect,
-  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -16,10 +15,7 @@ import {
 import {
   Button,
 } from '@/components/ui/button';
-import {
-  cn,
-  keysInRange,
-} from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import {
   type AccountSummary,
   type BulkMessageJobRequest,
@@ -35,10 +31,6 @@ import {
 import {
   BulkActionToolbar,
   conversationWithMessage,
-  conversationWithFlaggedValues,
-  conversationWithImportanceValues,
-  conversationWithUnreadValues,
-  isEditableTarget,
   MailLayoutToggle,
   SidebarHeaderToggle,
   messageCountInFolder,
@@ -51,7 +43,7 @@ import {
   useCompactMailList,
 } from './mail-common';
 import { ConversationActions } from './conversation-actions';
-import { MailSplitLayout } from './mail-split-layout';
+import { MailReaderPlaceholder, MailSplitLayout } from './mail-split-layout';
 import { readerSelectionAfterRemoval } from './reader-selection';
 import { ConversationReader } from './conversation-reader';
 import type { DraftDeletedEvent, DraftSavedEvent } from './compose-dialog';
@@ -68,8 +60,16 @@ import {
   InboxViewOptions,
   useInboxViewOptions,
 } from './inbox-view-options';
-import { tomorrowDateKey, type EmzeroMessageColor } from '../../shared/message-keywords';
+import type { EmzeroMessageColor } from '../../shared/message-keywords';
 import { ConversationRow, conversationRowFacts, ConversationSections } from './conversation-row';
+import {
+  messageKey,
+  optimisticPatches,
+  patchConversation,
+  patchMessage,
+  type MessagePatches,
+} from './conversation-patches';
+import { useListSelection, useReadToggleShortcut } from './list-selection';
 
 export function MessageList({
   accounts,
@@ -108,11 +108,6 @@ export function MessageList({
   const [busyConversations, setBusyConversations] = useState<ReadonlySet<string>>(new Set());
   const [actionsMenuKey, setActionsMenuKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [selectedConversationIds, setSelectedConversationIds] = useState<ReadonlySet<string>>(new Set());
-  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
-  const [selectionCursorId, setSelectionCursorId] = useState<string | null>(null);
-  const conversationRowRefs = useRef(new Map<string, HTMLButtonElement>());
-  const conversationDeleteButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingConversationFocusId = useRef<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [folders, setFolders] = useState<MailFolderSummary[]>([selection.folder]);
@@ -207,9 +202,7 @@ export function MessageList({
   }, [refreshKey, selection.account.id, selection.folder.path, selection.folder.specialUse, syncRevision]);
 
   const refresh = () => {
-    setSelectedConversationIds(new Set());
-    setSelectionAnchorId(null);
-    setSelectionCursorId(null);
+    listSelection.clear();
     // Keep the current list on screen; the header spinner shows the reload.
     setRefreshing(true);
     setRefreshKey((current) => current + 1);
@@ -348,6 +341,18 @@ export function MessageList({
       : orderedConversations,
     [collapsedGroups.collapsed, groupOf, isInbox, orderedConversations],
   );
+  const conversationKeys = useMemo(
+    () => conversations.map((conversation) => conversation.id),
+    [conversations],
+  );
+  const listSelection = useListSelection(conversationKeys);
+  const {
+    selectedKeys: selectedConversationIds,
+    cursorKey: selectionCursorId,
+    setCursorKey: setSelectionCursorId,
+    rowRefs: conversationRowRefs,
+    deleteButtonRefs: conversationDeleteButtonRefs,
+  } = listSelection;
   useEffect(() => {
     const pendingId = pendingConversationFocusId.current;
     if (!pendingId) return;
@@ -355,7 +360,7 @@ export function MessageList({
     if (!row) return;
     pendingConversationFocusId.current = null;
     row.focus();
-  }, [conversations]);
+  }, [conversationRowRefs, conversations]);
   const prefetchTargets = useMemo(
     () =>
       conversations.map((conversation) => ({
@@ -373,71 +378,6 @@ export function MessageList({
     (total, conversation) => total + messageCountInFolder(conversation, selection.folder.path),
     0,
   );
-
-  useEffect(() => {
-    const handleSelectionShortcut = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || isEditableTarget(event.target)) return;
-      if (event.key === 'Escape' && selectedConversationIds.size > 0) {
-        event.preventDefault();
-        setSelectedConversationIds(new Set());
-        setSelectionAnchorId(null);
-        setSelectionCursorId(null);
-        return;
-      }
-      if (event.key.toLowerCase() === 'a' && (event.ctrlKey || event.metaKey)) {
-        event.preventDefault();
-        setSelectedConversationIds(new Set(conversations.map((conversation) => conversation.id)));
-        setSelectionAnchorId(conversations[0]?.id ?? null);
-        setSelectionCursorId(conversations.at(-1)?.id ?? null);
-        return;
-      }
-      const keys = conversations.map((conversation) => conversation.id);
-      const cursorIndex = selectionCursorId ? keys.indexOf(selectionCursorId) : -1;
-      const cursorConversation = cursorIndex >= 0 ? conversations[cursorIndex] : undefined;
-      if (event.key === 'Delete' && cursorConversation) {
-        event.preventDefault();
-        conversationDeleteButtonRefs.current.get(cursorConversation.id)?.click();
-        return;
-      }
-      if (
-        !event.shiftKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.altKey &&
-        ['ArrowUp', 'ArrowDown'].includes(event.key) &&
-        keys.length > 0
-      ) {
-        event.preventDefault();
-        const nextIndex = cursorIndex < 0
-          ? event.key === 'ArrowDown' ? 0 : keys.length - 1
-          : Math.max(
-              0,
-              Math.min(keys.length - 1, cursorIndex + (event.key === 'ArrowDown' ? 1 : -1)),
-            );
-        setSelectionCursorId(keys[nextIndex]);
-        conversationRowRefs.current.get(keys[nextIndex])?.focus();
-        return;
-      }
-      if (!event.shiftKey || !['ArrowUp', 'ArrowDown'].includes(event.key) || conversations.length === 0) return;
-      event.preventDefault();
-      let rangeCursorIndex = selectionCursorId
-        ? keys.indexOf(selectionCursorId)
-        : keys.findIndex((key) => selectedConversationIds.has(key));
-      if (rangeCursorIndex < 0) rangeCursorIndex = event.key === 'ArrowDown' ? 0 : keys.length - 1;
-      const anchorIndex = selectionAnchorId ? keys.indexOf(selectionAnchorId) : rangeCursorIndex;
-      const nextIndex = Math.max(
-        0,
-        Math.min(keys.length - 1, rangeCursorIndex + (event.key === 'ArrowDown' ? 1 : -1)),
-      );
-      const safeAnchorIndex = anchorIndex < 0 ? rangeCursorIndex : anchorIndex;
-      setSelectedConversationIds(keysInRange(keys, safeAnchorIndex, nextIndex));
-      setSelectionAnchorId(keys[safeAnchorIndex]);
-      setSelectionCursorId(keys[nextIndex]);
-      conversationRowRefs.current.get(keys[nextIndex])?.focus();
-    };
-    window.addEventListener('keydown', handleSelectionShortcut);
-    return () => window.removeEventListener('keydown', handleSelectionShortcut);
-  }, [conversations, selectedConversationIds, selectionAnchorId, selectionCursorId]);
 
   useEffect(
     () =>
@@ -493,120 +433,21 @@ export function MessageList({
       setBusyConversations((current) => new Set(current).add(conversation.id));
     }
     setActionError(null);
-    const keys = new Set(
-      conversation.messages
-        .filter((message) => message.folderPath === selection.folder.path)
-        .map((message) => `${message.folderPath}:${message.uid}`),
+    const folderMessages = conversation.messages.filter(
+      (message) => message.folderPath === selection.folder.path,
     );
-    const previousUnread = new Map(
-      conversation.messages
-        .filter((message) => keys.has(`${message.folderPath}:${message.uid}`))
-        .map((message) => [`${message.folderPath}:${message.uid}`, message.unread]),
-    );
-    const previousFlagged = new Map(
-      conversation.messages
-        .filter((message) => keys.has(`${message.folderPath}:${message.uid}`))
-        .map((message) => [`${message.folderPath}:${message.uid}`, message.flagged]),
-    );
-    const previousImportance = new Map(
-      conversation.messages
-        .filter((message) => keys.has(`${message.folderPath}:${message.uid}`))
-        .map((message) => [
-          `${message.folderPath}:${message.uid}`,
-          { important: message.important, dueDate: message.dueDate },
-        ]),
-    );
-    const previousColors = new Map(
-      conversation.messages
-        .filter((message) => keys.has(`${message.folderPath}:${message.uid}`))
-        .map((message) => [`${message.folderPath}:${message.uid}`, message.color]),
-    );
-    const updateUnread = (unreadByMessage: ReadonlyMap<string, boolean>) => {
-      const update = (message: MailMessageSummary) => {
-        const unread = unreadByMessage.get(`${message.folderPath}:${message.uid}`);
-        return unread === undefined ? message : { ...message, unread };
-      };
-      setState((current) =>
-        current.status === 'loaded'
-          ? {
-              ...current,
-              messages: current.messages.map(update),
-              relatedMessages: current.relatedMessages.map(update),
-            }
-          : current,
-      );
-      setSelectedConversation((current) =>
-        current?.id === conversation.id
-          ? conversationWithUnreadValues(current, unreadByMessage)
-          : current,
-      );
-    };
-    const updateFlagged = (flaggedByMessage: ReadonlyMap<string, boolean>) => {
-      const update = (message: MailMessageSummary) => {
-        const flagged = flaggedByMessage.get(`${message.folderPath}:${message.uid}`);
-        return flagged === undefined ? message : { ...message, flagged };
-      };
-      setState((current) =>
-        current.status === 'loaded'
-          ? {
-              ...current,
-              messages: current.messages.map(update),
-              relatedMessages: current.relatedMessages.map(update),
-            }
-          : current,
-      );
-      setSelectedConversation((current) =>
-        current?.id === conversation.id
-          ? conversationWithFlaggedValues(current, flaggedByMessage)
-          : current,
-      );
-    };
-    const updateImportance = (
-      importanceByMessage: ReadonlyMap<string, { important: boolean; dueDate: string | null }>,
-    ) => {
-      const update = (message: MailMessageSummary) => {
-        const value = importanceByMessage.get(`${message.folderPath}:${message.uid}`);
-        return value === undefined ? message : { ...message, ...value };
-      };
+    const keys = new Set(folderMessages.map(messageKey));
+    const patches = optimisticPatches(folderMessages, action, metadata);
+    const applyPatches = (next: MessagePatches) => {
+      const update = (message: MailMessageSummary) => patchMessage(message, next);
       setState((current) => current.status === 'loaded'
         ? { ...current, messages: current.messages.map(update), relatedMessages: current.relatedMessages.map(update) }
         : current);
       setSelectedConversation((current) =>
-        current?.id === conversation.id
-          ? conversationWithImportanceValues(current, importanceByMessage)
-          : current,
+        current?.id === conversation.id ? patchConversation(current, next) : current,
       );
     };
-    const updateColors = (colors: ReadonlyMap<string, EmzeroMessageColor | null>) => {
-      const update = (message: MailMessageSummary) => {
-        const color = colors.get(`${message.folderPath}:${message.uid}`);
-        return color === undefined ? message : { ...message, color };
-      };
-      setState((current) => current.status === 'loaded'
-        ? { ...current, messages: current.messages.map(update), relatedMessages: current.relatedMessages.map(update) }
-        : current);
-      setSelectedConversation((current) => current?.id === conversation.id
-        ? { ...current, messages: current.messages.map(update) }
-        : current);
-    };
-
-    if (action === 'read' || action === 'unread') {
-      const unread = action === 'unread';
-      updateUnread(new Map([...keys].map((key) => [key, unread])));
-    }
-    if (action === 'star' || action === 'unstar') {
-      const flagged = action === 'star';
-      updateFlagged(new Map([...keys].map((key) => [key, flagged])));
-    }
-    if (action === 'mark-important' || action === 'clear-important') {
-      const important = action === 'mark-important';
-      const dueDate = important ? (metadata?.dueDate ?? tomorrowDateKey()) : null;
-      updateImportance(new Map([...keys].map((key) => [key, { important, dueDate }])));
-    }
-    if (action === 'set-color' || action === 'clear-color') {
-      const color = action === 'set-color' ? (metadata?.color ?? null) : null;
-      updateColors(new Map([...keys].map((key) => [key, color])));
-    }
+    if (patches) applyPatches(patches.apply);
 
     const previousState = state;
     const previousSelection = selectedConversation;
@@ -641,16 +482,16 @@ export function MessageList({
           ? {
               ...current,
               messages: current.messages.filter(
-                (message) => !keys.has(`${message.folderPath}:${message.uid}`),
+                (message) => !keys.has(messageKey(message)),
               ),
               relatedMessages: current.relatedMessages.filter(
-                (message) => !keys.has(`${message.folderPath}:${message.uid}`),
+                (message) => !keys.has(messageKey(message)),
               ),
               total: Math.max(
                 0,
                 current.total -
                   current.messages.filter((message) =>
-                    keys.has(`${message.folderPath}:${message.uid}`),
+                    keys.has(messageKey(message)),
                   ).length,
               ),
             }
@@ -703,20 +544,14 @@ export function MessageList({
       );
       if (error) {
         setActionError(error);
-        if (action === 'read' || action === 'unread') updateUnread(previousUnread);
-        if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
-        if (action === 'mark-important' || action === 'clear-important') updateImportance(previousImportance);
-        if (action === 'set-color' || action === 'clear-color') updateColors(previousColors);
+        if (patches) applyPatches(patches.revert);
         return false;
       }
       onFoldersChanged();
       return true;
     } catch {
       setActionError('The action could not be completed.');
-      if (action === 'read' || action === 'unread') updateUnread(previousUnread);
-      if (action === 'star' || action === 'unstar') updateFlagged(previousFlagged);
-      if (action === 'mark-important' || action === 'clear-important') updateImportance(previousImportance);
-      if (action === 'set-color' || action === 'clear-color') updateColors(previousColors);
+      if (patches) applyPatches(patches.revert);
       return false;
     } finally {
       pendingActions.current.delete(conversation.id);
@@ -728,34 +563,15 @@ export function MessageList({
     }
   };
 
-  const runShortcutAction = useEffectEvent(runAction);
-
-  useEffect(() => {
-    if (selectedConversation) return;
-    const handleReadShortcut = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        isEditableTarget(event.target) ||
-        event.key.toLowerCase() !== 'q' ||
-        !event.ctrlKey ||
-        event.altKey ||
-        event.shiftKey
-      ) {
-        return;
-      }
-      const conversation = conversations.find(
-        (candidate) => candidate.id === selectionCursorId,
-      );
-      if (!conversation) return;
-      event.preventDefault();
-      const unread = conversation.messages.some(
-        (message) => message.folderPath === selection.folder.path && message.unread,
-      );
-      void runShortcutAction(conversation, unread ? 'read' : 'unread');
-    };
-    window.addEventListener('keydown', handleReadShortcut);
-    return () => window.removeEventListener('keydown', handleReadShortcut);
-  }, [conversations, selectedConversation, selection.folder.path, selectionCursorId]);
+  useReadToggleShortcut(!selectedConversation, () => {
+    const conversation = conversations.find((candidate) => candidate.id === selectionCursorId);
+    if (!conversation) return false;
+    const unread = conversation.messages.some(
+      (message) => message.folderPath === selection.folder.path && message.unread,
+    );
+    void runAction(conversation, unread ? 'read' : 'unread');
+    return true;
+  });
 
   const runBulkAction = async (
     action: BulkMessageJobRequest['action'],
@@ -791,9 +607,7 @@ export function MessageList({
         displayFolderName(selection.folder),
       );
       if (result.ok) {
-        setSelectedConversationIds(new Set());
-        setSelectionAnchorId(null);
-        setSelectionCursorId(null);
+        listSelection.clear();
       } else {
         setActionError(result.message ?? 'The bulk action could not be started.');
       }
@@ -899,9 +713,7 @@ export function MessageList({
                 filter={inboxView.filter}
                 onFilterChange={(filter) => {
                   inboxView.setFilter(filter);
-                  setSelectedConversationIds(new Set());
-                  setSelectionAnchorId(null);
-                  setSelectionCursorId(null);
+                  listSelection.clear();
                 }}
               />
             )}
@@ -999,22 +811,8 @@ export function MessageList({
           totalRows={conversations.length}
           busy={bulkBusy}
           permanentDelete={selection.folder.specialUse === '\\Trash'}
-          onToggleAll={() => {
-            if (selectedConversationIds.size === conversations.length) {
-              setSelectedConversationIds(new Set());
-              setSelectionAnchorId(null);
-              setSelectionCursorId(null);
-            } else {
-              setSelectedConversationIds(new Set(conversations.map((conversation) => conversation.id)));
-              setSelectionAnchorId(conversations[0]?.id ?? null);
-              setSelectionCursorId(conversations.at(-1)?.id ?? null);
-            }
-          }}
-          onClear={() => {
-            setSelectedConversationIds(new Set());
-            setSelectionAnchorId(null);
-            setSelectionCursorId(null);
-          }}
+          onToggleAll={listSelection.toggleAll}
+          onClear={listSelection.clear}
           onAction={(action) => void runBulkAction(action)}
           onMove={(destination) => void runBulkAction('move', destination)}
         />
@@ -1064,44 +862,9 @@ export function MessageList({
                     setActionsMenuKey(conversation.id);
                   }}
                   onFocus={() => setSelectionCursorId(conversation.id)}
-                  onToggleChecked={(shiftKey) => {
-                    const keys = conversations.map((candidate) => candidate.id);
-                    const targetIndex = keys.indexOf(conversation.id);
-                    const anchorIndex = selectionAnchorId ? keys.indexOf(selectionAnchorId) : -1;
-                    if (shiftKey && anchorIndex >= 0) {
-                      setSelectedConversationIds(keysInRange(keys, anchorIndex, targetIndex));
-                    } else {
-                      setSelectedConversationIds((current) => {
-                      const next = new Set(current);
-                      if (next.has(conversation.id)) next.delete(conversation.id);
-                      else next.add(conversation.id);
-                      return next;
-                      });
-                      setSelectionAnchorId(conversation.id);
-                    }
-                    setSelectionCursorId(conversation.id);
-                  }}
+                  onToggleChecked={(shiftKey) => listSelection.toggleChecked(conversation.id, shiftKey)}
                   onClick={(event) => {
-                    if (event.shiftKey) {
-                      const keys = conversations.map((candidate) => candidate.id);
-                      const targetIndex = keys.indexOf(conversation.id);
-                      const anchorIndex = selectionAnchorId ? keys.indexOf(selectionAnchorId) : targetIndex;
-                      setSelectedConversationIds(keysInRange(keys, anchorIndex, targetIndex));
-                      setSelectionAnchorId(keys[anchorIndex]);
-                      setSelectionCursorId(conversation.id);
-                      return;
-                    }
-                    if (event.ctrlKey || event.metaKey) {
-                      setSelectedConversationIds((current) => {
-                        const next = new Set(current);
-                        if (next.has(conversation.id)) next.delete(conversation.id);
-                        else next.add(conversation.id);
-                        return next;
-                      });
-                      setSelectionAnchorId(conversation.id);
-                      setSelectionCursorId(conversation.id);
-                      return;
-                    }
+                    if (listSelection.handleModifierClick(event, conversation.id)) return;
                     setActionError(null);
                     const openedUnread = conversation.messages.some(
                       (message) => message.folderPath === selection.folder.path && message.unread,
@@ -1172,17 +935,7 @@ export function MessageList({
   return (
     <MailSplitLayout
       list={list}
-      reader={reader ?? (
-          <div className="relative grid h-full place-items-center p-8 text-center text-muted-foreground">
-            {window.emzero?.platform === 'darwin' && (
-              <div className="macos-titlebar-drag absolute inset-x-0 top-0 h-12" aria-hidden="true" />
-            )}
-            <div>
-              <Mail className="mx-auto size-8" />
-              <p className="mt-3 text-sm">Select a conversation to read it here.</p>
-            </div>
-          </div>
-      )}
+      reader={reader ?? <MailReaderPlaceholder icon={Mail} />}
     />
   );
 }
