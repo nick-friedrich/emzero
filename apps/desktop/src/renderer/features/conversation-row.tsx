@@ -101,7 +101,7 @@ export function ConversationRow({
     <div
       className={cn(
         'mail-conversation-row group relative flex min-w-0 max-w-full items-center hover:bg-secondary/60',
-        flagged && !dueClass && 'bg-amber-400/[0.08] hover:bg-amber-400/[0.14]',
+        flagged && !dueClass && 'bg-starred-row hover:bg-starred-row-hover',
         dueClass,
         checked && 'bg-primary/8 ring-1 ring-inset ring-primary/15',
         open && 'bg-primary/10',
@@ -206,7 +206,7 @@ export function ConversationRow({
         )}>
           {(flagged || importantMessage || color) && (
             <span className="flex items-center gap-1">
-              {flagged && <Star className="size-3.5 fill-amber-400 text-amber-500" aria-label="Starred" />}
+              {flagged && <Star className="size-3.5 fill-starred text-starred" aria-label="Starred" />}
               {importantMessage && (
                 <span className="flex items-center gap-1 text-danger" title={dueDateLabel(importantMessage.dueDate)}>
                   <Flag className="size-3.5 fill-danger" aria-label="Important" />
@@ -315,7 +315,7 @@ export function ConversationSections<T>({
           </Fragment>
         ))
       : <div className="divide-y divide-border/40">{sectionItems.map(renderRow)}</div>;
-  const card = 'divide-y divide-border/50 overflow-hidden rounded-2xl border border-border/60 bg-card';
+  const card = 'divide-y divide-border/50 overflow-hidden rounded-2xl border border-border/80 bg-card';
 
   if (!groupCounts) {
     return <div className={card}>{body(items, true)}</div>;
@@ -337,7 +337,7 @@ export function ConversationSections<T>({
               onClick={() => onToggleGroup(group)}
             >
               {collapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
-              {group === 'starred' && <Star className="size-3 fill-amber-400 text-amber-500" />}
+              {group === 'starred' && <Star className="size-3 fill-starred text-starred" />}
               {group === 'unread' && <Mail className="size-3 text-primary" />}
               {groupLabels[group]}
               <span className="font-medium tabular-nums tracking-normal text-muted-foreground/70">{count}</span>
