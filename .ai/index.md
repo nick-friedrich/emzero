@@ -57,7 +57,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/server-search.ts` — on-demand IMAP TEXT search scoped by account, folder, or special use (All Mail/Trash/Spam on Gmail-style servers), caching found summaries for later local search.
 - `apps/desktop/src/main/message-actions.ts` — read/unread, star/unstar, delete, same-account move, and cross-account message-transfer operations.
 - `apps/desktop/src/main/bulk-message-jobs.ts` — bulk-action request validation, execution, cancellation, and progress publication.
-- `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache, bounded plain-text list previews from cached bodies, search (filterable by folder special use), server-search result storage, and AI insight/smart-inbox score storage joined onto listed messages.
+- `apps/desktop/src/main/mail-cache.ts` — local SQLite-backed mail metadata/body cache, bounded plain-text list previews from cached bodies, search (filterable by folder special use), server-search result storage, a per-folder guard that keeps syncs already in flight from re-adding locally deleted or moved UIDs, and AI insight/smart-inbox score storage joined onto listed messages.
 - `apps/desktop/src/main/message-html.ts` — sanitization and quoted-content detection for message HTML.
 - `apps/desktop/src/main/outgoing-html.ts` — safe outgoing rich-text HTML (keeping only the `id="Signature"` marker) and pasted-image size validation before MIME compilation.
 - `apps/desktop/src/main/demo-profile.ts` — the `--demo` / `EMZERO_DEMO=1` switch to the separate demo profile, the real profile path that still owns AI settings, and restarting into or out of demo mode.
@@ -137,7 +137,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/attachment-picker.tsx` — outgoing-attachment chips, the attach button, limit-aware merging, and dropped/pasted file authorization for compose and reply.
 - `features/draft-autosave.ts` — debounced, sequential IMAP autosave shared by compose and reply, including pending-edit flushing on editor unmount.
 - `features/bulk-operation.tsx` — persistent progress/status bar for background bulk message jobs.
-- `features/undoable-delete.tsx` — shared delayed-action controller and Undo bar for optimistic conversation deletion, archiving, and moves.
+- `features/undoable-delete.tsx` — shared delayed-action controller and Undo bar for optimistic conversation deletion, archiving, and moves, including the hidden-row keys lists filter out of reloads until the action settles.
 - `features/app-shared.ts` — small cross-feature status and send-shortcut preferences/hooks.
 - `features/form-field.tsx` — shared labeled form-field wrapper.
 

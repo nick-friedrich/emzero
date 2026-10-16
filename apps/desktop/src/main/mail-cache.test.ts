@@ -350,6 +350,27 @@ describe('MailCache', () => {
     });
   });
 
+  it('does not restore messages deleted or moved while a sync was in flight', () => {
+    cache = new MailCache(':memory:');
+    cache.replaceFolders('account-1', [inbox, { ...inbox, path: 'Trash', name: 'Trash', specialUse: '\\Trash' }]);
+    cache.applyIncrementalSync('account-1', 'INBOX', [message(1), message(2), message(3)], [1, 2, 3], {
+      uidValidity: '99',
+      uidNext: 4,
+      highestModseq: '120',
+    });
+
+    cache.deleteMessages('account-1', 'INBOX', [1]);
+    cache.moveMessages('account-1', 'INBOX', 'Trash', [2]);
+    cache.applyIncrementalSync('account-1', 'INBOX', [message(1), message(2), message(3)], [], {
+      uidValidity: '99',
+      uidNext: 4,
+      highestModseq: '121',
+      reconcile: false,
+    });
+
+    expect(cache.listMessageUids('account-1', 'INBOX')).toEqual([3]);
+  });
+
   it('invalidates messages and bodies when UIDVALIDITY changes', () => {
     cache = new MailCache(':memory:');
     cache.replaceFolders('account-1', [inbox]);

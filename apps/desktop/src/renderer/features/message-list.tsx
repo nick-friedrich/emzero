@@ -126,7 +126,7 @@ export function MessageList({
   const pendingConversationFocusId = useRef<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [folders, setFolders] = useState<MailFolderSummary[]>([selection.folder]);
-  const { scheduleAction, undoBar } = useUndoableAction();
+  const { scheduleAction, isHidden, undoBar } = useUndoableAction();
   const { ref: listSurfaceRef, compact: compactList } = useCompactMailList(
     mailLayout === 'split',
   );
@@ -159,10 +159,9 @@ export function MessageList({
         }
         return;
       }
-      const messages = result.messages.map((message) => ({
-        ...message,
-        folderPath: selection.folder.path,
-      }));
+      const messages = result.messages
+        .map((message) => ({ ...message, folderPath: selection.folder.path }))
+        .filter((message) => !isHidden(`${message.folderPath}:${message.uid}`));
 
       const relatedMessages: MailMessageSummary[] = [];
       const notices = [result.message];
@@ -192,10 +191,9 @@ export function MessageList({
       for (const { folder, result: relatedResult } of relatedResults) {
         notices.push(relatedResult.message);
         if (relatedResult.ok) {
-          relatedMessages.push(...relatedResult.messages.map((message) => ({
-            ...message,
-            folderPath: folder.path,
-          })));
+          relatedMessages.push(...relatedResult.messages
+            .map((message) => ({ ...message, folderPath: folder.path }))
+            .filter((message) => !isHidden(`${message.folderPath}:${message.uid}`)));
         }
       }
 
@@ -677,6 +675,7 @@ export function MessageList({
         restoreConversation,
         setActionError,
         onFoldersChanged,
+        [...keys],
       );
       return true;
     }

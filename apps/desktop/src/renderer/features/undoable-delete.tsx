@@ -11,17 +11,30 @@ interface PendingAction {
   restore: () => void;
   onError: (message: string) => void;
   onCommitted?: () => void;
+  hiddenKeys: readonly string[];
 }
 
 export function useUndoableAction() {
   const nextId = useRef(0);
   const pending = useRef<PendingAction | null>(null);
+  // Rows optimistically removed by a pending or in-flight action. A list reload during that time
+  // still sees them in the mail cache, so views filter these keys out of freshly loaded data.
+  const hiddenCounts = useRef(new Map<string, number>());
+  const setHidden = (keys: readonly string[], hidden: boolean) => {
+    for (const key of keys) {
+      const count = (hiddenCounts.current.get(key) ?? 0) + (hidden ? 1 : -1);
+      if (count > 0) hiddenCounts.current.set(key, count);
+      else hiddenCounts.current.delete(key);
+    }
+  };
+  const isHidden = (key: string) => hiddenCounts.current.has(key);
   const [visibleAction, setVisibleAction] = useState<Pick<PendingAction, 'id' | 'message'> | null>(null);
 
   const commit = async (item: PendingAction) => {
     if (pending.current?.id === item.id) pending.current = null;
     setVisibleAction((current) => (current?.id === item.id ? null : current));
     const error = await item.commit().catch(() => 'The action could not be completed.');
+    setHidden(item.hiddenKeys, false);
     if (error) {
       item.restore();
       item.onError(error);
@@ -36,6 +49,7 @@ export function useUndoableAction() {
     restore: () => void,
     onError: (message: string) => void,
     onCommitted?: () => void,
+    hiddenKeys: readonly string[] = [],
   ) => {
     const previous = pending.current;
     if (previous) {
@@ -50,8 +64,10 @@ export function useUndoableAction() {
       restore,
       onError,
       onCommitted,
+      hiddenKeys,
       timer: window.setTimeout(() => void commit(item), undoDelay),
     };
+    setHidden(hiddenKeys, true);
     pending.current = item;
     setVisibleAction({ id, message });
   };
@@ -62,6 +78,7 @@ export function useUndoableAction() {
     window.clearTimeout(item.timer);
     pending.current = null;
     setVisibleAction(null);
+    setHidden(item.hiddenKeys, false);
     item.restore();
   };
 
@@ -82,5 +99,5 @@ export function useUndoableAction() {
     </div>
   );
 
-  return { scheduleAction: schedule, undoBar };
+  return { scheduleAction: schedule, isHidden, undoBar };
 }

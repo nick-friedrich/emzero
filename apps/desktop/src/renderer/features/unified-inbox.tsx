@@ -170,7 +170,7 @@ export function UnifiedInbox({
   const unifiedDeleteButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingUnifiedFocusKey = useRef<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
-  const { scheduleAction, undoBar } = useUndoableAction();
+  const { scheduleAction, isHidden, undoBar } = useUndoableAction();
   const { ref: listSurfaceRef, compact: compactList } = useCompactMailList(
     mailLayout === 'split',
   );
@@ -293,6 +293,7 @@ export function UnifiedInbox({
       if (!active) return;
       const items = results
         .flatMap((result) => ('items' in result && result.items ? result.items : []))
+        .filter((item) => !isHidden(itemKey(item)))
         .sort(
           (left, right) =>
             conversationTime(right.conversation) - conversationTime(left.conversation),
@@ -858,6 +859,7 @@ export function UnifiedInbox({
         restoreItem,
         setActionError,
         onFoldersChanged,
+        [key],
       );
       return true;
     }

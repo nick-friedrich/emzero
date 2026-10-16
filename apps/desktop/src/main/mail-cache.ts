@@ -196,6 +196,16 @@ const insightJoin = `
 
 export class MailCache {
   readonly #database: DatabaseSync;
+  // UIDs removed locally after a delete or move. A sync that fetched summaries before the removal
+  // must not write them back; UIDs are never reused within a UIDVALIDITY, so skipping is safe.
+  readonly #removedUids = new Map<string, Set<number>>();
+
+  #rememberRemovedUids(accountId: string, folderPath: string, uids: Iterable<number>): void {
+    const key = `${accountId}\u0000${folderPath}`;
+    const removed = this.#removedUids.get(key) ?? new Set<number>();
+    for (const uid of uids) removed.add(uid);
+    this.#removedUids.set(key, removed);
+  }
 
   constructor(filename: string) {
     this.#database = new DatabaseSync(filename);
@@ -1084,6 +1094,7 @@ export class MailCache {
       }
       updateFolder.run(removed, accountId, folderPath, accountId, folderPath);
       this.#database.exec('COMMIT');
+      this.#rememberRemovedUids(accountId, folderPath, uids);
     } catch (error) {
       this.#database.exec('ROLLBACK');
       throw error;
@@ -1150,6 +1161,7 @@ export class MailCache {
         destinationPath,
       );
       this.#database.exec('COMMIT');
+      this.#rememberRemovedUids(sourceAccountId, sourcePath, uids);
     } catch (error) {
       this.#database.exec('ROLLBACK');
       throw error;
@@ -1174,6 +1186,9 @@ export class MailCache {
     const currentState = this.getFolderSyncState(accountId, folderPath);
     const reset = currentState.uidValidity !== null && currentState.uidValidity !== metadata.uidValidity;
     const remoteUidSet = new Set(remoteUids);
+    const removedKey = `${accountId}\u0000${folderPath}`;
+    if (reset) this.#removedUids.delete(removedKey);
+    const removedUids = this.#removedUids.get(removedKey);
     const remove = this.#database.prepare(`
       DELETE FROM messages WHERE account_id = ? AND folder_path = ? AND uid = ?
     `);
@@ -1197,7 +1212,7 @@ export class MailCache {
         }
       }
       for (const message of messages) {
-        upsert(accountId, folderPath, message);
+        if (!removedUids?.has(message.uid)) upsert(accountId, folderPath, message);
       }
       const reconciledAt = metadata.syncedAt ?? new Date().toISOString();
       const messageCount = metadata.reconcile === false
