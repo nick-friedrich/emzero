@@ -1,6 +1,5 @@
 import { MailViewMenu } from './mail-view-menu';
 import {
-  Fragment,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -10,11 +9,9 @@ import {
 } from 'react';
 import {
   CircleAlert,
-  Flag,
   LoaderCircle,
   Mail,
   RefreshCw,
-  Star,
 } from 'lucide-react';
 import {
   Button,
@@ -37,25 +34,15 @@ import {
 } from '../../shared/conversations';
 import {
   BulkActionToolbar,
-  conversationAvatarUrl,
-  SelectionCheckbox,
-  conversationOpponent,
-  conversationRepliedByMe,
   conversationWithMessage,
   conversationWithFlaggedValues,
   conversationWithImportanceValues,
-  dueDateLabel,
-  RepliedBadge,
-  dueDateRowClass,
-  messageColorBackgroundClass,
   conversationWithUnreadValues,
   isEditableTarget,
   MailLayoutToggle,
   SidebarHeaderToggle,
   messageCountInFolder,
-  messageDate,
   performConversationAction,
-  SenderAvatar,
   type ConversationAction,
   type FolderSelection,
   type MessageLoadState,
@@ -73,14 +60,16 @@ import { useUndoableAction } from './undoable-delete';
 import { useTheme } from '@/theme';
 import {
   applyInboxView,
+  countByInboxGroup,
+  sortByInboxGroup,
+  useCollapsedInboxGroups,
   inboxGroup,
   type InboxGroup,
-  InboxGroupHeader,
   InboxViewOptions,
   useInboxViewOptions,
 } from './inbox-view-options';
 import { tomorrowDateKey, type EmzeroMessageColor } from '../../shared/message-keywords';
-import { conversationInsightMessage, MessageInsightTags } from './smart-inboxes';
+import { ConversationRow, conversationRowFacts, ConversationSections } from './conversation-row';
 
 export function MessageList({
   accounts,
@@ -110,6 +99,7 @@ export function MessageList({
   const [state, setState] = useState<MessageLoadState>({ status: 'loading' });
   const { selectNextOnDelete } = useTheme();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState<MailConversation | null>(null);
   const [readingOrderIds, setReadingOrderIds] = useState<readonly string[] | null>(null);
   const [readingGroups, setReadingGroups] = useState<ReadonlyMap<string, InboxGroup> | null>(null);
@@ -148,14 +138,14 @@ export function MessageList({
   useEffect(() => {
     let active = true;
     void (async () => {
-      const result = await window.emzero.messages.list(
-        selection.account.id,
-        selection.folder.path,
-        refreshKey > 0,
-      );
+      const [result, folderResult] = await Promise.all([
+        window.emzero.messages.list(selection.account.id, selection.folder.path, refreshKey > 0),
+        window.emzero.folders.list(selection.account.id, refreshKey > 0),
+      ]);
       if (!result.ok) {
         if (active) {
           setState({ status: 'error', message: result.message ?? 'Could not load messages.' });
+          setRefreshing(false);
         }
         return;
       }
@@ -165,10 +155,6 @@ export function MessageList({
 
       const relatedMessages: MailMessageSummary[] = [];
       const notices = [result.message];
-      const folderResult = await window.emzero.folders.list(
-        selection.account.id,
-        refreshKey > 0,
-      );
       const relatedFolders = folderResult.ok
         ? folderResult.folders.filter((folder) =>
             folder.selectable &&
@@ -206,10 +192,14 @@ export function MessageList({
           supportsEmzeroKeywords: Boolean(result.supportsEmzeroKeywords),
           notice: notices.filter(Boolean).join(' '),
         });
+        setRefreshing(false);
       }
     })()
       .catch(() => {
-        if (active) setState({ status: 'error', message: 'Could not load messages.' });
+        if (active) {
+          setState({ status: 'error', message: 'Could not load messages.' });
+          setRefreshing(false);
+        }
       });
     return () => {
       active = false;
@@ -220,7 +210,8 @@ export function MessageList({
     setSelectedConversationIds(new Set());
     setSelectionAnchorId(null);
     setSelectionCursorId(null);
-    setState({ status: 'loading' });
+    // Keep the current list on screen; the header spinner shows the reload.
+    setRefreshing(true);
     setRefreshKey((current) => current + 1);
   };
 
@@ -324,18 +315,39 @@ export function MessageList({
       : allConversations,
     [allConversations, inboxView.filter, isInbox, selection.folder.path],
   );
-  const conversations = useMemo(() => {
-    if (!selectedConversation || !readingOrderIds) return visibleConversations;
-    const byId = new Map(allConversations.map((conversation) => [conversation.id, conversation]));
-    const pinnedIds = new Set(readingOrderIds);
-    return [
-      ...readingOrderIds.flatMap((id) => {
-        const conversation = byId.get(id);
-        return conversation ? [conversation] : [];
-      }),
-      ...visibleConversations.filter((conversation) => !pinnedIds.has(conversation.id)),
-    ];
-  }, [allConversations, readingOrderIds, selectedConversation, visibleConversations]);
+  const collapsedGroups = useCollapsedInboxGroups();
+  const groupOf = useCallback(
+    (conversation: MailConversation): InboxGroup =>
+      (selectedConversation ? readingGroups?.get(conversation.id) : undefined) ??
+      inboxGroup(conversation, selection.folder.path),
+    [readingGroups, selectedConversation, selection.folder.path],
+  );
+  const orderedConversations = useMemo(() => {
+    let ordered = visibleConversations;
+    if (selectedConversation && readingOrderIds) {
+      const byId = new Map(allConversations.map((conversation) => [conversation.id, conversation]));
+      const pinnedIds = new Set(readingOrderIds);
+      ordered = [
+        ...readingOrderIds.flatMap((id) => {
+          const conversation = byId.get(id);
+          return conversation ? [conversation] : [];
+        }),
+        ...visibleConversations.filter((conversation) => !pinnedIds.has(conversation.id)),
+      ];
+    }
+    return isInbox ? sortByInboxGroup(ordered, groupOf) : ordered;
+  }, [allConversations, groupOf, isInbox, readingOrderIds, selectedConversation, visibleConversations]);
+  const groupCounts = useMemo(
+    () => isInbox ? countByInboxGroup(orderedConversations, groupOf) : null,
+    [groupOf, isInbox, orderedConversations],
+  );
+  // Rows in collapsed sections are left out of keyboard navigation, ranges, and reading order.
+  const conversations = useMemo(
+    () => isInbox
+      ? orderedConversations.filter((conversation) => !collapsedGroups.collapsed.has(groupOf(conversation)))
+      : orderedConversations,
+    [collapsedGroups.collapsed, groupOf, isInbox, orderedConversations],
+  );
   useEffect(() => {
     const pendingId = pendingConversationFocusId.current;
     if (!pendingId) return;
@@ -896,7 +908,7 @@ export function MessageList({
           </MailViewMenu>
           {!compactList && state.status === 'loaded' && (
             <span className="hidden whitespace-nowrap text-xs text-muted-foreground lg:inline">
-              {conversations.length} {conversations.length === 1 ? 'conversation' : 'conversations'}
+              {orderedConversations.length} {orderedConversations.length === 1 ? 'conversation' : 'conversations'}
               {' · '}
               {state.messages.length < state.total
                 ? `newest ${state.messages.length} of ${state.total} messages`
@@ -908,10 +920,10 @@ export function MessageList({
             className="size-8 px-0"
             aria-label="Refresh messages"
             title="Refresh messages"
-            disabled={state.status === 'loading'}
+            disabled={state.status === 'loading' || refreshing}
             onClick={refresh}
           >
-            <RefreshCw className={`size-4 ${state.status === 'loading' ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`size-4 ${state.status === 'loading' || refreshing ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </header>
@@ -949,7 +961,7 @@ export function MessageList({
         </div>
       )}
 
-      {state.status === 'loaded' && state.messages.length > 0 && conversations.length === 0 && (
+      {state.status === 'loaded' && state.messages.length > 0 && orderedConversations.length === 0 && (
         <div className="grid flex-1 place-items-center p-8 text-center">
           <div>
             <Mail className="mx-auto size-8 text-muted-foreground" />
@@ -1008,126 +1020,68 @@ export function MessageList({
         />
       )}
 
-      {state.status === 'loaded' && conversations.length > 0 && (
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-3" role="list" aria-label="Messages">
-          {conversations.map((conversation, index) => {
-            const latest = conversation.messages[0];
-            const prefetchTarget = {
-              accountId: selection.account.id,
-              folderPath: latest.folderPath,
-              uid: latest.uid,
-            };
-            const opponent = conversationOpponent(conversation.messages, selection.account);
-            const date = latest.sentAt ?? latest.receivedAt;
-            const unread = conversation.messages.some(
-              (message) => message.folderPath === selection.folder.path && message.unread,
-            );
-            const flagged = conversation.messages.some((message) => message.flagged);
-            const hasDraft = conversation.messages.some((message) => draftFolderPaths.has(message.folderPath));
-            const replied = conversationRepliedByMe(conversation.messages, selection.account, draftFolderPaths);
-            const importantMessage = conversation.messages.find(
-              (message) => message.folderPath === selection.folder.path && message.important,
-            );
-            const color = conversation.messages.find(
-              (message) => message.folderPath === selection.folder.path && message.color,
-            )?.color ?? null;
-            const group = isInbox
-              ? (selectedConversation ? readingGroups?.get(conversation.id) : undefined) ?? inboxGroup(conversation, selection.folder.path)
-              : null;
-            const previousConversation = conversations[index - 1];
-            const previousGroup = isInbox && previousConversation
-              ? (selectedConversation ? readingGroups?.get(previousConversation.id) : undefined) ?? inboxGroup(previousConversation, selection.folder.path)
-              : null;
-            return (
-              <Fragment key={conversation.id}>
-              {group && group !== previousGroup && <InboxGroupHeader group={group} />}
-              <div
-                className={cn(
-                  'mail-conversation-row group relative mb-1 flex min-w-0 max-w-full items-center rounded-xl hover:bg-secondary/60',
-                  dueDateRowClass(importantMessage?.dueDate ?? null),
-                  selectedConversationIds.has(conversation.id) && 'bg-primary/8 ring-1 ring-inset ring-primary/15',
-                  mailLayout === 'split' && selectedConversation?.id === conversation.id && 'bg-primary/10',
-                )}
-                role="listitem"
-                onContextMenu={(event) => {
-                  if (busyConversations.has(conversation.id)) return;
-                  event.preventDefault();
-                  setActionsMenuKey(conversation.id);
-                }}
-              >
-                {unread && (
-                  <span
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-y-2.5 left-0.5 w-[3px] rounded-full bg-primary"
-                  />
-                )}
-                <div
-                  className={compactList
-                    ? 'relative ml-2 grid size-8 shrink-0 place-items-center'
-                    : 'relative ml-3 grid size-8 shrink-0 place-items-center lg:ml-4'}
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <SenderAvatar
-                    label={opponent}
-                    imageUrl={conversationAvatarUrl(conversation.messages, selection.account)}
-                    className={cn(
-                      selectedConversationIds.size > 0
-                        ? 'opacity-0'
-                        : 'opacity-100 group-hover:opacity-0 group-focus-within:opacity-0',
-                    )}
-                  />
-                  <SelectionCheckbox
-                    checked={selectedConversationIds.has(conversation.id)}
-                    className={cn(
-                      'transition-opacity group-hover:opacity-100 focus-within:opacity-100',
-                      'absolute inset-0 m-auto',
-                      selectedConversationIds.size > 0
-                        ? 'opacity-100'
-                        : 'opacity-0 group-focus-within:opacity-100',
-                    )}
-                    label={`Select conversation: ${conversation.subject}`}
-                    onChange={(shiftKey) => {
-                      const keys = conversations.map((candidate) => candidate.id);
-                      const targetIndex = keys.indexOf(conversation.id);
-                      const anchorIndex = selectionAnchorId ? keys.indexOf(selectionAnchorId) : -1;
-                      if (shiftKey && anchorIndex >= 0) {
-                        setSelectedConversationIds(keysInRange(keys, anchorIndex, targetIndex));
-                      } else {
-                        setSelectedConversationIds((current) => {
-                        const next = new Set(current);
-                        if (next.has(conversation.id)) next.delete(conversation.id);
-                        else next.add(conversation.id);
-                        return next;
-                        });
-                        setSelectionAnchorId(conversation.id);
-                      }
-                      setSelectionCursorId(conversation.id);
-                    }}
-                  />
-                </div>
-                <button
-                  type="button"
-                  ref={(node) => {
+      {state.status === 'loaded' && orderedConversations.length > 0 && (
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3 py-3" role="list" aria-label="Messages">
+          <ConversationSections
+            items={conversations}
+            groupOf={groupOf}
+            groupCounts={groupCounts}
+            collapsedGroups={collapsedGroups.collapsed}
+            onToggleGroup={collapsedGroups.toggle}
+            dateOf={(conversation) => conversation.messages[0].sentAt ?? conversation.messages[0].receivedAt}
+            keyOf={(conversation) => conversation.id}
+            renderRow={(conversation) => {
+              const facts = conversationRowFacts(conversation, selection.folder.path, selection.account, draftFolderPaths);
+              const { unread, flagged, importantMessage, color } = facts;
+              const prefetchTarget = {
+                accountId: selection.account.id,
+                folderPath: facts.latest.folderPath,
+                uid: facts.latest.uid,
+              };
+              return (
+                <ConversationRow
+                  key={conversation.id}
+                  conversation={conversation}
+                  account={selection.account}
+                  folderPath={selection.folder.path}
+                  facts={facts}
+                  compact={compactList}
+                  showRecipients={showRecipients}
+                  checked={selectedConversationIds.has(conversation.id)}
+                  selectionActive={selectedConversationIds.size > 0}
+                  open={mailLayout === 'split' && selectedConversation?.id === conversation.id}
+                  rowRef={(node) => {
                     if (node) conversationRowRefs.current.set(conversation.id, node);
                     else conversationRowRefs.current.delete(conversation.id);
                   }}
-                  className={cn(
-                    'grid min-w-0 flex-1 items-center gap-y-1 text-left focus-visible:outline-none',
-                    compactList
-                      ? 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-3 py-3'
-                      : 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-4 py-3 lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-x-4 lg:px-4',
-                  )}
-                  onMouseEnter={() => prefetchSoon(prefetchTarget)}
-                  onMouseLeave={(event) => {
-                    if (document.activeElement !== event.currentTarget) cancelPrefetch(prefetchTarget);
+                  prefetch={{
+                    soon: () => prefetchSoon(prefetchTarget),
+                    cancel: () => cancelPrefetch(prefetchTarget),
                   }}
-                  onFocus={() => {
+                  onContextMenu={(event) => {
+                    if (busyConversations.has(conversation.id)) return;
+                    event.preventDefault();
+                    setActionsMenuKey(conversation.id);
+                  }}
+                  onFocus={() => setSelectionCursorId(conversation.id)}
+                  onToggleChecked={(shiftKey) => {
+                    const keys = conversations.map((candidate) => candidate.id);
+                    const targetIndex = keys.indexOf(conversation.id);
+                    const anchorIndex = selectionAnchorId ? keys.indexOf(selectionAnchorId) : -1;
+                    if (shiftKey && anchorIndex >= 0) {
+                      setSelectedConversationIds(keysInRange(keys, anchorIndex, targetIndex));
+                    } else {
+                      setSelectedConversationIds((current) => {
+                      const next = new Set(current);
+                      if (next.has(conversation.id)) next.delete(conversation.id);
+                      else next.add(conversation.id);
+                      return next;
+                      });
+                      setSelectionAnchorId(conversation.id);
+                    }
                     setSelectionCursorId(conversation.id);
-                    prefetchSoon(prefetchTarget);
                   }}
-                  onBlur={() => cancelPrefetch(prefetchTarget)}
                   onClick={(event) => {
-                    cancelPrefetch(prefetchTarget);
                     if (event.shiftKey) {
                       const keys = conversations.map((candidate) => candidate.id);
                       const targetIndex = keys.indexOf(conversation.id);
@@ -1159,118 +1113,54 @@ export function MessageList({
                           ))
                           .map((candidate) => candidate.id)
                       : null;
-                    setReadingOrderIds(conversations.map((candidate) => candidate.id));
+                    setReadingOrderIds(orderedConversations.map((candidate) => candidate.id));
                     setReadingGroups(isInbox
-                      ? new Map(conversations.map((candidate) => [
-                          candidate.id,
-                          inboxGroup(candidate, selection.folder.path),
-                        ]))
+                      ? new Map(orderedConversations.map((candidate) => [candidate.id, groupOf(candidate)]))
                       : null);
                     setSelectedConversation(conversation);
                   }}
-                >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span
-                      className={`size-2 shrink-0 rounded-full ${unread ? 'bg-primary shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary)_18%,transparent)]' : 'bg-transparent'}`}
-                      aria-label={unread ? 'Contains unread messages' : 'Read'}
+                  actions={(
+                    <ConversationActions
+                      accounts={accounts}
+                      sourceAccountId={selection.account.id}
+                      folders={folders}
+                      sourcePath={selection.folder.path}
+                      messageCount={messageCountInFolder(conversation, selection.folder.path)}
+                      unread={unread}
+                      flagged={flagged}
+                      important={Boolean(importantMessage)}
+                      dueDate={importantMessage?.dueDate ?? null}
+                      color={color}
+                      supportsEmzeroKeywords={state.status === 'loaded' && state.supportsEmzeroKeywords}
+                      busy={busyConversations.has(conversation.id)}
+                      confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
+                      subject={conversation.subject}
+                      actionsOpen={actionsMenuKey === conversation.id}
+                      onActionsOpenChange={(open) => setActionsMenuKey(open ? conversation.id : null)}
+                      onSetUnread={(nextUnread) =>
+                        void runAction(conversation, nextUnread ? 'unread' : 'read')
+                      }
+                      onSetFlagged={(nextFlagged) =>
+                        void runAction(conversation, nextFlagged ? 'star' : 'unstar')
+                      }
+                      onSetImportant={(nextImportant, dueDate) =>
+                        void runAction(conversation, nextImportant ? 'mark-important' : 'clear-important', undefined, { dueDate })
+                      }
+                      onSetColor={(nextColor) => void runAction(conversation, nextColor ? 'set-color' : 'clear-color', undefined, { color: nextColor })}
+                      onMove={(destination) =>
+                        void runAction(conversation, 'move', destination)
+                      }
+                      onDelete={() => void runAction(conversation, 'delete')}
+                      deleteButtonRef={(node) => {
+                        if (node) conversationDeleteButtonRefs.current.set(conversation.id, node);
+                        else conversationDeleteButtonRefs.current.delete(conversation.id);
+                      }}
                     />
-                    <span className={`truncate text-sm ${unread ? 'font-semibold text-foreground' : 'text-foreground/70'}`}>
-                      {showRecipients ? `To: ${opponent}` : opponent}
-                    </span>
-                  </div>
-                  <p
-                    className={cn(
-                      'min-w-0 truncate text-sm',
-                      unread ? 'font-semibold text-foreground' : 'text-foreground/70',
-                      compactList
-                        ? 'col-span-2 col-start-1 row-start-2 pl-4'
-                        : 'col-span-2 col-start-1 row-start-2 pl-4 lg:col-auto lg:row-auto lg:pl-0',
-                    )}
-                  >
-                    {hasDraft && (
-                      <span className="mr-2 font-medium text-danger">Draft</span>
-                    )}
-                    {replied && <RepliedBadge className="mr-2" />}
-                    {conversation.subject}
-                    {conversation.messages.length > 1 && (
-                      <span className="ml-2 font-normal text-muted-foreground">
-                        ({conversation.messages.length})
-                      </span>
-                    )}
-                    <MessageInsightTags
-                      message={conversationInsightMessage(conversation, selection.folder.path)}
-                      className="ml-2 hidden align-middle sm:inline-flex"
-                    />
-                  </p>
-                  {latest.preview && <p className={cn(
-                    'min-w-0 truncate text-xs leading-5 text-muted-foreground',
-                    compactList ? 'col-span-2 col-start-1 row-start-3 pl-4' : 'col-span-2 col-start-1 row-start-3 pl-4 lg:col-span-1 lg:col-start-2 lg:row-start-2 lg:pl-0',
-                  )}>{latest.preview}</p>}
-                  <div className={cn(
-                    'flex items-center gap-2 text-xs text-muted-foreground',
-                    compactList
-                      ? 'col-start-2 row-start-1'
-                      : 'col-start-2 row-start-1 lg:col-auto lg:row-auto',
-                  )}>
-                    {flagged && (
-                      <Star className="size-3.5 fill-primary text-primary" aria-label="Flagged" />
-                    )}
-                    {importantMessage && (
-                      <span className="flex items-center gap-1 text-danger" title={dueDateLabel(importantMessage.dueDate)}>
-                        <Flag className="size-3.5 fill-danger" aria-label="Important" />
-                        <span className="hidden xl:inline">{dueDateLabel(importantMessage.dueDate)}</span>
-                      </span>
-                    )}
-                    {color && <span className={cn('size-2.5 rounded-full', messageColorBackgroundClass(color))} aria-label={`${color} color`} />}
-                    <time dateTime={date ?? undefined}>{messageDate(date)}</time>
-                  </div>
-                </button>
-                <div className={cn(
-                  compactList
-                    ? 'absolute bottom-2 right-2 z-10 rounded-lg border border-border/60 bg-card p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100'
-                    : 'pr-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 lg:pr-4',
-                )}>
-                  <ConversationActions
-                    accounts={accounts}
-                    sourceAccountId={selection.account.id}
-                    folders={folders}
-                    sourcePath={selection.folder.path}
-                    messageCount={messageCountInFolder(conversation, selection.folder.path)}
-                    unread={unread}
-                    flagged={flagged}
-                    important={Boolean(importantMessage)}
-                    dueDate={importantMessage?.dueDate ?? null}
-                    color={color}
-                    supportsEmzeroKeywords={state.status === 'loaded' && state.supportsEmzeroKeywords}
-                    busy={busyConversations.has(conversation.id)}
-                    confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
-                    subject={conversation.subject}
-                    actionsOpen={actionsMenuKey === conversation.id}
-                    onActionsOpenChange={(open) => setActionsMenuKey(open ? conversation.id : null)}
-                    onSetUnread={(nextUnread) =>
-                      void runAction(conversation, nextUnread ? 'unread' : 'read')
-                    }
-                    onSetFlagged={(nextFlagged) =>
-                      void runAction(conversation, nextFlagged ? 'star' : 'unstar')
-                    }
-                    onSetImportant={(nextImportant, dueDate) =>
-                      void runAction(conversation, nextImportant ? 'mark-important' : 'clear-important', undefined, { dueDate })
-                    }
-                    onSetColor={(nextColor) => void runAction(conversation, nextColor ? 'set-color' : 'clear-color', undefined, { color: nextColor })}
-                    onMove={(destination) =>
-                      void runAction(conversation, 'move', destination)
-                    }
-                    onDelete={() => void runAction(conversation, 'delete')}
-                    deleteButtonRef={(node) => {
-                      if (node) conversationDeleteButtonRefs.current.set(conversation.id, node);
-                      else conversationDeleteButtonRefs.current.delete(conversation.id);
-                    }}
-                  />
-                </div>
-              </div>
-              </Fragment>
-            );
-          })}
+                  )}
+                />
+              );
+            }}
+          />
         </div>
       )}
       {undoBar}

@@ -626,27 +626,6 @@ export function Sidebar({
         />
         {accounts.length > 0 && (
           <div className="pt-4">
-            <label className="relative mb-4 block">
-              <span className="sr-only">Switch account</span>
-              <select
-                className="h-9 w-full appearance-none rounded-lg border border-border/70 bg-card pl-3 pr-8 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                value={selection.kind === 'folder' ? selection.account.id : ''}
-                onChange={(event) => {
-                  const account = accounts.find((candidate) => candidate.id === event.target.value);
-                  if (!account) {
-                    onSelect({ kind: 'unified', mailbox: 'inbox' });
-                    return;
-                  }
-                  setExpanded(new Set([account.id]));
-                  selectAccountInbox(account);
-                }}>
-                <option value="">All accounts</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>{account.name} · {account.email}</option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-3 size-3 text-muted-foreground" />
-            </label>
             <p className="mb-2 px-3 text-[0.68rem] font-semibold uppercase tracking-wider text-muted-foreground">
               Accounts
             </p>

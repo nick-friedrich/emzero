@@ -7,6 +7,7 @@ import type { UnifiedConversationItem } from './mail-common';
 export type InboxFilter = 'all' | 'unread' | 'starred';
 export type InboxGroup = 'starred' | 'unread' | 'other';
 
+const groupPriority: Record<InboxGroup, number> = { starred: 0, unread: 1, other: 2 };
 const filterStorageKey = 'emzero:inbox-filter';
 
 function storedFilter(): InboxFilter {
@@ -47,7 +48,6 @@ export function applyInboxView(
           : true,
     )
     .sort((left, right) => {
-      const groupPriority = { starred: 0, unread: 1, other: 2 };
       const priority =
         groupPriority[inboxGroup(left, folderPath)] - groupPriority[inboxGroup(right, folderPath)];
       if (priority !== 0) return priority;
@@ -68,7 +68,6 @@ export function applyUnifiedInboxView(
           : true,
     )
     .sort((left, right) => {
-      const groupPriority = { starred: 0, unread: 1, other: 2 };
       const priority =
         groupPriority[inboxGroup(left.conversation, left.selection.folder.path)] -
         groupPriority[inboxGroup(right.conversation, right.selection.folder.path)];
@@ -83,15 +82,62 @@ export function inboxGroup(conversation: MailConversation, folderPath: string): 
   return 'other';
 }
 
-export function InboxGroupHeader({ group }: { group: InboxGroup }) {
-  const label = { starred: 'Starred', unread: 'Unread', other: 'Other mail' }[group];
-  return (
-    <div className="flex items-center gap-2 px-3 pb-2 pt-4 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground lg:px-4">
-      {group === 'starred' && <Star className="size-3 fill-primary text-primary" />}
-      {group === 'unread' && <Mail className="size-3 text-primary" />}
-      {label}
-    </div>
-  );
+/** Stable-sorts items into Starred, Unread, then other mail, keeping each group's order. */
+export function sortByInboxGroup<T>(items: readonly T[], groupOf: (item: T) => InboxGroup): T[] {
+  return items
+    .map((item, index) => ({ item, index, priority: groupPriority[groupOf(item)] }))
+    .sort((left, right) => left.priority - right.priority || left.index - right.index)
+    .map(({ item }) => item);
+}
+
+export function countByInboxGroup<T>(
+  items: readonly T[],
+  groupOf: (item: T) => InboxGroup,
+): ReadonlyMap<InboxGroup, number> {
+  const counts = new Map<InboxGroup, number>();
+  for (const item of items) {
+    const group = groupOf(item);
+    counts.set(group, (counts.get(group) ?? 0) + 1);
+  }
+  return counts;
+}
+
+const collapsedStorageKey = 'emzero:collapsed-inbox-groups';
+
+function storedCollapsedGroups(): ReadonlySet<InboxGroup> {
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(collapsedStorageKey) ?? '[]');
+    return new Set(
+      Array.isArray(value)
+        ? value.filter((group): group is InboxGroup => group === 'starred' || group === 'unread' || group === 'other')
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+/** Persisted set of inbox sections the user has collapsed, shared by account and unified inboxes. */
+export function useCollapsedInboxGroups() {
+  const [collapsed, setCollapsed] = useState<ReadonlySet<InboxGroup>>(storedCollapsedGroups);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(collapsedStorageKey, JSON.stringify([...collapsed]));
+    } catch {
+      // Collapsing still works for this session without storage.
+    }
+  }, [collapsed]);
+
+  const toggle = (group: InboxGroup) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+
+  return { collapsed, toggle };
 }
 
 export function useInboxViewOptions() {

@@ -406,6 +406,8 @@ export type UnifiedInboxLoadState =
       notices: UnifiedAccountFailure[];
       loadedMessages: number;
       totalMessages: number;
+      /** Accounts still loading; their mail is not in `items` yet. */
+      pendingAccounts?: number;
     };
 
 export type MessageDetailLoadState =
@@ -549,7 +551,7 @@ export function dueDateRowClass(dueDate: string | null): string | undefined {
   if (!dueDate) return undefined;
   const today = localDateKeyAfter(0);
   if (dueDate < today) return 'bg-red-500/10 hover:bg-red-500/15';
-  if (dueDate === today) return 'bg-yellow-500/10 hover:bg-yellow-500/15';
+  if (dueDate === today) return 'bg-orange-500/10 hover:bg-orange-500/15';
   return undefined;
 }
 

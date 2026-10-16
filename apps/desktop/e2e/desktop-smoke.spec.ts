@@ -50,6 +50,13 @@ test('navigates the desktop app and reads sample mail', async () => {
     await expect(page.getByRole('list', { name: 'Messages' }).getByRole('listitem')).toHaveCount(13);
     await page.screenshot({ path: testInfo.outputPath('modern-inbox.png') });
 
+    const accountFilter = page.getByRole('toolbar', { name: 'Filter by account' });
+    await accountFilter.getByRole('button', { name: 'Alex Morgan' }).click();
+    await expect(accountFilter.getByRole('button', { name: 'Alex Morgan' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('list', { name: 'Messages' }).getByRole('listitem')).not.toHaveCount(13);
+    await accountFilter.getByRole('button', { name: 'All accounts' }).click();
+    await expect(page.getByRole('list', { name: 'Messages' }).getByRole('listitem')).toHaveCount(13);
+
     const firstRow = page.getByRole('list', { name: 'Messages' }).getByRole('listitem').first();
     await firstRow.click({ button: 'right' });
     const conversationActions = page.getByRole('dialog', { name: 'Conversation actions' });
@@ -166,10 +173,6 @@ test('navigates the desktop app and reads sample mail', async () => {
       name: 'Select conversation: Wedding toast — draft v2', exact: true,
     })).toBeVisible();
 
-    await page.getByRole('combobox', { name: 'Switch account' }).selectOption('demo-personal');
-    await expect(page.getByRole('heading', { name: 'Inbox', exact: true })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Switch account' })).toHaveValue('demo-personal');
-    await page.getByRole('combobox', { name: 'Switch account' }).selectOption('');
 
     await page.getByRole('navigation', { name: 'Mailboxes' })
       .getByRole('button', { name: 'Trash', exact: true })

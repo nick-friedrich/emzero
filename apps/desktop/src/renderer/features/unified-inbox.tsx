@@ -1,6 +1,5 @@
 import { MailViewMenu } from './mail-view-menu';
 import {
-  Fragment,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -11,7 +10,6 @@ import {
 import {
   CircleAlert,
   FileText,
-  Flag,
   Inbox,
   LoaderCircle,
   RefreshCw,
@@ -39,25 +37,15 @@ import {
 } from '../../shared/conversations';
 import {
   BulkActionToolbar,
-  conversationAvatarUrl,
-  SelectionCheckbox,
-  conversationOpponent,
-  conversationRepliedByMe,
   conversationWithMessage,
   conversationWithFlaggedValues,
   conversationWithImportanceValues,
   conversationWithUnreadValues,
-  dueDateLabel,
-  RepliedBadge,
-  dueDateRowClass,
-  messageColorBackgroundClass,
   isEditableTarget,
   MailLayoutToggle,
   SidebarHeaderToggle,
   messageCountInFolder,
-  messageDate,
   performConversationAction,
-  SenderAvatar,
   type ConversationAction,
   type FolderSelection,
   type StartBulkOperation,
@@ -67,6 +55,8 @@ import {
   useCompactMailList,
 } from './mail-common';
 import { ConversationActions } from './conversation-actions';
+import { accountColorDotClass } from './account-colors';
+import { ConversationRow, conversationRowFacts, ConversationSections } from './conversation-row';
 import { MailSplitLayout } from './mail-split-layout';
 import { readerSelectionAfterRemoval } from './reader-selection';
 import { ConversationReader } from './conversation-reader';
@@ -76,18 +66,18 @@ import { useUndoableAction } from './undoable-delete';
 import { useTheme } from '@/theme';
 import {
   applyUnifiedInboxView,
+  countByInboxGroup,
+  sortByInboxGroup,
+  useCollapsedInboxGroups,
   inboxGroup,
   type InboxGroup,
-  InboxGroupHeader,
   InboxViewOptions,
   useInboxViewOptions,
 } from './inbox-view-options';
-import { AccountColorDot } from './account-colors';
 import { tomorrowDateKey, type EmzeroMessageColor } from '../../shared/message-keywords';
 import { smartInboxContains, skipsUnifiedInbox } from '../../shared/mail-insights';
 import {
   conversationInsightMessage,
-  MessageInsightTags,
   RemoveFromSmartInboxButton,
   useSmartInboxes,
 } from './smart-inboxes';
@@ -101,6 +91,47 @@ function conversationTime(conversation: MailConversation): number {
 
 function itemKey(item: UnifiedConversationItem): string {
   return `${item.selection.account.id}:${item.conversation.id}`;
+}
+
+function AccountFilterBar({
+  accounts,
+  value,
+  onChange,
+}: {
+  accounts: AccountSummary[];
+  value: string | null;
+  onChange: (accountId: string | null) => void;
+}) {
+  const chip = (active: boolean) => cn(
+    'flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+    active
+      ? 'border-border bg-secondary font-medium text-foreground'
+      : 'border-transparent text-muted-foreground hover:bg-secondary/60 hover:text-foreground',
+  );
+  return (
+    <div
+      className="flex min-w-0 items-center gap-1 overflow-x-auto border-b border-border/60 px-4 py-2 lg:px-6"
+      role="toolbar"
+      aria-label="Filter by account"
+    >
+      <button type="button" className={chip(value === null)} aria-pressed={value === null} onClick={() => onChange(null)}>
+        All accounts
+      </button>
+      {accounts.map((account) => (
+        <button
+          key={account.id}
+          type="button"
+          className={chip(value === account.id)}
+          aria-pressed={value === account.id}
+          title={account.email}
+          onClick={() => onChange(value === account.id ? null : account.id)}
+        >
+          <span className={cn('size-2 rounded-full', accountColorDotClass(account.color))} aria-hidden="true" />
+          {account.name}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function UnifiedInbox({
@@ -155,6 +186,13 @@ export function UnifiedInbox({
   }[mailbox];
   const [state, setState] = useState<UnifiedInboxLoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  // Reload only when account details change, not when the same accounts arrive
+  // as a new array or in a new order.
+  const accountsKey = JSON.stringify([...accounts].sort((left, right) => left.id.localeCompare(right.id)));
+  const [stableAccounts, setStableAccounts] = useState({ key: accountsKey, accounts });
+  if (stableAccounts.key !== accountsKey) setStableAccounts({ key: accountsKey, accounts });
+  const loadAccounts = stableAccounts.accounts;
   const [selectedItem, setSelectedItem] = useState<UnifiedConversationItem | null>(null);
   const [readingOrderKeys, setReadingOrderKeys] = useState<readonly string[] | null>(null);
   const [readingGroups, setReadingGroups] = useState<ReadonlyMap<string, InboxGroup> | null>(null);
@@ -175,122 +213,123 @@ export function UnifiedInbox({
     mailLayout === 'split',
   );
   const inboxView = useInboxViewOptions();
+  const [accountFilter, setAccountFilter] = useState<string | null>(null);
+  const activeAccountFilter = accounts.some((account) => account.id === accountFilter) ? accountFilter : null;
 
   useEffect(() => {
     if (!smart.loaded) return;
     let active = true;
-    void Promise.all(
-      accounts.map(async (account) => {
-        try {
-          const folderResult = await window.emzero.folders.list(account.id, refreshKey > 0);
-          if (!folderResult.ok) {
-            return {
-              failure: {
-                account,
-                message: folderResult.message ?? 'Could not load folders.',
-              },
-            };
-          }
-
-          const designatedFolder = mailbox === 'inbox'
-            ? findInboxFolder(folderResult.folders)
-            : folderResult.folders.find((candidate) =>
-                candidate.selectable && candidate.specialUse === {
-                  starred: '\\Flagged',
-                  drafts: '\\Drafts',
-                  trash: '\\Trash',
-                }[mailbox],
-              );
-          const sourceFolders = designatedFolder
-            ? [designatedFolder]
-            : mailbox === 'starred'
-              ? folderResult.folders.filter((candidate) => candidate.selectable && candidate.specialUse !== '\\Trash')
-              : [];
-          if (sourceFolders.length === 0) {
-            return { failure: { account, message: `No selectable ${title.toLowerCase()} folder was found.` } };
-          }
-
-          const sentFolder = folderResult.folders.find(
-            (candidate) => candidate.selectable && candidate.specialUse === '\\Sent',
-          );
-          const inboxFolder = findInboxFolder(folderResult.folders);
-          const draftsFolder = folderResult.folders.find(
-            (candidate) => candidate.selectable && candidate.specialUse === '\\Drafts',
-          );
-          const relatedFolders = mailbox === 'inbox'
-            ? [sentFolder, draftsFolder]
-            : mailbox === 'drafts'
-              ? [sentFolder, inboxFolder]
-              : [];
-          const [sourceResults, relatedResults] = await Promise.all([
-            Promise.all(sourceFolders.map((folder) =>
-              window.emzero.messages.list(account.id, folder.path, refreshKey > 0)
-                .then((result) => ({ folder, result })),
-            )),
-            Promise.all(relatedFolders.flatMap((folder) =>
-              folder && folder.path !== designatedFolder?.path
-                ? [window.emzero.messages.list(account.id, folder.path, refreshKey > 0)
-                    .then((result) => ({ folder, result }))]
-                : [],
-            )),
-          ]);
-          const failedResult = sourceResults.find(({ result }) => !result.ok);
-          if (failedResult) {
-            return {
-              failure: {
-                account,
-                message: failedResult.result.message ?? `Could not load ${title.toLowerCase()} messages.`,
-              },
-            };
-          }
-
-          const loadedSources = sourceResults.map(({ folder, result }) => {
-            const messages = result.messages
-              .filter((message) => mailbox !== 'starred' || message.flagged)
-              .filter((message) => !messageFilter || messageFilter(message))
-              .map((message) => ({ ...message, folderPath: folder.path }));
-            return {
-              folder,
-              supportsEmzeroKeywords: Boolean(result.supportsEmzeroKeywords),
-              messages,
-              total: mailbox === 'starred' || messageFilter ? messages.length : result.total,
-              notice: result.message,
-            };
-          });
-          const relatedMessages = relatedResults.flatMap(({ folder, result }) =>
-            result.ok
-              ? result.messages.map((message) => ({
-                  ...message,
-                  folderPath: folder.path,
-                }))
-              : [],
-          );
+    const loadAccount = async (account: AccountSummary) => {
+      try {
+        const folderResult = await window.emzero.folders.list(account.id, refreshKey > 0);
+        if (!folderResult.ok) {
           return {
-            account,
-            items: loadedSources.flatMap(({ folder, messages, supportsEmzeroKeywords }) => {
-              const selection: FolderSelection = { kind: 'folder', account, folder };
-              return groupMessagesWithRelated(
-                messages,
-                ['inbox', 'drafts'].includes(mailbox) ? relatedMessages : [],
-              ).map((conversation) => ({
-                selection,
-                folders: folderResult.folders,
-                conversation,
-                supportsEmzeroKeywords,
-              }));
-            }),
-            loadedMessages: loadedSources.reduce((total, source) => total + source.messages.length, 0),
-            totalMessages: loadedSources.reduce((total, source) => total + source.total, 0),
-            notices: [folderResult.message, ...loadedSources.map(({ notice }) => notice), ...relatedResults.map(({ result }) => result.message)].filter(
-              (message): message is string => Boolean(message),
-            ),
+            failure: {
+              account,
+              message: folderResult.message ?? 'Could not load folders.',
+            },
           };
-        } catch {
-          return { failure: { account, message: 'Could not connect to this account.' } };
         }
-      }),
-    ).then((results) => {
-      if (!active) return;
+
+        const designatedFolder = mailbox === 'inbox'
+          ? findInboxFolder(folderResult.folders)
+          : folderResult.folders.find((candidate) =>
+              candidate.selectable && candidate.specialUse === {
+                starred: '\\Flagged',
+                drafts: '\\Drafts',
+                trash: '\\Trash',
+              }[mailbox],
+            );
+        const sourceFolders = designatedFolder
+          ? [designatedFolder]
+          : mailbox === 'starred'
+            ? folderResult.folders.filter((candidate) => candidate.selectable && candidate.specialUse !== '\\Trash')
+            : [];
+        if (sourceFolders.length === 0) {
+          return { failure: { account, message: `No selectable ${title.toLowerCase()} folder was found.` } };
+        }
+
+        const sentFolder = folderResult.folders.find(
+          (candidate) => candidate.selectable && candidate.specialUse === '\\Sent',
+        );
+        const inboxFolder = findInboxFolder(folderResult.folders);
+        const draftsFolder = folderResult.folders.find(
+          (candidate) => candidate.selectable && candidate.specialUse === '\\Drafts',
+        );
+        const relatedFolders = mailbox === 'inbox'
+          ? [sentFolder, draftsFolder]
+          : mailbox === 'drafts'
+            ? [sentFolder, inboxFolder]
+            : [];
+        const [sourceResults, relatedResults] = await Promise.all([
+          Promise.all(sourceFolders.map((folder) =>
+            window.emzero.messages.list(account.id, folder.path, refreshKey > 0)
+              .then((result) => ({ folder, result })),
+          )),
+          Promise.all(relatedFolders.flatMap((folder) =>
+            folder && folder.path !== designatedFolder?.path
+              ? [window.emzero.messages.list(account.id, folder.path, refreshKey > 0)
+                  .then((result) => ({ folder, result }))]
+              : [],
+          )),
+        ]);
+        const failedResult = sourceResults.find(({ result }) => !result.ok);
+        if (failedResult) {
+          return {
+            failure: {
+              account,
+              message: failedResult.result.message ?? `Could not load ${title.toLowerCase()} messages.`,
+            },
+          };
+        }
+
+        const loadedSources = sourceResults.map(({ folder, result }) => {
+          const messages = result.messages
+            .filter((message) => mailbox !== 'starred' || message.flagged)
+            .filter((message) => !messageFilter || messageFilter(message))
+            .map((message) => ({ ...message, folderPath: folder.path }));
+          return {
+            folder,
+            supportsEmzeroKeywords: Boolean(result.supportsEmzeroKeywords),
+            messages,
+            total: mailbox === 'starred' || messageFilter ? messages.length : result.total,
+            notice: result.message,
+          };
+        });
+        const relatedMessages = relatedResults.flatMap(({ folder, result }) =>
+          result.ok
+            ? result.messages.map((message) => ({
+                ...message,
+                folderPath: folder.path,
+              }))
+            : [],
+        );
+        return {
+          account,
+          items: loadedSources.flatMap(({ folder, messages, supportsEmzeroKeywords }) => {
+            const selection: FolderSelection = { kind: 'folder', account, folder };
+            return groupMessagesWithRelated(
+              messages,
+              ['inbox', 'drafts'].includes(mailbox) ? relatedMessages : [],
+            ).map((conversation) => ({
+              selection,
+              folders: folderResult.folders,
+              conversation,
+              supportsEmzeroKeywords,
+            }));
+          }),
+          loadedMessages: loadedSources.reduce((total, source) => total + source.messages.length, 0),
+          totalMessages: loadedSources.reduce((total, source) => total + source.total, 0),
+          notices: [folderResult.message, ...loadedSources.map(({ notice }) => notice), ...relatedResults.map(({ result }) => result.message)].filter(
+            (message): message is string => Boolean(message),
+          ),
+        };
+      } catch {
+        return { failure: { account, message: 'Could not connect to this account.' } };
+      }
+    };
+    type AccountLoad = Awaited<ReturnType<typeof loadAccount>>;
+    const buildState = (results: AccountLoad[], pendingAccounts: number): UnifiedInboxLoadState => {
       const items = results
         .flatMap((result) => ('items' in result && result.items ? result.items : []))
         .filter((item) => !isHidden(itemKey(item)))
@@ -306,7 +345,7 @@ export function UnifiedInbox({
           ? result.notices.map((message) => ({ account: result.account, message }))
           : [],
       );
-      setState({
+      return {
         status: 'loaded',
         items,
         failures,
@@ -319,19 +358,44 @@ export function UnifiedInbox({
           (total, result) => total + ('totalMessages' in result ? (result.totalMessages ?? 0) : 0),
           0,
         ),
+        pendingAccounts,
+      };
+    };
+
+    // Accounts report in as they finish so one slow server does not hold up the
+    // others. A complete list already on screen is kept until every account is done.
+    const settled = new Map<number, AccountLoad>();
+    const publish = () => {
+      if (!active) return;
+      const results = loadAccounts.flatMap((_, index) => settled.get(index) ?? []);
+      const pending = loadAccounts.length - settled.size;
+      if (pending === 0) {
+        setState(buildState(results, 0));
+        setRefreshing(false);
+        return;
+      }
+      setState((current) =>
+        current.status === 'loaded' && !current.pendingAccounts ? current : buildState(results, pending),
+      );
+    };
+    if (loadAccounts.length === 0) void Promise.resolve().then(publish);
+    loadAccounts.forEach((account, index) => {
+      void loadAccount(account).then((result) => {
+        settled.set(index, result);
+        publish();
       });
     });
     return () => {
       active = false;
     };
-  }, [accounts, mailbox, messageFilter, refreshKey, smart.loaded, syncRevision, title]);
+  }, [loadAccounts, mailbox, messageFilter, refreshKey, smart.loaded, syncRevision, title]);
 
   const refresh = () => {
-    setSelectedItem(null);
     setSelectedItemKeys(new Set());
     setSelectionAnchorKey(null);
     setSelectionCursorKey(null);
-    setState({ status: 'loading' });
+    // Keep the list and any open conversation on screen; the header spinner shows the reload.
+    setRefreshing(true);
     setRefreshKey((current) => current + 1);
   };
 
@@ -471,23 +535,47 @@ export function UnifiedInbox({
   }, [applyDraftDeleted, draftDeletedEvent]);
 
   const visibleItems = useMemo(() => {
-    const items = state.status === 'loaded' ? state.items : [];
+    const loadedItems = state.status === 'loaded' ? state.items : [];
+    const items = activeAccountFilter
+      ? loadedItems.filter((item) => item.selection.account.id === activeAccountFilter)
+      : loadedItems;
     return mailbox === 'inbox'
       ? applyUnifiedInboxView(items, inboxView.filter)
       : items;
-  }, [inboxView.filter, mailbox, state]);
-  const availableItems = useMemo(() => {
-    if (!selectedItem || !readingOrderKeys || state.status !== 'loaded') return visibleItems;
-    const byKey = new Map(state.items.map((item) => [itemKey(item), item]));
-    const pinnedKeys = new Set(readingOrderKeys);
-    return [
-      ...readingOrderKeys.flatMap((key) => {
-        const item = byKey.get(key);
-        return item ? [item] : [];
-      }),
-      ...visibleItems.filter((item) => !pinnedKeys.has(itemKey(item))),
-    ];
-  }, [readingOrderKeys, selectedItem, state, visibleItems]);
+  }, [activeAccountFilter, inboxView.filter, mailbox, state]);
+  const collapsedGroups = useCollapsedInboxGroups();
+  const groupOf = useCallback(
+    (item: UnifiedConversationItem): InboxGroup =>
+      (selectedItem ? readingGroups?.get(itemKey(item)) : undefined) ??
+      inboxGroup(item.conversation, item.selection.folder.path),
+    [readingGroups, selectedItem],
+  );
+  const orderedItems = useMemo(() => {
+    let ordered = visibleItems;
+    if (selectedItem && readingOrderKeys && state.status === 'loaded') {
+      const byKey = new Map(state.items.map((item) => [itemKey(item), item]));
+      const pinnedKeys = new Set(readingOrderKeys);
+      ordered = [
+        ...readingOrderKeys.flatMap((key) => {
+          const item = byKey.get(key);
+          return item ? [item] : [];
+        }),
+        ...visibleItems.filter((item) => !pinnedKeys.has(itemKey(item))),
+      ];
+    }
+    return mailbox === 'inbox' ? sortByInboxGroup(ordered, groupOf) : ordered;
+  }, [groupOf, mailbox, readingOrderKeys, selectedItem, state, visibleItems]);
+  const groupCounts = useMemo(
+    () => mailbox === 'inbox' ? countByInboxGroup(orderedItems, groupOf) : null,
+    [groupOf, mailbox, orderedItems],
+  );
+  // Rows in collapsed sections are left out of keyboard navigation, ranges, and reading order.
+  const availableItems = useMemo(
+    () => mailbox === 'inbox'
+      ? orderedItems.filter((item) => !collapsedGroups.collapsed.has(groupOf(item)))
+      : orderedItems,
+    [collapsedGroups.collapsed, groupOf, mailbox, orderedItems],
+  );
   useEffect(() => {
     const pendingKey = pendingUnifiedFocusKey.current;
     if (!pendingKey) return;
@@ -1039,6 +1127,11 @@ export function UnifiedInbox({
     return reader;
   }
 
+  const pendingAccounts = state.status === 'loaded' ? state.pendingAccounts ?? 0 : 0;
+  const waitingForMail =
+    state.status === 'loading' || (state.status === 'loaded' && pendingAccounts > 0 && state.items.length === 0);
+  const busyLoading = state.status === 'loading' || refreshing || pendingAccounts > 0;
+
   const list = (
     <section
       ref={listSurfaceRef}
@@ -1075,7 +1168,7 @@ export function UnifiedInbox({
           </MailViewMenu>
           {!compactList && state.status === 'loaded' && (
             <span className="hidden whitespace-nowrap text-xs text-muted-foreground lg:inline">
-              {availableItems.length} {availableItems.length === 1 ? 'conversation' : 'conversations'}
+              {orderedItems.length} {orderedItems.length === 1 ? 'conversation' : 'conversations'}
               {' · '}
               {state.loadedMessages < state.totalMessages
                 ? `newest ${state.loadedMessages} of ${state.totalMessages} messages`
@@ -1087,15 +1180,28 @@ export function UnifiedInbox({
             className="size-8 px-0"
             aria-label={`Refresh ${title.toLowerCase()}`}
             title={`Refresh ${title.toLowerCase()}`}
-            disabled={state.status === 'loading'}
+            disabled={busyLoading}
             onClick={refresh}
           >
-            <RefreshCw className={`size-4 ${state.status === 'loading' ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`size-4 ${busyLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </header>
 
-      {state.status === 'loading' && (
+      {accounts.length > 1 && (
+        <AccountFilterBar
+          accounts={accounts}
+          value={activeAccountFilter}
+          onChange={(accountId) => {
+            setAccountFilter(accountId);
+            setSelectedItemKeys(new Set());
+            setSelectionAnchorKey(null);
+            setSelectionCursorKey(null);
+          }}
+        />
+      )}
+
+      {waitingForMail && (
         <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <LoaderCircle className="size-4 animate-spin" />
@@ -1181,7 +1287,7 @@ export function UnifiedInbox({
         />
       )}
 
-      {state.status === 'loaded' && state.items.length === 0 && (
+      {state.status === 'loaded' && state.items.length === 0 && pendingAccounts === 0 && (
         <div className="grid flex-1 place-items-center p-8 text-center">
           <div>
             {mailbox === 'trash'
@@ -1211,7 +1317,7 @@ export function UnifiedInbox({
         </div>
       )}
 
-      {state.status === 'loaded' && state.items.length > 0 && availableItems.length === 0 && (
+      {state.status === 'loaded' && state.items.length > 0 && orderedItems.length === 0 && (
         <div className="grid flex-1 place-items-center p-8 text-center">
           <div>
             <Inbox className="mx-auto size-8 text-muted-foreground" />
@@ -1223,134 +1329,77 @@ export function UnifiedInbox({
         </div>
       )}
 
-      {state.status === 'loaded' && availableItems.length > 0 && (
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-3" role="list" aria-label="Messages">
-          {availableItems.map((item, index) => {
-            const { conversation, selection } = item;
-            const latest = conversation.messages[0];
-            const prefetchTarget = {
-              accountId: selection.account.id,
-              folderPath: latest.folderPath,
-              uid: latest.uid,
-            };
-            const opponent = conversationOpponent(conversation.messages, selection.account);
-            const date = latest.sentAt ?? latest.receivedAt;
-            const unread = conversation.messages.some(
-              (message) => message.folderPath === selection.folder.path && message.unread,
-            );
-            const flagged = conversation.messages.some((message) => message.flagged);
-            const draftFolderPaths = new Set(
-              item.folders
-                .filter((folder) => folder.specialUse === '\\Drafts')
-                .map((folder) => folder.path),
-            );
-            const hasDraft = conversation.messages.some((message) => draftFolderPaths.has(message.folderPath));
-            const replied = conversationRepliedByMe(conversation.messages, selection.account, draftFolderPaths);
-            const importantMessage = conversation.messages.find(
-              (message) => message.folderPath === selection.folder.path && message.important,
-            );
-            const color = conversation.messages.find(
-              (message) => message.folderPath === selection.folder.path && message.color,
-            )?.color ?? null;
-            const key = itemKey(item);
-            const group = mailbox === 'inbox'
-              ? (selectedItem ? readingGroups?.get(key) : undefined) ?? inboxGroup(conversation, selection.folder.path)
-              : null;
-            const previousItem = availableItems[index - 1];
-            const previousGroup = mailbox === 'inbox' && previousItem
-              ? (selectedItem ? readingGroups?.get(itemKey(previousItem)) : undefined) ?? inboxGroup(previousItem.conversation, previousItem.selection.folder.path)
-              : null;
-            return (
-              <Fragment key={`${selection.account.id}:${conversation.id}`}>
-              {group && group !== previousGroup && <InboxGroupHeader group={group} />}
-              <div
-                className={cn(
-                  'mail-conversation-row group relative mb-1 flex min-w-0 max-w-full items-center rounded-xl hover:bg-secondary/60',
-                  dueDateRowClass(importantMessage?.dueDate ?? null),
-                  selectedItemKeys.has(itemKey(item)) && 'bg-primary/8 ring-1 ring-inset ring-primary/15',
-                  mailLayout === 'split' && selectedItem && itemKey(selectedItem) === itemKey(item) && 'bg-primary/10',
-                )}
-                role="listitem"
-                onContextMenu={(event) => {
-                  if (busyConversations.has(itemKey(item))) return;
-                  event.preventDefault();
-                  setActionsMenuKey(itemKey(item));
-                }}
-              >
-                <div
-                  className={compactList
-                    ? 'relative ml-2 grid size-8 shrink-0 place-items-center'
-                    : 'relative ml-3 grid size-8 shrink-0 place-items-center lg:ml-4'}
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <SenderAvatar
-                    label={opponent}
-                    imageUrl={conversationAvatarUrl(conversation.messages, selection.account)}
-                    className={cn(
-                      selectedItemKeys.size > 0
-                        ? 'opacity-0'
-                        : 'opacity-100 group-hover:opacity-0 group-focus-within:opacity-0',
-                    )}
-                  />
-                  <AccountColorDot
-                    account={selection.account}
-                    className="absolute -bottom-0.5 -right-0.5 z-10"
-                  />
-                  <SelectionCheckbox
-                    checked={selectedItemKeys.has(itemKey(item))}
-                    className={cn(
-                      'transition-opacity group-hover:opacity-100 focus-within:opacity-100',
-                      'absolute inset-0 m-auto',
-                      selectedItemKeys.size > 0
-                        ? 'opacity-100'
-                        : 'opacity-0 group-focus-within:opacity-100',
-                    )}
-                    label={`Select conversation: ${conversation.subject}`}
-                    onChange={(shiftKey) => {
-                      const keys = availableItems.map((candidate) => itemKey(candidate));
-                      const key = itemKey(item);
-                      const targetIndex = keys.indexOf(key);
-                      const anchorIndex = selectionAnchorKey ? keys.indexOf(selectionAnchorKey) : -1;
-                      if (shiftKey && anchorIndex >= 0) {
-                        setSelectedItemKeys(keysInRange(keys, anchorIndex, targetIndex));
-                      } else {
-                        setSelectedItemKeys((current) => {
-                        const key = itemKey(item);
-                        const next = new Set(current);
-                        if (next.has(key)) next.delete(key);
-                        else next.add(key);
-                        return next;
-                        });
-                        setSelectionAnchorKey(key);
-                      }
-                      setSelectionCursorKey(key);
-                    }}
-                  />
-                </div>
-                <button
-                  type="button"
-                  ref={(node) => {
-                    const key = itemKey(item);
+      {state.status === 'loaded' && orderedItems.length > 0 && (
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3 py-3" role="list" aria-label="Messages">
+          <ConversationSections
+            items={availableItems}
+            groupOf={groupOf}
+            groupCounts={groupCounts}
+            collapsedGroups={collapsedGroups.collapsed}
+            onToggleGroup={collapsedGroups.toggle}
+            dateOf={(item) => item.conversation.messages[0].sentAt ?? item.conversation.messages[0].receivedAt}
+            keyOf={itemKey}
+            renderRow={(item) => {
+              const { conversation, selection } = item;
+              const key = itemKey(item);
+              const draftFolderPaths = new Set(
+                item.folders
+                  .filter((folder) => folder.specialUse === '\\Drafts')
+                  .map((folder) => folder.path),
+              );
+              const facts = conversationRowFacts(conversation, selection.folder.path, selection.account, draftFolderPaths);
+              const { unread, flagged, importantMessage, color } = facts;
+              const prefetchTarget = {
+                accountId: selection.account.id,
+                folderPath: facts.latest.folderPath,
+                uid: facts.latest.uid,
+              };
+              return (
+                <ConversationRow
+                  key={key}
+                  conversation={conversation}
+                  account={selection.account}
+                  folderPath={selection.folder.path}
+                  facts={facts}
+                  compact={compactList}
+                  showAccountDot
+                  checked={selectedItemKeys.has(key)}
+                  selectionActive={selectedItemKeys.size > 0}
+                  open={mailLayout === 'split' && selectedItem !== null && itemKey(selectedItem) === key}
+                  rowRef={(node) => {
                     if (node) unifiedRowRefs.current.set(key, node);
                     else unifiedRowRefs.current.delete(key);
                   }}
-                  className={cn(
-                    'grid min-w-0 flex-1 items-center gap-y-1 text-left focus-visible:outline-none',
-                    compactList
-                      ? 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-3 py-3'
-                      : 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-4 py-3 lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-x-4 lg:px-4',
-                  )}
-                  onMouseEnter={() => prefetchSoon(prefetchTarget)}
-                  onMouseLeave={(event) => {
-                    if (document.activeElement !== event.currentTarget) cancelPrefetch(prefetchTarget);
+                  prefetch={{
+                    soon: () => prefetchSoon(prefetchTarget),
+                    cancel: () => cancelPrefetch(prefetchTarget),
                   }}
-                  onFocus={() => {
-                    setSelectionCursorKey(itemKey(item));
-                    prefetchSoon(prefetchTarget);
+                  onContextMenu={(event) => {
+                    if (busyConversations.has(key)) return;
+                    event.preventDefault();
+                    setActionsMenuKey(key);
                   }}
-                  onBlur={() => cancelPrefetch(prefetchTarget)}
+                  onFocus={() => setSelectionCursorKey(key)}
+                  onToggleChecked={(shiftKey) => {
+                    const keys = availableItems.map((candidate) => itemKey(candidate));
+                    const key = itemKey(item);
+                    const targetIndex = keys.indexOf(key);
+                    const anchorIndex = selectionAnchorKey ? keys.indexOf(selectionAnchorKey) : -1;
+                    if (shiftKey && anchorIndex >= 0) {
+                      setSelectedItemKeys(keysInRange(keys, anchorIndex, targetIndex));
+                    } else {
+                      setSelectedItemKeys((current) => {
+                      const key = itemKey(item);
+                      const next = new Set(current);
+                      if (next.has(key)) next.delete(key);
+                      else next.add(key);
+                      return next;
+                      });
+                      setSelectionAnchorKey(key);
+                    }
+                    setSelectionCursorKey(key);
+                  }}
                   onClick={(event) => {
-                    cancelPrefetch(prefetchTarget);
                     if (event.shiftKey) {
                       const keys = availableItems.map((candidate) => itemKey(candidate));
                       const key = itemKey(item);
@@ -1384,125 +1433,61 @@ export function UnifiedInbox({
                           ))
                           .map((candidate) => itemKey(candidate))
                       : null;
-                    setReadingOrderKeys(availableItems.map((candidate) => itemKey(candidate)));
+                    setReadingOrderKeys(orderedItems.map((candidate) => itemKey(candidate)));
                     setReadingGroups(mailbox === 'inbox'
-                      ? new Map(availableItems.map((candidate) => [
-                          itemKey(candidate),
-                          inboxGroup(candidate.conversation, candidate.selection.folder.path),
-                        ]))
+                      ? new Map(orderedItems.map((candidate) => [itemKey(candidate), groupOf(candidate)]))
                       : null);
                     setSelectedItem(item);
                   }}
-                >
-                <div className="flex min-w-0 items-center gap-2">
-                  <span
-                    className={`size-1.5 shrink-0 rounded-full ${unread ? 'bg-primary' : 'bg-transparent'}`}
-                    aria-label={unread ? 'Contains unread messages' : 'Read'}
-                  />
-                  <span className={`truncate text-sm ${unread ? 'font-semibold' : ''}`}>
-                    {opponent}
-                  </span>
-                </div>
-                <div className={cn(
-                  'flex min-w-0 items-center gap-2',
-                  compactList
-                    ? 'col-span-2 col-start-1 row-start-2 pl-3.5'
-                    : 'col-span-2 col-start-1 row-start-2 pl-3.5 lg:col-auto lg:row-auto lg:pl-0',
-                )}>
-                  <p className={`truncate text-sm ${unread ? 'font-semibold' : ''}`}>
-                    {hasDraft && (
-                      <span className="mr-2 font-medium text-danger">Draft</span>
-                    )}
-                    {replied && <RepliedBadge className="mr-2" />}
-                    {conversation.subject}
-                    {conversation.messages.length > 1 && (
-                      <span className="ml-2 font-normal text-muted-foreground">
-                        ({conversation.messages.length})
-                      </span>
-                    )}
-                  </p>
-                  <MessageInsightTags
-                    message={conversationInsightMessage(conversation, selection.folder.path)}
-                    className="hidden sm:flex"
-                  />
-                </div>
-                  {latest.preview && <p className={cn(
-                    'min-w-0 truncate text-xs leading-5 text-muted-foreground',
-                    compactList ? 'col-span-2 col-start-1 row-start-3 pl-3.5' : 'col-span-2 col-start-1 row-start-3 pl-3.5 lg:col-span-1 lg:col-start-2 lg:row-start-2 lg:pl-0',
-                  )}>{latest.preview}</p>}
-                <div className={cn(
-                  'flex items-center gap-2 text-xs text-muted-foreground',
-                  compactList
-                    ? 'col-start-2 row-start-1'
-                    : 'col-start-2 row-start-1 lg:col-auto lg:row-auto',
-                )}>
-                  {flagged && (
-                    <Star className="size-3.5 fill-primary text-primary" aria-label="Flagged" />
+                  actions={(
+                    <ConversationActions
+                      accounts={accounts}
+                      sourceAccountId={selection.account.id}
+                      folders={item.folders}
+                      sourcePath={selection.folder.path}
+                      messageCount={messageCountInFolder(item.conversation, selection.folder.path)}
+                      unread={unread}
+                      flagged={flagged}
+                      important={Boolean(importantMessage)}
+                      dueDate={importantMessage?.dueDate ?? null}
+                      color={color}
+                      supportsEmzeroKeywords={item.supportsEmzeroKeywords}
+                      busy={busyConversations.has(key)}
+                      confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
+                      subject={conversation.subject}
+                      actionsOpen={actionsMenuKey === key}
+                      onActionsOpenChange={(open) => setActionsMenuKey(open ? key : null)}
+                      onSetUnread={(nextUnread) =>
+                        void runAction(item, nextUnread ? 'unread' : 'read')
+                      }
+                      onSetFlagged={(nextFlagged) =>
+                        void runAction(item, nextFlagged ? 'star' : 'unstar')
+                      }
+                      onSetImportant={(nextImportant, dueDate) =>
+                        void runAction(item, nextImportant ? 'mark-important' : 'clear-important', undefined, { dueDate })
+                      }
+                      onSetColor={(nextColor) => void runAction(item, nextColor ? 'set-color' : 'clear-color', undefined, { color: nextColor })}
+                      onMove={(destination) => void runAction(item, 'move', destination)}
+                      onDelete={() => void runAction(item, 'delete')}
+                      leadingAction={smartInbox && (
+                        <RemoveFromSmartInboxButton
+                          inbox={smartInbox}
+                          sender={
+                            conversationInsightMessage(conversation, selection.folder.path)
+                              ?.from[0]?.address?.toLowerCase() ?? null
+                          }
+                        />
+                      )}
+                      deleteButtonRef={(node) => {
+                        if (node) unifiedDeleteButtonRefs.current.set(key, node);
+                        else unifiedDeleteButtonRefs.current.delete(key);
+                      }}
+                    />
                   )}
-                  {importantMessage && (
-                    <span className="flex items-center gap-1 text-danger" title={dueDateLabel(importantMessage.dueDate)}>
-                      <Flag className="size-3.5 fill-danger" aria-label="Important" />
-                      <span className="hidden xl:inline">{dueDateLabel(importantMessage.dueDate)}</span>
-                    </span>
-                  )}
-                  {color && <span className={cn('size-2.5 rounded-full', messageColorBackgroundClass(color))} aria-label={`${color} color`} />}
-                  <time dateTime={date ?? undefined}>{messageDate(date)}</time>
-                </div>
-                </button>
-                <div className={cn(
-                  compactList
-                    ? 'absolute bottom-2 right-2 z-10 rounded-lg border border-border/60 bg-card p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100'
-                    : 'pr-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 lg:pr-4',
-                )}>
-                  <ConversationActions
-                    accounts={accounts}
-                    sourceAccountId={selection.account.id}
-                    folders={item.folders}
-                    sourcePath={selection.folder.path}
-                    messageCount={messageCountInFolder(item.conversation, selection.folder.path)}
-                    unread={unread}
-                    flagged={flagged}
-                    important={Boolean(importantMessage)}
-                    dueDate={importantMessage?.dueDate ?? null}
-                    color={color}
-                    supportsEmzeroKeywords={item.supportsEmzeroKeywords}
-                    busy={busyConversations.has(itemKey(item))}
-                    confirmPermanentDelete={selection.folder.specialUse === '\\Trash'}
-                    subject={conversation.subject}
-                    actionsOpen={actionsMenuKey === itemKey(item)}
-                    onActionsOpenChange={(open) => setActionsMenuKey(open ? itemKey(item) : null)}
-                    onSetUnread={(nextUnread) =>
-                      void runAction(item, nextUnread ? 'unread' : 'read')
-                    }
-                    onSetFlagged={(nextFlagged) =>
-                      void runAction(item, nextFlagged ? 'star' : 'unstar')
-                    }
-                    onSetImportant={(nextImportant, dueDate) =>
-                      void runAction(item, nextImportant ? 'mark-important' : 'clear-important', undefined, { dueDate })
-                    }
-                    onSetColor={(nextColor) => void runAction(item, nextColor ? 'set-color' : 'clear-color', undefined, { color: nextColor })}
-                    onMove={(destination) => void runAction(item, 'move', destination)}
-                    onDelete={() => void runAction(item, 'delete')}
-                    leadingAction={smartInbox && (
-                      <RemoveFromSmartInboxButton
-                        inbox={smartInbox}
-                        sender={
-                          conversationInsightMessage(conversation, selection.folder.path)
-                            ?.from[0]?.address?.toLowerCase() ?? null
-                        }
-                      />
-                    )}
-                    deleteButtonRef={(node) => {
-                      const key = itemKey(item);
-                      if (node) unifiedDeleteButtonRefs.current.set(key, node);
-                      else unifiedDeleteButtonRefs.current.delete(key);
-                    }}
-                  />
-                </div>
-              </div>
-              </Fragment>
-            );
-          })}
+                />
+              );
+            }}
+          />
         </div>
       )}
       {undoBar}
