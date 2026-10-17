@@ -420,6 +420,15 @@ export interface AttachmentSaveResult extends MessageOperationResult {
   savedAttachmentId?: string;
 }
 
+export interface PdfExportRequest {
+  title: string;
+  html: string;
+}
+
+export interface PdfExportResult extends MessageOperationResult {
+  canceled?: boolean;
+}
+
 export interface MailMessageDetail {
   uid: number;
   messageId: string | null;
@@ -647,6 +656,7 @@ export const ACCOUNT_CHANNELS = {
   openAttachment: 'attachments:open',
   saveAttachment: 'attachments:save',
   revealSavedAttachment: 'attachments:reveal-saved',
+  exportPdf: 'messages:export-pdf',
   saveDraft: 'drafts:save',
   deleteDraft: 'drafts:delete',
   syncStatus: 'sync:status',

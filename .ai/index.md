@@ -64,6 +64,8 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/demo-mail.ts` — the demo mail server: in demo mode, mail services apply their IMAP/SMTP effects (store, move, delete, folder changes, drafts, sending with local delivery, attachment contents) straight to the mail cache. Each service checks `demoModeEnabled()` at its network boundary and delegates here.
 - `apps/desktop/src/main/demo-dataset.ts` — the privacy-safe sample accounts, folders, threads, smart inboxes, insights, and signatures seeded fresh on every demo start.
 - `apps/desktop/src/main/window-visibility.ts` — the macOS-only `EMZERO_HIDDEN_WINDOWS=1` test mode: every window stays hidden (unthrottled), and the macOS Dock icon is hidden.
+- `apps/desktop/src/main/context-menu.ts` — native right-click menu for every window: copy image (including images inside sandboxed HTML email), copy image/link address, and text copy/cut/paste/select all.
+- `apps/desktop/src/main/pdf-export.ts` — save-dialog PDF export: renders a renderer-built printable document in a hidden, script-disabled window and writes `printToPDF` output.
 - `apps/desktop/src/main/mail-windows.ts` — validated creation of standalone message, composer, and single-instance settings windows.
 - `apps/desktop/src/main/provider-discovery.ts` — provider catalog lookup and domain/MX discovery.
 - `apps/desktop/src/main/folder-subscriptions.ts` — IMAP folder subscription and deletion helpers.
@@ -136,10 +138,12 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/reader-selection.test.ts` — renderer tests for post-delete reader selection.
 - `features/mail-common.test.ts` — renderer tests for isolated HTML-email document generation, remote-image privacy controls, and replied-conversation detection.
 - `features/message-move.tsx` — account-and-folder destination picker for single and bulk message moves.
-- `features/conversation-reader.tsx` — conversation reader, message body/thread cards, received-attachment saving, quoted-content display, and reply entry points.
+- `features/conversation-reader.tsx` — conversation reader, message body/thread cards, Copy conversation / Save as PDF actions, received-attachment saving, quoted-content display, and reply entry points.
 - `features/linkified-text.tsx` — http(s)/`www.` URL detection in plain-text message bodies, rendered as links that go through the reader's open-link confirmation.
 - `features/linkified-text.test.ts` — renderer tests for plain-text URL detection and trailing-punctuation trimming.
 - `features/message-html-frame.tsx` — isolated HTML-email frame that reports content height for a single reader scrollbar, validates frame messages, and owns the CSP-authorized resize/link relay.
+- `features/conversation-pdf.ts` — printable, script-free HTML document of a conversation (headers, bodies, attachment names) handed to the main process for PDF export.
+- `features/conversation-pdf.test.ts` — renderer tests for PDF document escaping, quoted-history handling, and image policy.
 - `features/conversation-copy.ts` — plain-text formatting for copying every message in a conversation to the clipboard.
 - `features/reply-composer.tsx` — Reply / Reply all entry and inline editor beneath a message, preserving reply headers, draft autosave, and conversation context for AI drafting.
 - `features/message-prefetch.ts` — bounded idle, hover, and keyboard-focus message-body prefetching shared by folder, unified, and search lists.
@@ -155,9 +159,9 @@ All paths in this section are relative to `apps/desktop/src/renderer/`.
 ## Tests
 
 - Tests live beside their implementation as `*.test.ts` or `*.test.tsx`.
-- `apps/desktop/src/main/` tests cover cache, HTML sanitization, provider discovery, folder subscriptions, folder input rules, message parsing helpers, message-action rules, server-search folder scoping, draft-folder discovery, signature storage, and bulk-job validation/progress.
+- `apps/desktop/src/main/` tests cover cache, PDF export file naming/validation, HTML sanitization, provider discovery, folder subscriptions, folder input rules, message parsing helpers, message-action rules, server-search folder scoping, draft-folder discovery, signature storage, and bulk-job validation/progress.
 - `apps/desktop/src/shared/` tests cover domain helpers and contracts.
 - `apps/desktop/src/renderer/` tests cover renderer utilities and theming.
-- `apps/desktop/e2e/` — Playwright runs with hidden windows by default (set `EMZERO_E2E_SHOW_WINDOWS=1` to watch them). It contains smoke coverage for production Electron builds launched with `--demo`, plus isolated mock-mail regression coverage for reply preservation, dedicated composition, and automatic HTML-email sizing with privacy/link controls.
+- `apps/desktop/e2e/` — Playwright runs with hidden windows by default (set `EMZERO_E2E_SHOW_WINDOWS=1` to watch them). It contains smoke coverage for production Electron builds launched with `--demo`, plus isolated mock-mail regression coverage for reply preservation, dedicated composition, automatic HTML-email sizing with privacy/link controls, and copying embedded images and saving a conversation as PDF (`mail-export.spec.ts`).
 - `apps/desktop/playwright.config.ts` — production Electron smoke-test configuration.
 - Run the complete suite with `pnpm check` from the repository root.

@@ -22,6 +22,8 @@ import {
   type AccountConnectionUpdate,
   type AccountUpdate,
   type AccountSummary,
+  type PdfExportRequest,
+  type PdfExportResult,
   type BulkMessageJobProgress,
   type BulkMessageJobRequest,
   type BulkMessageJobStartResult,
@@ -182,6 +184,7 @@ export interface EmzeroDesktopApi {
       attachmentIndex: number,
     ) => Promise<AttachmentSaveResult>;
     revealSavedAttachment: (savedAttachmentId: string) => Promise<boolean>;
+    exportPdf: (request: PdfExportRequest) => Promise<PdfExportResult>;
     saveDraft: (
       accountId: string,
       draft: MailSendDraft,
@@ -361,6 +364,7 @@ contextBridge.exposeInMainWorld('emzero', {
       ),
     revealSavedAttachment: (savedAttachmentId) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.revealSavedAttachment, savedAttachmentId),
+    exportPdf: (request) => ipcRenderer.invoke(ACCOUNT_CHANNELS.exportPdf, request),
     saveDraft: (accountId, draft, previous) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.saveDraft, accountId, draft, previous),
     deleteDraft: (accountId, draft) =>

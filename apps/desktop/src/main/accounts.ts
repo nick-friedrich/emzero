@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ipcMain, shell } from 'electron';
+import { BrowserWindow, ipcMain, shell } from 'electron';
 import {
   AI_CHANNELS,
   validAiDraftMessageRequest,
@@ -31,6 +31,7 @@ import {
   type MessageDetailResult,
   type MessageListResult,
   type MessageOperationResult,
+  type PdfExportResult,
 } from '../shared/accounts.js';
 import { validateAliases } from '../shared/aliases.js';
 import { SIGNATURE_CHANNELS, validMailSignatures } from '../shared/signatures.js';
@@ -47,6 +48,7 @@ import { registerSmartInboxHandlers, scheduleMailInsights } from './mail-insight
 import { exportAccountBackup, importAccountBackup, selectAccountBackup, validAppSettingsBackup } from './account-backup.js';
 import { readSignatures, writeSignatures } from './signature-storage.js';
 import { searchServerMessages } from './server-search.js';
+import { exportPdf, validPdfExportRequest } from './pdf-export.js';
 import {
   openMessageAttachment,
   prepareDraftAttachments,
@@ -881,6 +883,12 @@ export function registerAccountHandlers(): void {
       return saveMessageAttachment(account, folderPath, uid, attachmentIndex);
     },
   );
+
+  ipcMain.handle(ACCOUNT_CHANNELS.exportPdf, (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (!validPdfExportRequest(value)) return { ok: false, message: 'Invalid PDF export.' } satisfies PdfExportResult;
+    return exportPdf(BrowserWindow.fromWebContents(event.sender), value.title, value.html);
+  });
 
   ipcMain.handle(ACCOUNT_CHANNELS.revealSavedAttachment, (event, savedAttachmentId: unknown) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');

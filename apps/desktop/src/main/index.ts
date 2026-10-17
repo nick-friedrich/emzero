@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, Menu, powerMonitor } from 'electron';
 import { registerAccountHandlers } from './accounts.js';
+import { registerContextMenus } from './context-menu.js';
 import { startBackgroundSync, stopBackgroundSync } from './background-sync.js';
 import { seedDemoProfile } from './demo-dataset.js';
 import { demoModeEnabled, useDemoProfileWhenRequested } from './demo-profile.js';
@@ -86,6 +87,7 @@ void app.whenReady().then(async () => {
     }
   }
   hideDockForHiddenWindows();
+  registerContextMenus();
   if (demoModeEnabled()) await seedDemoProfile();
   registerAccountHandlers();
   registerMailWindowHandlers();

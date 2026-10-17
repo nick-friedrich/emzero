@@ -13,6 +13,7 @@ import {
   Copy,
   Download,
   ExternalLink,
+  FileDown,
   FolderOpen,
   LoaderCircle,
   Paperclip,
@@ -76,6 +77,7 @@ import {
 
 import { ReplyComposer } from './reply-composer';
 import { formatConversationForCopy } from './conversation-copy';
+import { conversationPdfDocument } from './conversation-pdf';
 
 function MessageBody({
   accountId,
@@ -692,7 +694,7 @@ export function ConversationReader({
   onDraftDeleted?: (event: DraftDeletedEvent) => void;
 }) {
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
-  const { markReadOnOpen } = useTheme();
+  const { markReadOnOpen, alwaysLoadRemoteImages } = useTheme();
   const markedReadConversation = useRef<string | null>(null);
   const nativeMacWindow = nativeWindow && window.emzero?.platform === 'darwin';
   const unread = conversation.messages.some(
@@ -711,34 +713,64 @@ export function ConversationReader({
     folders.filter((folder) => folder.specialUse === '\\Drafts').map((folder) => folder.path),
   );
   const [activeDraftKey, setActiveDraftKey] = useState<string | null>(null);
-  const [copying, setCopying] = useState(false);
-  const [copyStatus, setCopyStatus] = useState<Status | null>(null);
+  const [exporting, setExporting] = useState<'copy' | 'pdf' | null>(null);
+  const [exportStatus, setExportStatus] = useState<Status | null>(null);
+
+  const loadConversationDetails = async () => {
+    const ordered = [...conversation.messages].reverse();
+    const details: MailMessageDetail[] = [];
+    for (let offset = 0; offset < ordered.length; offset += 4) {
+      const batch = await Promise.all(ordered.slice(offset, offset + 4).map(async (message) => {
+        const result = await window.emzero.messages.get(selection.account.id, message.folderPath, message.uid);
+        if (!result.ok || !result.messageDetail) {
+          throw new Error(result.message ?? 'Could not load every message in this conversation.');
+        }
+        return result.messageDetail;
+      }));
+      details.push(...batch);
+    }
+    return details;
+  };
 
   const copyConversation = async () => {
-    setCopying(true);
-    setCopyStatus(null);
+    setExporting('copy');
+    setExportStatus(null);
     try {
-      const ordered = [...conversation.messages].reverse();
-      const details: MailMessageDetail[] = [];
-      for (let offset = 0; offset < ordered.length; offset += 4) {
-        const batch = await Promise.all(ordered.slice(offset, offset + 4).map(async (message) => {
-          const result = await window.emzero.messages.get(selection.account.id, message.folderPath, message.uid);
-          if (!result.ok || !result.messageDetail) {
-            throw new Error(result.message ?? 'Could not load every message in this conversation.');
-          }
-          return result.messageDetail;
-        }));
-        details.push(...batch);
-      }
+      const details = await loadConversationDetails();
       await navigator.clipboard.writeText(formatConversationForCopy(conversation.subject, details));
-      setCopyStatus({ kind: 'success', message: 'Conversation copied.' });
+      setExportStatus({ kind: 'success', message: 'Conversation copied.' });
     } catch (error) {
-      setCopyStatus({
+      setExportStatus({
         kind: 'error',
         message: error instanceof Error ? error.message : 'Could not copy conversation.',
       });
     } finally {
-      setCopying(false);
+      setExporting(null);
+    }
+  };
+
+  const saveConversationPdf = async () => {
+    setExporting('pdf');
+    setExportStatus(null);
+    try {
+      const details = await loadConversationDetails();
+      const result = await window.emzero.messages.exportPdf({
+        title: conversation.subject,
+        html: conversationPdfDocument(conversation.subject, details, alwaysLoadRemoteImages),
+      });
+      if (!result.canceled) {
+        setExportStatus({
+          kind: result.ok ? 'success' : 'error',
+          message: result.message ?? (result.ok ? 'PDF saved.' : 'Could not save PDF.'),
+        });
+      }
+    } catch (error) {
+      setExportStatus({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Could not save PDF.',
+      });
+    } finally {
+      setExporting(null);
     }
   };
   useEffect(() => {
@@ -870,14 +902,19 @@ export function ConversationReader({
                 {conversation.messages.length === 1 ? 'message' : 'messages'}
               </span>
               <Button type="button" variant="ghost" className="h-8 gap-1.5 px-2 text-xs"
-                disabled={copying} onClick={() => void copyConversation()}>
-                {copying ? <LoaderCircle className="size-3.5 animate-spin" /> : <Copy className="size-3.5" />}
-                {copying ? 'Copying…' : 'Copy conversation'}
+                disabled={exporting !== null} onClick={() => void copyConversation()}>
+                {exporting === 'copy' ? <LoaderCircle className="size-3.5 animate-spin" /> : <Copy className="size-3.5" />}
+                {exporting === 'copy' ? 'Copying…' : 'Copy conversation'}
+              </Button>
+              <Button type="button" variant="ghost" className="h-8 gap-1.5 px-2 text-xs"
+                disabled={exporting !== null} onClick={() => void saveConversationPdf()}>
+                {exporting === 'pdf' ? <LoaderCircle className="size-3.5 animate-spin" /> : <FileDown className="size-3.5" />}
+                {exporting === 'pdf' ? 'Saving…' : 'Save as PDF'}
               </Button>
             </div>
           </div>
-          {copyStatus && <p role="status" className={cn('mb-3 text-xs',
-            copyStatus.kind === 'error' ? 'text-danger' : 'text-success')}>{copyStatus.message}</p>}
+          {exportStatus && <p role="status" className={cn('mb-3 text-xs',
+            exportStatus.kind === 'error' ? 'text-danger' : 'text-success')}>{exportStatus.message}</p>}
           <div className="space-y-3">
             {conversation.messages.map((message, index) => {
               const messageKey = `${message.folderPath}:${message.uid}`;
