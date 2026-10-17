@@ -39,11 +39,21 @@ export async function readAccounts(): Promise<StoredAccount[]> {
   }
 }
 
+let accountsWrittenListener: ((accounts: StoredAccount[]) => void) | null = null;
+
+/** Notifies one main-process service whenever the saved account list changes. */
+export function setAccountsWrittenListener(
+  listener: ((accounts: StoredAccount[]) => void) | null,
+): void {
+  accountsWrittenListener = listener;
+}
+
 export async function writeAccounts(accounts: StoredAccount[]): Promise<void> {
   const target = accountsPath();
   const temporary = `${target}.${process.pid}.tmp`;
   await writeFile(temporary, `${JSON.stringify(accounts, null, 2)}\n`, { mode: 0o600 });
   await rename(temporary, target);
+  accountsWrittenListener?.(accounts);
 }
 
 /** Encrypts an account secret, or returns null when no secure system keyring is available. */

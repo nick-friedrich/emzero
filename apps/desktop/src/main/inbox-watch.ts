@@ -38,7 +38,11 @@ function accountFingerprint(account: StoredAccount): string {
 async function connectWatcher(account: StoredAccount, watcher: InboxWatcher): Promise<void> {
   const secret = await resolveMailSecret(account);
   if (watcher.stopped) return;
-  const imap = createImapClient(account, secret, SOCKET_TIMEOUT, { maxIdleTime: MAX_IDLE_TIME });
+  // This connection runs no other commands, so start IDLE as soon as the Inbox opens.
+  const imap = createImapClient(account, secret, SOCKET_TIMEOUT, {
+    maxIdleTime: MAX_IDLE_TIME,
+    autoIdleDelay: 500,
+  });
   watcher.imap = imap;
   imap.on('exists', (event: { count: number; prevCount: number }) => {
     if (event.count > event.prevCount) onInboxChanged(account.id);

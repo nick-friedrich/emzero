@@ -1,7 +1,11 @@
 import { BrowserWindow } from 'electron';
 import { ACCOUNT_CHANNELS, type MailSyncStatus } from '../shared/accounts.js';
 import { listAccountFolders } from './account-folders.js';
-import { readAccounts, type StoredAccount } from './account-storage.js';
+import {
+  readAccounts,
+  setAccountsWrittenListener,
+  type StoredAccount,
+} from './account-storage.js';
 import { demoModeEnabled } from './demo-profile.js';
 import { errorMessage, mailCache } from './mail-runtime.js';
 import { listFolderMessages } from './message-reader.js';
@@ -146,6 +150,9 @@ export function runBackgroundSync(): Promise<MailSyncStatus> {
 export function startBackgroundSync(): void {
   if (backgroundSyncTimer) return;
   setInboxChangedHandler(handleInboxPush);
+  // Added, removed, and re-credentialed accounts get push right away instead of
+  // at the next scheduled sync.
+  setAccountsWrittenListener(reconcileInboxWatchers);
   void readAccounts().then(reconcileInboxWatchers, () => undefined);
   backgroundSyncTimer = setInterval(() => void runBackgroundSync(), 5 * 60_000);
 }
@@ -155,6 +162,7 @@ export function stopBackgroundSync(): void {
   backgroundSyncTimer = null;
   for (const timer of pushedSyncTimers.values()) clearTimeout(timer);
   pushedSyncTimers.clear();
+  setAccountsWrittenListener(null);
   stopInboxWatchers();
 }
 

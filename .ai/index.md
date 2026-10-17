@@ -37,7 +37,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/assets/` — renderer and native package branding assets. `emzero-logo-macos.png` supplies the development-only Dock icon and the macOS `.icns` fallback: 824-pixel artwork centered on a transparent 1024-pixel canvas. The Linux PNG and 192-pixel header WebP use the unpadded artwork.
 - `media/` — source Icon Composer project and exported logo used to generate the desktop branding assets. Packaging compiles `media/icon_composer.icon` into the macOS bundle's `Assets.car` for the macOS 26 dark, clear, and tinted icon appearances, which requires packaging on macOS 26 with Xcode 26+.
 - `apps/desktop/src/main/accounts.ts` — trusted IPC validation and handler registration; delegates privileged work to focused main-process services.
-- `apps/desktop/src/main/account-storage.ts` — persisted, user-ordered account records (including sanitized send-as aliases), keyring-backed secret encryption, and conversion to renderer-safe account summaries.
+- `apps/desktop/src/main/account-storage.ts` — persisted, user-ordered account records (including sanitized send-as aliases), keyring-backed secret encryption, the account-list change hook background sync uses to restart push connections, and conversion to renderer-safe account summaries.
 - `apps/desktop/src/main/signature-storage.ts` — mail signatures persisted in the user data directory, validated and reduced to signature fields on every read and write.
 - `apps/desktop/src/main/ai-assistant.ts` — encrypted OpenAI-compatible provider settings and prompt-driven reply, new-message, and saved-draft generation.
 - `apps/desktop/src/main/ai-stream.ts` — incremental OpenAI-compatible SSE parsing for streamed AI draft generation.
@@ -51,7 +51,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/inbox-watch.ts` — one dedicated IMAP IDLE connection per account on the Inbox, reconnect backoff, and account-change reconciliation, reporting new-mail pushes to background sync.
 - `apps/desktop/src/main/mail-notifications.ts` — new-mail detection, notification preference state, native desktop alerts, and notification activation behavior.
 - `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential caching and per-account invalidation, safe error formatting, and sleep-safe isolated interactive/background per-account IMAP connections.
-- `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization with periodic full reconciliation, message parsing, and cached/server message reading.
+- `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization (reopening an already-selected folder so UIDNEXT/HIGHESTMODSEQ are current) with periodic full reconciliation, message parsing, and cached/server message reading.
 - `apps/desktop/src/main/message-sender.ts` — SMTP delivery from the account or a chosen alias, IMAP Sent-copy persistence, and sent-message cache updates.
 - `apps/desktop/src/main/mail-drafts.ts` — MIME draft compilation plus append-first IMAP draft autosave and deletion.
 - `apps/desktop/src/main/attachment-files.ts` — native file selection, byte-backed registration of files dropped or pasted into a composer, opaque outgoing-file authorization, attachment limits, retained-draft attachment authorization, and received-attachment saving.

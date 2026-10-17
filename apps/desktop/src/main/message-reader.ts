@@ -177,6 +177,10 @@ export async function listFolderMessages(
       account,
       async (imap, secret) => {
         password = secret;
+        // A pooled connection can still have this folder selected from an earlier
+        // sync. Its UIDNEXT and HIGHESTMODSEQ are then frozen at that SELECT, so
+        // new mail would look already fetched. Reopen to read current values.
+        if (imap.mailbox && imap.mailbox.path === folderPath) await imap.mailboxClose();
         const lock = await imap.getMailboxLock(folderPath, { readOnly: true });
         try {
           if (!imap.mailbox) throw new Error('Mailbox did not open.');

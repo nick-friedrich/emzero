@@ -196,7 +196,7 @@ export function createImapClient(
   account: StoredAccount,
   secret: string,
   socketTimeout = 20_000,
-  options: Pick<ImapFlowOptions, 'maxIdleTime'> = {},
+  options: Pick<ImapFlowOptions, 'maxIdleTime' | 'autoIdleDelay'> = {},
 ): ImapFlow {
   const imap = new ImapFlow({
     ...options,
