@@ -47,7 +47,8 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/account-connection-update.ts` — validated, connection-verified changes to an existing password account's username, password, and IMAP/SMTP servers.
 - `apps/desktop/src/main/microsoft-oauth.ts` — personal Microsoft device-code authorization, token exchange, and refresh-token renewal.
 - `apps/desktop/src/main/account-folders.ts` — cached/server folder listing, validation, creation, rename, move, deletion, and ordering.
-- `apps/desktop/src/main/background-sync.ts` — foreground-safe scheduled and on-demand Inbox/Sent synchronization state and execution.
+- `apps/desktop/src/main/background-sync.ts` — foreground-safe scheduled, on-demand, and push-triggered Inbox/Sent synchronization state and execution, with per-account serialized Inbox syncs.
+- `apps/desktop/src/main/inbox-watch.ts` — one dedicated IMAP IDLE connection per account on the Inbox, reconnect backoff, and account-change reconciliation, reporting new-mail pushes to background sync.
 - `apps/desktop/src/main/mail-notifications.ts` — new-mail detection, notification preference state, native desktop alerts, and notification activation behavior.
 - `apps/desktop/src/main/mail-runtime.ts` — shared mail-cache lifecycle, credential caching and per-account invalidation, safe error formatting, and sleep-safe isolated interactive/background per-account IMAP connections.
 - `apps/desktop/src/main/message-reader.ts` — incremental folder-message synchronization with periodic full reconciliation, message parsing, and cached/server message reading.

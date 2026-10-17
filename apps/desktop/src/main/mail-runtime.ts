@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { app, safeStorage } from 'electron';
-import { ImapFlow } from 'imapflow';
+import { ImapFlow, type ImapFlowOptions } from 'imapflow';
 import { usesImplicitTls } from '../shared/accounts.js';
 import { readAccounts, writeAccounts, type StoredAccount } from './account-storage.js';
 import { demoModeEnabled } from './demo-profile.js';
@@ -196,8 +196,10 @@ export function createImapClient(
   account: StoredAccount,
   secret: string,
   socketTimeout = 20_000,
+  options: Pick<ImapFlowOptions, 'maxIdleTime'> = {},
 ): ImapFlow {
   const imap = new ImapFlow({
+    ...options,
     host: account.imap.host,
     port: account.imap.port,
     secure: usesImplicitTls(account.imap),

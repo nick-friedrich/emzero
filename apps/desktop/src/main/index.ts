@@ -3,7 +3,12 @@ import path from 'node:path';
 import { app, BrowserWindow, Menu, powerMonitor } from 'electron';
 import { registerAccountHandlers } from './accounts.js';
 import { registerContextMenus } from './context-menu.js';
-import { startBackgroundSync, stopBackgroundSync } from './background-sync.js';
+import {
+  pauseInboxPushForSuspend,
+  resumeInboxPushAfterWake,
+  startBackgroundSync,
+  stopBackgroundSync,
+} from './background-sync.js';
 import { seedDemoProfile } from './demo-dataset.js';
 import { demoModeEnabled, useDemoProfileWhenRequested } from './demo-profile.js';
 import { closeMailCache, disconnectPooledImapConnections } from './mail-runtime.js';
@@ -100,6 +105,8 @@ void app.whenReady().then(async () => {
   if (!demoModeEnabled()) startBackgroundSync();
   scheduleMailInsights(5_000);
   powerMonitor.on('suspend', disconnectPooledImapConnections);
+  powerMonitor.on('suspend', pauseInboxPushForSuspend);
+  powerMonitor.on('resume', resumeInboxPushAfterWake);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -113,5 +120,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   stopBackgroundSync();
   powerMonitor.removeListener('suspend', disconnectPooledImapConnections);
+  powerMonitor.removeListener('suspend', pauseInboxPushForSuspend);
+  powerMonitor.removeListener('resume', resumeInboxPushAfterWake);
   closeMailCache();
 });
