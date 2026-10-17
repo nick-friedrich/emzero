@@ -478,6 +478,23 @@ export interface MailSendResult extends MessageOperationResult {
   sentMessage?: MailMessageSummary;
 }
 
+export type MailSendKind = 'reply' | 'message';
+
+/** Accepted for background delivery; the outcome arrives as a {@link MailSendJob} update. */
+export interface MailSendQueueResult extends MessageOperationResult {
+  jobId?: string;
+}
+
+export interface MailSendJob {
+  jobId: string;
+  accountId: string;
+  kind: MailSendKind;
+  subject: string;
+  state: 'sending' | 'sent' | 'failed';
+  message?: string;
+  sentMessage?: MailMessageSummary;
+}
+
 export interface MailDraftReference {
   folderPath: string;
   uid: number;
@@ -649,6 +666,9 @@ export const ACCOUNT_CHANNELS = {
   bulkMessageJobChanged: 'messages:bulk-changed',
   sendReply: 'messages:send-reply',
   sendMessage: 'messages:send',
+  retrySend: 'messages:send-retry',
+  dismissSend: 'messages:send-dismiss',
+  sendJobChanged: 'messages:send-changed',
   suggestRecipients: 'messages:suggest-recipients',
   selectAttachments: 'attachments:select',
   addDroppedAttachments: 'attachments:add-dropped',

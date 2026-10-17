@@ -40,7 +40,8 @@ import {
   type MailSearchRequest,
   type MailSearchResult,
   type MailSendDraft,
-  type MailSendResult,
+  type MailSendJob,
+  type MailSendQueueResult,
   type MailSyncStatus,
   type MicrosoftAuthStartResult,
   type MailDraftReference,
@@ -161,8 +162,21 @@ export interface EmzeroDesktopApi {
     startBulkJob: (request: BulkMessageJobRequest) => Promise<BulkMessageJobStartResult>;
     cancelBulkJob: (jobId: string) => Promise<boolean>;
     onBulkJobProgress: (listener: (progress: BulkMessageJobProgress) => void) => () => void;
-    sendReply: (accountId: string, draft: MailReplyDraft) => Promise<MailSendResult>;
-    send: (accountId: string, draft: MailSendDraft) => Promise<MailSendResult>;
+    /** Queues a reply for background delivery; the outcome arrives through `onSendJob`. */
+    sendReply: (
+      accountId: string,
+      draft: MailReplyDraft,
+      draftReference?: MailDraftReference,
+    ) => Promise<MailSendQueueResult>;
+    /** Queues a message for background delivery; the outcome arrives through `onSendJob`. */
+    send: (
+      accountId: string,
+      draft: MailSendDraft,
+      draftReference?: MailDraftReference,
+    ) => Promise<MailSendQueueResult>;
+    retrySend: (jobId: string) => Promise<MailSendQueueResult>;
+    dismissSend: (jobId: string) => Promise<void>;
+    onSendJob: (listener: (job: MailSendJob) => void) => () => void;
     suggestRecipients: (accountId: string, query: string) => Promise<RecipientSuggestion[]>;
     selectAttachments: () => Promise<AttachmentSelectionResult>;
     addDroppedAttachments: (files: { filename: string; content: Uint8Array }[]) => Promise<AttachmentSelectionResult>;
@@ -342,9 +356,17 @@ contextBridge.exposeInMainWorld('emzero', {
       ipcRenderer.on(ACCOUNT_CHANNELS.bulkMessageJobChanged, handler);
       return () => ipcRenderer.removeListener(ACCOUNT_CHANNELS.bulkMessageJobChanged, handler);
     },
-    sendReply: (accountId, draft) =>
-      ipcRenderer.invoke(ACCOUNT_CHANNELS.sendReply, accountId, draft),
-    send: (accountId, draft) => ipcRenderer.invoke(ACCOUNT_CHANNELS.sendMessage, accountId, draft),
+    sendReply: (accountId, draft, draftReference) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.sendReply, accountId, draft, draftReference),
+    send: (accountId, draft, draftReference) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.sendMessage, accountId, draft, draftReference),
+    retrySend: (jobId) => ipcRenderer.invoke(ACCOUNT_CHANNELS.retrySend, jobId),
+    dismissSend: (jobId) => ipcRenderer.invoke(ACCOUNT_CHANNELS.dismissSend, jobId),
+    onSendJob: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, job: MailSendJob) => listener(job);
+      ipcRenderer.on(ACCOUNT_CHANNELS.sendJobChanged, handler);
+      return () => ipcRenderer.removeListener(ACCOUNT_CHANNELS.sendJobChanged, handler);
+    },
     suggestRecipients: (accountId, query) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.suggestRecipients, accountId, query),
     selectAttachments: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.selectAttachments),

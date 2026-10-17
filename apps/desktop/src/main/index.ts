@@ -15,6 +15,7 @@ import { closeMailCache, disconnectPooledImapConnections } from './mail-runtime.
 import { registerMailWindowHandlers } from './mail-windows.js';
 import { setMailNotificationActivationHandler } from './mail-notifications.js';
 import { scheduleMailInsights } from './mail-insights.js';
+import { hasOutgoingDeliveries, waitForOutgoingDeliveries } from './outgoing-mail.js';
 import { hiddenWindowWebPreferences, hideDockForHiddenWindows, revealWindow } from './window-visibility.js';
 
 let mainWindow: BrowserWindow | null = null;
@@ -115,6 +116,17 @@ void app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+// Sending happens after the composer closes, so let in-flight messages finish before quitting.
+let outgoingMailSettled = false;
+app.on('before-quit', (event) => {
+  if (outgoingMailSettled || !hasOutgoingDeliveries()) return;
+  event.preventDefault();
+  void waitForOutgoingDeliveries(60_000).then(() => {
+    outgoingMailSettled = true;
+    app.quit();
+  });
 });
 
 app.on('will-quit', () => {

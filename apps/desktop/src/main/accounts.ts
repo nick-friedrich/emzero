@@ -27,7 +27,7 @@ import {
   type MailSearchResult,
   type MailSendDraft,
   type MailDraftReference,
-  type MailSendResult,
+  type MailSendQueueResult,
   type MessageDetailResult,
   type MessageListResult,
   type MessageOperationResult,
@@ -87,7 +87,11 @@ import {
 import { errorMessage, mailCache } from './mail-runtime.js';
 import { getFolderMessage, listFolderMessages } from './message-reader.js';
 import { deleteMailDraft, saveMailDraft } from './mail-drafts.js';
-import { sendMessage } from './message-sender.js';
+import {
+  dismissOutgoingMessage,
+  queueOutgoingMessage,
+  retryOutgoingMessage,
+} from './outgoing-mail.js';
 import { setMailNotificationsEnabled } from './mail-notifications.js';
 import {
   beginMicrosoftAuth,
@@ -895,31 +899,38 @@ export function registerAccountHandlers(): void {
     return typeof savedAttachmentId === 'string' && revealSavedAttachment(savedAttachmentId);
   });
 
-  ipcMain.handle(
-    ACCOUNT_CHANNELS.sendReply,
-    async (event, accountId: unknown, draft: unknown) => {
-      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-      if (typeof accountId !== 'string' || !validSendDraft(draft)) {
-        return { ok: false, message: 'Invalid reply.' } satisfies MailSendResult;
-      }
-      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
-      if (!account) return { ok: false, message: 'Account not found.' } satisfies MailSendResult;
-      return sendMessage(account, draft, 'reply');
-    },
-  );
+  for (const [channel, kind] of [
+    [ACCOUNT_CHANNELS.sendReply, 'reply'],
+    [ACCOUNT_CHANNELS.sendMessage, 'message'],
+  ] as const) {
+    ipcMain.handle(
+      channel,
+      async (event, accountId: unknown, draft: unknown, draftReference: unknown) => {
+        if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+        if (
+          typeof accountId !== 'string' ||
+          !validSendDraft(draft) ||
+          (draftReference !== undefined && !validDraftReference(draftReference))
+        ) {
+          return { ok: false, message: kind === 'reply' ? 'Invalid reply.' : 'Invalid message.' } satisfies MailSendQueueResult;
+        }
+        const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
+        if (!account) return { ok: false, message: 'Account not found.' } satisfies MailSendQueueResult;
+        return queueOutgoingMessage(account, draft, kind, draftReference);
+      },
+    );
+  }
 
-  ipcMain.handle(
-    ACCOUNT_CHANNELS.sendMessage,
-    async (event, accountId: unknown, draft: unknown) => {
-      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-      if (typeof accountId !== 'string' || !validSendDraft(draft)) {
-        return { ok: false, message: 'Invalid message.' } satisfies MailSendResult;
-      }
-      const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
-      if (!account) return { ok: false, message: 'Account not found.' } satisfies MailSendResult;
-      return sendMessage(account, draft, 'message');
-    },
-  );
+  ipcMain.handle(ACCOUNT_CHANNELS.retrySend, async (event, jobId: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (typeof jobId !== 'string') return { ok: false, message: 'Invalid message.' } satisfies MailSendQueueResult;
+    return retryOutgoingMessage(jobId);
+  });
+
+  ipcMain.handle(ACCOUNT_CHANNELS.dismissSend, (event, jobId: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+    if (typeof jobId === 'string') dismissOutgoingMessage(jobId);
+  });
 
   ipcMain.handle(
     ACCOUNT_CHANNELS.suggestRecipients,

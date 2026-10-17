@@ -4,6 +4,7 @@ import { simpleParser } from 'mailparser';
 import {
   type MailMessageSummary,
   type MailSendDraft,
+  type MailSendKind,
   type MailSendResult,
   usesImplicitTls,
 } from '../shared/accounts.js';
@@ -24,15 +25,26 @@ import {
   smtpAuthentication,
 } from './mail-runtime.js';
 
+/** The reason a draft cannot be sent at all, checked before it is queued for delivery. */
+export function sendDraftProblem(
+  account: StoredAccount,
+  draft: MailSendDraft,
+  kind: MailSendKind,
+): string | null {
+  const validationError = kind === 'reply' ? validateReplyDraft(draft) : validateSendDraft(draft);
+  if (validationError) return validationError;
+  if (!sendingIdentity(account, draft.from)) return 'Choose an address from this account to send from.';
+  return null;
+}
+
 export async function sendMessage(
   account: StoredAccount,
   draft: MailSendDraft,
-  kind: 'reply' | 'message',
+  kind: MailSendKind,
 ): Promise<MailSendResult> {
-  const validationError = kind === 'reply' ? validateReplyDraft(draft) : validateSendDraft(draft);
-  if (validationError) return { ok: false, message: validationError };
-  const from = sendingIdentity(account, draft.from);
-  if (!from) return { ok: false, message: 'Choose an address from this account to send from.' };
+  const problem = sendDraftProblem(account, draft, kind);
+  if (problem) return { ok: false, message: problem };
+  const from = sendingIdentity(account, draft.from)!;
   const sentLabel = kind === 'reply' ? 'Reply' : 'Message';
   if (demoModeEnabled()) return sendDemoMessage(account, draft, sentLabel, from);
 

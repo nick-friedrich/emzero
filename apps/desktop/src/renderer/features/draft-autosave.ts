@@ -29,6 +29,8 @@ export function useDraftAutosave(
   handoffSavedDraft: () => Promise<MailDraftReference | undefined>;
   discardSavedDraft: () => Promise<boolean>;
   discardSavedDraftInBackground: () => BackgroundDraftDeletion;
+  pauseAutosaveForSend: () => MailDraftReference | undefined;
+  releaseSavedDraftAfterSend: (handedOver: MailDraftReference | undefined) => void;
 } {
   const [status, setStatus] = useState<DraftAutosaveState>({ state: 'idle' });
   const [savedDraftReference, setSavedDraftReference] = useState(initialReference);
@@ -161,6 +163,38 @@ export function useDraftAutosave(
     return { reference: knownDraft?.reference, completion };
   }, []);
 
+  // Sending hands the saved draft to the main process, which deletes it once the
+  // message is delivered and rewrites it if delivery fails. Pausing cancels the
+  // pending autosave without waiting for a save already in flight.
+  const pauseAutosaveForSend = useCallback(() => {
+    pendingSave.current = null;
+    generation.current += 1;
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+    const saved = savedDraft.current;
+    return saved?.accountId === accountId ? saved.reference : undefined;
+  }, [accountId]);
+
+  // Any copy other than the one handed over (an earlier From account's, or one an
+  // in-flight save lands afterwards) belongs to no one once the message is queued.
+  const releaseSavedDraftAfterSend = useCallback((handedOver: MailDraftReference | undefined) => {
+    void queue.current.catch(() => undefined).then(() => {
+      const saved = savedDraft.current;
+      savedDraft.current = null;
+      if (
+        saved &&
+        (saved.accountId !== accountId ||
+          saved.reference.folderPath !== handedOver?.folderPath ||
+          saved.reference.uid !== handedOver.uid)
+      ) {
+        void window.emzero.messages.deleteDraft(saved.accountId, saved.reference).catch(() => undefined);
+      }
+    });
+    lastSavedFingerprint.current = null;
+    setSavedDraftReference(undefined);
+    setStatus({ state: 'idle' });
+  }, [accountId]);
+
   const handoffSavedDraft = useCallback(async () => {
     pendingSave.current = null;
     let saveFailed = false;
@@ -206,5 +240,7 @@ export function useDraftAutosave(
     handoffSavedDraft,
     discardSavedDraft,
     discardSavedDraftInBackground,
+    pauseAutosaveForSend,
+    releaseSavedDraftAfterSend,
   };
 }

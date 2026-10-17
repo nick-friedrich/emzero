@@ -31,6 +31,7 @@ import {
   type StartBulkOperation,
 } from './features/mail-common';
 import { MessageList } from './features/message-list';
+import { OutgoingMailStatus } from './features/outgoing-mail-status';
 import { Sidebar } from './features/sidebar';
 import { UnifiedInbox } from './features/unified-inbox';
 import { mailEventsChannel } from './mail-window';
@@ -228,6 +229,9 @@ export function App() {
     const timer = window.setTimeout(() => setBulkOperation(null), 8_000);
     return () => window.clearTimeout(timer);
   }, [bulkOperation?.progress.state]);
+
+  // A sent message lands in Sent; a failed one is rewritten into Drafts.
+  const refreshAfterSend = useCallback(() => setSyncRevision((current) => current + 1), []);
 
   const startBulkOperation = useCallback<StartBulkOperation>(async (request, location) => {
     if (
@@ -679,6 +683,7 @@ export function App() {
           onDismiss={() => setBulkOperation(null)}
         />
       )}
+      <OutgoingMailStatus raised={bulkOperation !== null} onFinished={refreshAfterSend} />
     </main>
   );
 }
