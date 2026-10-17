@@ -11,7 +11,7 @@ vi.mock('electron', () => ({
 
 import { readSignatures, writeSignatures } from './signature-storage.js';
 
-const work = { id: 'work', name: 'Work', body: 'Nick\nEmzero', accountIds: ['account-1'] };
+const work = { id: 'work', name: 'Work', body: 'Nick\nEmzero', accountIds: ['account-1'], aliases: [{ accountId: 'account-1', address: 'help@emzero.app' }] };
 
 beforeEach(async () => {
   userData.path = await mkdtemp(path.join(tmpdir(), 'emzero-signatures-'));

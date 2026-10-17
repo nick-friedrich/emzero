@@ -112,6 +112,7 @@ export function ComposeDialog({
     const initialText = initialDraft?.text ?? '';
     return initialText || composerKind === 'draft' ? initialText : signatureBody(
       accounts.some((account) => account.id === defaultAccountId) ? defaultAccountId! : (accounts[0]?.id ?? ''),
+      initialDraft?.from,
     );
   });
   const [bodyHtml, setBodyHtml] = useState(() => {
@@ -119,14 +120,14 @@ export function ComposeDialog({
     const initialAccountId = accounts.some((account) => account.id === defaultAccountId)
       ? defaultAccountId!
       : (accounts[0]?.id ?? '');
-    const text = initialDraft?.text || (composerKind === 'draft' ? '' : signatureBody(initialAccountId));
-    return messageHtml(text, signatureBodyForId(signatureIdForAccount(initialAccountId)));
+    const text = initialDraft?.text || (composerKind === 'draft' ? '' : signatureBody(initialAccountId, initialDraft?.from));
+    return messageHtml(text, signatureBodyForId(signatureIdForAccount(initialAccountId, initialDraft?.from)));
   });
   const [signatureId, setSignatureId] = useState(() => {
     const initialAccountId = accounts.some((account) => account.id === defaultAccountId)
       ? defaultAccountId!
       : (accounts[0]?.id ?? '');
-    const assignedSignatureId = signatureIdForAccount(initialAccountId);
+    const assignedSignatureId = signatureIdForAccount(initialAccountId, initialDraft?.from);
     const hasAssignedSignature = Boolean(
       initialDraft && signatureSuffix(initialDraft.text, assignedSignatureId),
     );
@@ -550,10 +551,13 @@ export function ComposeDialog({
                       aria-label="From"
                       onChange={(event) => {
                         const [nextAccountId, nextAddress] = JSON.parse(event.target.value) as [string, string];
-                        if (nextAccountId !== accountId) {
-                          changeSignature(signatureIdForAccount(nextAccountId));
-                          setAccountId(nextAccountId);
+                        // Switch to the new sender's signature, keeping a manual pick when both
+                        // senders share the same assignment.
+                        const nextSignatureId = signatureIdForAccount(nextAccountId, nextAddress);
+                        if (nextSignatureId !== signatureIdForAccount(accountId, sendAs)) {
+                          changeSignature(nextSignatureId);
                         }
+                        if (nextAccountId !== accountId) setAccountId(nextAccountId);
                         setFromAddress(nextAddress);
                         setStatus(null);
                       }}

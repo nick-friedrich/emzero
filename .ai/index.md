@@ -81,7 +81,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/shared/mail-insights.ts` — every Jev question and threshold, tag derivation, smart-inbox templates, membership rules, settings validation, and IPC contract.
 - `apps/desktop/src/shared/appearance.ts` — theme and interface-font identifiers shared by the renderer theme provider and backup validation.
 - `apps/desktop/src/shared/aliases.ts` — account send-as aliases: validation, the account's own-address set, resolving a draft's From identity, and picking the alias a reply or draft should keep sending as.
-- `apps/desktop/src/shared/signatures.ts` — signature IPC contract, size limits, and the validation shared by main-process storage, backups, and the renderer.
+- `apps/desktop/src/shared/signatures.ts` — signature IPC contract (account and per-alias assignments), size limits, and the validation shared by main-process storage, backups, and the renderer.
 - `apps/desktop/src/shared/conversations.ts` — conversation grouping and quoted-text splitting.
 - `apps/desktop/src/shared/replies.ts` — reply and reply-all construction, address parsing, and outgoing-draft validation.
 - `apps/desktop/src/shared/message-keywords.ts` — Emzero-private IMAP importance and due-date keyword encoding, parsing, and capability rules.
@@ -108,7 +108,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/account-settings.tsx` — standalone tabbed settings window for general mail behavior and demo mode, account names/colors/connection details/aliases, signatures, and encrypted backup/restore.
 - `features/account-aliases.tsx` — per-account alias editor shown in the Accounts settings tab.
 - `features/appearance-switcher.tsx` — global keyboard shortcut and accessible quick theme/font picker, shared by all renderer windows; owns the settings shortcut label.
-- `features/signatures.ts` — main-process-backed signature cache and cross-window refresh, the one-time migration off origin-scoped browser storage, account-to-signature assignments, and the plain-text signature form with the RFC 3676 "-- " delimiter.
+- `features/signatures.ts` — main-process-backed signature cache and cross-window refresh, the one-time migration off origin-scoped browser storage, account- and alias-to-signature assignment lookup (an alias without its own signature uses its account's), and the plain-text signature form with the RFC 3676 "-- " delimiter.
 - `features/signature-html.ts` — the Outlook-style `<div id="Signature">` block in the editor and HTML part (no visible divider), and the delimited plain-text part derived from it.
 - `features/signature-html.test.ts` — renderer tests for signature markup and the delimited plain-text part.
 - `features/signature-picker.tsx` — compact compose-time signature selection for the composer action bar.

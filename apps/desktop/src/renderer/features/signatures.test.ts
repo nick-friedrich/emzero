@@ -5,6 +5,7 @@ import {
   saveSignatures,
   signatureBody,
   signatureForAccount,
+  signatureIdForAccount,
   signatureSuffix,
   storedSignatures,
   withoutSignature,
@@ -44,6 +45,17 @@ describe('mail signatures', () => {
 
     expect(signatureForAccount('account-2')).toBe('Nick\nEmzero');
     expect(signatureBody('account-1')).toBe('\n\n-- \nNick\nEmzero');
+  });
+
+  it('prefers an alias signature and falls back to the account signature', async () => {
+    const alias = { id: 'alias', name: 'Alias', body: 'Support', accountIds: [], aliases: [{ accountId: 'account-1', address: 'help@emzero.app' }] };
+    stubWindow({ stored: [work, alias] });
+    await loadSignatures();
+
+    expect(signatureIdForAccount('account-1', 'Help@Emzero.app')).toBe('alias');
+    expect(signatureForAccount('account-1', 'other@emzero.app')).toBe('Nick\nEmzero');
+    expect(signatureForAccount('account-2', 'help@emzero.app')).toBe('Nick\nEmzero');
+    expect(signatureIdForAccount('account-1')).toBe('work');
   });
 
   it('migrates a legacy browser-storage copy once, without clearing it', async () => {

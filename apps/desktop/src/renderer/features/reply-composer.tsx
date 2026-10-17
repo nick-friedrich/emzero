@@ -1,5 +1,6 @@
 import type { AccountSummary, MailMessageDetail, MailMessageSummary } from '../../shared/accounts';
 import type { AiConversationMessage } from '../../shared/ai';
+import { matchingAlias } from '../../shared/aliases';
 import { createReplyDraft, replyAllCcRecipients, replyRecipients, type ReplyMode } from '../../shared/replies';
 import { ComposeDialog, type DraftDeletedEvent, type DraftSavedEvent } from './compose-dialog';
 import { signatureBody } from './signatures';
@@ -99,7 +100,7 @@ export function ReplyComposer({
         composerKind="reply"
         variant="inline"
         title={mode === 'replyAll' ? 'Reply all' : 'Reply'}
-        initialDraft={createReplyDraft(account, summary, message, signatureBody(account.id), mode)}
+        initialDraft={createReplyDraft(account, summary, message, signatureBody(account.id, matchingAlias(account, [...message.to, ...message.cc])), mode)}
         loadConversation={loadConversation}
         onOpenChange={onOpenChange}
         onSent={(sentMessage) => { if (sentMessage) onSent(sentMessage); }}

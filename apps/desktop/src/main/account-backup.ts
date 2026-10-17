@@ -215,6 +215,10 @@ export async function importAccountBackup(selectionId: string, password: string)
           accountIds: [...new Set(signature.accountIds.flatMap((accountId) =>
             restoredAccountIds.get(accountId) ?? [],
           ))],
+          aliases: (signature.aliases ?? []).flatMap((alias) => {
+            const accountId = restoredAccountIds.get(alias.accountId);
+            return accountId ? [{ accountId, address: alias.address }] : [];
+          }),
         })),
       },
     } : {}),

@@ -1,5 +1,6 @@
 import {
   SIGNATURE_LIMITS,
+  signatureHasAlias,
   validMailSignature,
   type MailSignature,
 } from '../../shared/signatures';
@@ -101,12 +102,23 @@ export function saveSignatures(next: MailSignature[]): void {
     });
 }
 
-export function signatureForAccount(accountId: string): string {
-  return storedSignatures().find((signature) => signature.accountIds.includes(accountId))?.body.trim() ?? '';
+/**
+ * The signature assigned to the sender: the alias's own when `from` is an alias with one,
+ * otherwise the account's.
+ */
+function assignedSignature(accountId: string, from?: string): MailSignature | undefined {
+  const all = storedSignatures();
+  const address = from?.trim();
+  return (address ? all.find((signature) => signatureHasAlias(signature, accountId, address)) : undefined)
+    ?? all.find((signature) => signature.accountIds.includes(accountId));
 }
 
-export function signatureIdForAccount(accountId: string): string {
-  return storedSignatures().find((signature) => signature.accountIds.includes(accountId))?.id ?? '';
+export function signatureForAccount(accountId: string, from?: string): string {
+  return assignedSignature(accountId, from)?.body.trim() ?? '';
+}
+
+export function signatureIdForAccount(accountId: string, from?: string): string {
+  return assignedSignature(accountId, from)?.id ?? '';
 }
 
 export function signatureBodyForId(signatureId: string): string {
@@ -117,8 +129,8 @@ export function formatSignature(signature: string): string {
   return signature ? `${signatureSeparator}${signature}` : '';
 }
 
-export function signatureBody(accountId: string): string {
-  return formatSignature(signatureForAccount(accountId));
+export function signatureBody(accountId: string, from?: string): string {
+  return formatSignature(signatureForAccount(accountId, from));
 }
 
 function signatureVariants(signatureId: string): string[] {
