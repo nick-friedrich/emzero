@@ -899,29 +899,26 @@ export function registerAccountHandlers(): void {
     return typeof savedAttachmentId === 'string' && revealSavedAttachment(savedAttachmentId);
   });
 
+  // Sending acknowledges without awaiting anything so the composer closes immediately; the
+  // account lookup and delivery happen in the background (see outgoing-mail.ts).
   for (const [channel, kind] of [
     [ACCOUNT_CHANNELS.sendReply, 'reply'],
     [ACCOUNT_CHANNELS.sendMessage, 'message'],
   ] as const) {
-    ipcMain.handle(
-      channel,
-      async (event, accountId: unknown, draft: unknown, draftReference: unknown) => {
-        if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-        if (
-          typeof accountId !== 'string' ||
-          !validSendDraft(draft) ||
-          (draftReference !== undefined && !validDraftReference(draftReference))
-        ) {
-          return { ok: false, message: kind === 'reply' ? 'Invalid reply.' : 'Invalid message.' } satisfies MailSendQueueResult;
-        }
-        const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
-        if (!account) return { ok: false, message: 'Account not found.' } satisfies MailSendQueueResult;
-        return queueOutgoingMessage(account, draft, kind, draftReference);
-      },
-    );
+    ipcMain.handle(channel, (event, accountId: unknown, draft: unknown, draftReference: unknown) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
+      if (
+        typeof accountId !== 'string' ||
+        !validSendDraft(draft) ||
+        (draftReference !== undefined && !validDraftReference(draftReference))
+      ) {
+        return { ok: false, message: kind === 'reply' ? 'Invalid reply.' : 'Invalid message.' } satisfies MailSendQueueResult;
+      }
+      return queueOutgoingMessage(accountId, draft, kind, draftReference);
+    });
   }
 
-  ipcMain.handle(ACCOUNT_CHANNELS.retrySend, async (event, jobId: unknown) => {
+  ipcMain.handle(ACCOUNT_CHANNELS.retrySend, (event, jobId: unknown) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
     if (typeof jobId !== 'string') return { ok: false, message: 'Invalid message.' } satisfies MailSendQueueResult;
     return retryOutgoingMessage(jobId);

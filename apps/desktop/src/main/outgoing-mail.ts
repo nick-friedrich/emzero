@@ -31,65 +31,71 @@ function publish(status: MailSendJob): void {
   }
 }
 
-async function deliver(account: StoredAccount, job: OutgoingJob): Promise<void> {
+// The composer has already closed, so a message that cannot be sent is kept in Drafts.
+async function fail(account: StoredAccount | undefined, job: OutgoingJob, reason: string): Promise<void> {
+  const saved = account
+    ? await saveMailDraft(account, job.draft, job.draftReference).catch(() => null)
+    : null;
+  if (saved?.ok && saved.draft) job.draftReference = saved.draft;
+  job.status = {
+    ...job.status,
+    state: 'failed',
+    message: saved?.ok ? `${reason} It was saved to Drafts.` : reason,
+  };
+  publish(job.status);
+}
+
+async function deliver(job: OutgoingJob): Promise<void> {
   const { status, draft } = job;
+  const account = (await readAccounts()).find((candidate) => candidate.id === status.accountId);
+  if (!account) return fail(undefined, job, 'Account not found.');
+  const problem = sendDraftProblem(account, draft, status.kind);
+  if (problem) return fail(account, job, problem);
   const result = await sendMessage(account, draft, status.kind).catch(() => ({
     ok: false as const,
     message: 'Could not send message.',
     sentMessage: undefined,
   }));
-  if (result.ok) {
-    jobs.delete(status.jobId);
-    if (job.draftReference) await deleteMailDraft(account, job.draftReference).catch(() => undefined);
-    publish({ ...status, state: 'sent', message: result.message, sentMessage: result.sentMessage });
-    return;
-  }
-
-  // The composer has already closed, so keep the message in Drafts rather than losing it.
-  const saved = await saveMailDraft(account, draft, job.draftReference).catch(() => null);
-  if (saved?.ok && saved.draft) job.draftReference = saved.draft;
-  job.status = {
-    ...status,
-    state: 'failed',
-    message: saved?.ok
-      ? `${result.message ?? 'Could not send message.'} It was saved to Drafts.`
-      : result.message ?? 'Could not send message.',
-  };
-  publish(job.status);
+  if (!result.ok) return fail(account, job, result.message ?? 'Could not send message.');
+  jobs.delete(status.jobId);
+  if (job.draftReference) await deleteMailDraft(account, job.draftReference).catch(() => undefined);
+  publish({ ...status, state: 'sent', message: result.message, sentMessage: result.sentMessage });
 }
 
-function start(account: StoredAccount, job: OutgoingJob): void {
+function start(job: OutgoingJob): void {
   job.status = { ...job.status, state: 'sending', message: undefined };
   jobs.set(job.status.jobId, job);
   publish(job.status);
-  const delivery = deliver(account, job).finally(() => deliveries.delete(delivery));
+  const delivery = deliver(job)
+    .catch(() => fail(undefined, job, 'Could not send message.'))
+    .finally(() => deliveries.delete(delivery));
   deliveries.add(delivery);
 }
 
-/** Validates a draft and starts delivering it in the background, returning immediately. */
+/**
+ * Accepts a message for background delivery without awaiting anything, so the composer can
+ * close at once. Looking up the account, validating, and sending all happen afterwards;
+ * any failure is reported as a failed job with the message saved to Drafts.
+ */
 export function queueOutgoingMessage(
-  account: StoredAccount,
+  accountId: string,
   draft: MailSendDraft,
   kind: MailSendKind,
   draftReference?: MailDraftReference,
 ): MailSendQueueResult {
-  const problem = sendDraftProblem(account, draft, kind);
-  if (problem) return { ok: false, message: problem };
   const jobId = randomUUID();
-  start(account, {
-    status: { jobId, accountId: account.id, kind, subject: draft.subject.trim(), state: 'sending' },
+  start({
+    status: { jobId, accountId, kind, subject: draft.subject.trim(), state: 'sending' },
     draft,
     draftReference,
   });
   return { ok: true, jobId };
 }
 
-export async function retryOutgoingMessage(jobId: string): Promise<MailSendQueueResult> {
+export function retryOutgoingMessage(jobId: string): MailSendQueueResult {
   const job = jobs.get(jobId);
   if (!job || job.status.state !== 'failed') return { ok: false, message: 'This message is no longer waiting to be sent.' };
-  const account = (await readAccounts()).find((candidate) => candidate.id === job.status.accountId);
-  if (!account) return { ok: false, message: 'Account not found.' };
-  start(account, job);
+  start(job);
   return { ok: true, jobId };
 }
 

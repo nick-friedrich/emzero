@@ -318,11 +318,9 @@ export function ComposeDialog({
     }, onProgress);
   };
 
-  // Delivery runs in the main process, so the composer closes as soon as the message is
-  // queued; failures surface in the main window's send status bar with the copy kept in Drafts.
-  const deliver = async (draft: MailSendDraft) => {
-    setBusy(true);
-    setStatus(null);
+  // Delivery runs in the main process, and the composer closes without waiting for it: the
+  // main window's send status cards report the outcome, keeping a failed message in Drafts.
+  const deliver = (draft: MailSendDraft) => {
     let jobId: string | undefined;
     const early = new Map<string, MailSendJob>();
     const finish = (job: MailSendJob) => {
@@ -330,34 +328,33 @@ export function ComposeDialog({
       if (job.state === 'sent') onSent(job.sentMessage);
     };
     const stopListening = window.emzero.messages.onSendJob((job) => {
-      if (job.state === 'sending') return;
+      if (job.state !== 'sent' && job.state !== 'failed') return;
       if (jobId === undefined) early.set(job.jobId, job);
       else if (job.jobId === jobId) finish(job);
     });
-    try {
-      const draftReference = pauseAutosaveForSend();
-      const result = composerKind === 'reply'
-        ? await window.emzero.messages.sendReply(accountId, draft, draftReference)
-        : await window.emzero.messages.send(accountId, draft, draftReference);
+    const draftReference = pauseAutosaveForSend();
+    // Invoking dispatches the message synchronously, so even a closing window has handed it off.
+    const queued = composerKind === 'reply'
+      ? window.emzero.messages.sendReply(accountId, draft, draftReference)
+      : window.emzero.messages.send(accountId, draft, draftReference);
+    const deletedEvent = deletedDraftEvent();
+    releaseSavedDraftAfterSend(draftReference);
+    if (deletedEvent.references.length > 0) onDeleted?.(deletedEvent);
+    resetComposer();
+    // A standalone window closes on the main process's acknowledgement, which awaits nothing;
+    // closing first could tear the window down before its request is read.
+    if (variant !== 'window') finishClose();
+    void queued.then((result) => {
       if (!result.ok || !result.jobId) {
         stopListening();
-        setStatus({ kind: 'error', message: result.message ?? 'Could not send message.' });
         return;
       }
       jobId = result.jobId;
       const finishedEarly = early.get(jobId);
       if (finishedEarly) finish(finishedEarly);
-      const deletedEvent = deletedDraftEvent();
-      releaseSavedDraftAfterSend(draftReference);
-      if (deletedEvent.references.length > 0) onDeleted?.(deletedEvent);
-      resetComposer();
-      finishClose();
-    } catch {
-      stopListening();
-      setStatus({ kind: 'error', message: 'Could not send message.' });
-    } finally {
-      setBusy(false);
-    }
+    }, stopListening).finally(() => {
+      if (variant === 'window') finishClose();
+    });
   };
 
   const requestSend = () => {
@@ -368,7 +365,7 @@ export function ComposeDialog({
       return;
     }
     if (skipSendConfirmation) {
-      void deliver(draft);
+      deliver(draft);
       return;
     }
     setPendingDraft(draft);
@@ -808,7 +805,7 @@ export function ComposeDialog({
             setSkipSendConfirmation(true);
           }
           setPendingDraft(null);
-          void deliver(draft);
+          deliver(draft);
         }}
       />
       <DeleteDraftDialog
