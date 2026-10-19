@@ -79,6 +79,8 @@ function ComposerWindow({ context }: { context: Extract<MailWindowContext, { kin
       variant="window"
       initialDraft={context.draft}
       initialDraftReference={context.draftReference}
+      initialDraftSessionKey={context.draftSessionKey}
+      initialDraftUnsaved={context.draftUnsaved}
       onOpenChange={(open) => { if (!open) window.close(); }}
       onDraftSaved={notifyDraftSaved}
       onSent={notifyMailChanged}

@@ -55,6 +55,7 @@ This index records where application responsibilities live. Read it before makin
 - `apps/desktop/src/main/message-sender.ts` — up-front send-draft validation, SMTP delivery from the account or a chosen alias, IMAP Sent-copy persistence, and sent-message cache updates.
 - `apps/desktop/src/main/outgoing-mail.ts` — background send queue: send IPC acknowledges without awaiting anything; account lookup, validation, and delivery then run in the background, which deletes the handed-over autosaved draft, or rewrites it into Drafts on failure and keeps the job for Retry; status broadcast to every window, and quitting waits for in-flight sends.
 - `apps/desktop/src/main/mail-drafts.ts` — MIME draft compilation plus append-first IMAP draft autosave and deletion.
+- `apps/desktop/src/main/draft-sessions.ts` — per-composer draft sessions keyed by a renderer-generated id: serialized saves/deletes that always replace the session's latest copy, so a pop-out window or a queued send takes over a draft whose save is still uploading without leaving duplicates.
 - `apps/desktop/src/main/attachment-files.ts` — native file selection, byte-backed registration of files dropped or pasted into a composer, opaque outgoing-file authorization, attachment limits, retained-draft attachment authorization, and received-attachment saving.
 - `apps/desktop/src/main/server-search.ts` — on-demand IMAP TEXT search scoped by account, folder, or special use (All Mail/Trash/Spam on Gmail-style servers), caching found summaries for later local search.
 - `apps/desktop/src/main/message-actions.ts` — read/unread, star/unstar, delete, same-account move, and cross-account message-transfer operations.
@@ -151,7 +152,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/reply-composer.tsx` — Reply / Reply all entry and inline editor beneath a message, preserving reply headers, draft autosave, and conversation context for AI drafting.
 - `features/message-prefetch.ts` — bounded idle, hover, and keyboard-focus message-body prefetching shared by folder, unified, and search lists.
 - `features/attachment-picker.tsx` — outgoing-attachment chips, the attach button, limit-aware merging, and dropped/pasted file authorization for compose and reply.
-- `features/draft-autosave.ts` — debounced, sequential IMAP autosave shared by compose and reply, including pending-edit flushing on editor unmount and handing the saved draft to the send queue.
+- `features/draft-autosave.ts` — debounced, sequential IMAP autosave shared by compose and reply, including pending-edit flushing on editor unmount, the draft session key, and handing the saved draft to the send queue or a pop-out window without waiting for an in-flight save.
 - `features/bulk-operation.tsx` — persistent progress/status bar for background bulk message jobs.
 - `features/undoable-delete.tsx` — shared delayed-action controller and Undo bar for optimistic conversation deletion, archiving, and moves, including the hidden-row keys lists filter out of reloads until the action settles.
 - `features/app-shared.ts` — small cross-feature status and send-shortcut preferences/hooks.

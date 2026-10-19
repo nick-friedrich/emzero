@@ -87,6 +87,7 @@ import {
 import { errorMessage, mailCache } from './mail-runtime.js';
 import { getFolderMessage, listFolderMessages } from './message-reader.js';
 import { deleteMailDraft, saveMailDraft } from './mail-drafts.js';
+import { deleteSessionDraft, saveSessionDraft, validDraftSessionKey } from './draft-sessions.js';
 import {
   dismissOutgoingMessage,
   queueOutgoingMessage,
@@ -772,31 +773,40 @@ export function registerAccountHandlers(): void {
 
   ipcMain.handle(
     ACCOUNT_CHANNELS.saveDraft,
-    async (event, accountId: unknown, value: unknown, previous: unknown) => {
+    async (event, accountId: unknown, value: unknown, previous: unknown, sessionKey: unknown) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
       if (
         typeof accountId !== 'string' ||
         !validSendDraft(value) ||
-        (previous !== undefined && !validDraftReference(previous))
+        (previous !== undefined && !validDraftReference(previous)) ||
+        (sessionKey !== undefined && !validDraftSessionKey(sessionKey))
       ) {
         return { ok: false, message: 'Invalid draft.' };
       }
       const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
       if (!account) return { ok: false, message: 'Account not found.' };
-      return saveMailDraft(account, value, previous);
+      return sessionKey
+        ? saveSessionDraft(sessionKey, account, value, previous)
+        : saveMailDraft(account, value, previous);
     },
   );
 
   ipcMain.handle(
     ACCOUNT_CHANNELS.deleteDraft,
-    async (event, accountId: unknown, value: unknown) => {
+    async (event, accountId: unknown, value: unknown, sessionKey: unknown) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
-      if (typeof accountId !== 'string' || !validDraftReference(value)) {
+      if (
+        typeof accountId !== 'string' ||
+        !validDraftReference(value) ||
+        (sessionKey !== undefined && !validDraftSessionKey(sessionKey))
+      ) {
         return { ok: false, message: 'Invalid draft.' };
       }
       const account = (await readAccounts()).find((candidate) => candidate.id === accountId);
       if (!account) return { ok: false, message: 'Account not found.' };
-      return deleteMailDraft(account, value);
+      return sessionKey
+        ? deleteSessionDraft(sessionKey, account, value)
+        : deleteMailDraft(account, value);
     },
   );
 
@@ -905,16 +915,23 @@ export function registerAccountHandlers(): void {
     [ACCOUNT_CHANNELS.sendReply, 'reply'],
     [ACCOUNT_CHANNELS.sendMessage, 'message'],
   ] as const) {
-    ipcMain.handle(channel, (event, accountId: unknown, draft: unknown, draftReference: unknown) => {
+    ipcMain.handle(channel, (
+      event,
+      accountId: unknown,
+      draft: unknown,
+      draftReference: unknown,
+      draftKey: unknown,
+    ) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender');
       if (
         typeof accountId !== 'string' ||
         !validSendDraft(draft) ||
-        (draftReference !== undefined && !validDraftReference(draftReference))
+        (draftReference !== undefined && !validDraftReference(draftReference)) ||
+        (draftKey !== undefined && !validDraftSessionKey(draftKey))
       ) {
         return { ok: false, message: kind === 'reply' ? 'Invalid reply.' : 'Invalid message.' } satisfies MailSendQueueResult;
       }
-      return queueOutgoingMessage(accountId, draft, kind, draftReference);
+      return queueOutgoingMessage(accountId, draft, kind, draftReference, draftKey);
     });
   }
 

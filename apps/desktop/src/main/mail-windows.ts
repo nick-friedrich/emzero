@@ -7,6 +7,7 @@ import {
   type MailSendDraft,
   type MailWindowContext,
 } from '../shared/accounts.js';
+import { validDraftSessionKey } from './draft-sessions.js';
 import { hiddenWindowWebPreferences, revealWindow } from './window-visibility.js';
 
 const mailWindowContexts = new Map<string, { context: MailWindowContext; webContentsId: number }>();
@@ -51,7 +52,9 @@ function validContext(value: unknown): value is MailWindowContext {
   return ['new', 'reply', 'draft'].includes(context.composerKind ?? '') &&
     typeof context.accountId === 'string' && Boolean(context.accountId) &&
     validDraft(context.draft) &&
-    (context.draftReference === undefined || validDraftReference(context.draftReference));
+    (context.draftReference === undefined || validDraftReference(context.draftReference)) &&
+    (context.draftSessionKey === undefined || validDraftSessionKey(context.draftSessionKey)) &&
+    (context.draftUnsaved === undefined || typeof context.draftUnsaved === 'boolean');
 }
 
 function trustedSender(event: Electron.IpcMainInvokeEvent): boolean {

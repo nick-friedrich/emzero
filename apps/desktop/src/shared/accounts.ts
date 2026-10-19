@@ -513,6 +513,10 @@ export type MailWindowContext =
       accountId: string;
       draft: MailSendDraft;
       draftReference?: MailDraftReference;
+      /** The popping-out composer's draft session, so this window replaces its saved copy. */
+      draftSessionKey?: string;
+      /** The draft has edits the saved copy lacks, so the window saves it soon after opening. */
+      draftUnsaved?: boolean;
     }
   | {
       kind: 'message';

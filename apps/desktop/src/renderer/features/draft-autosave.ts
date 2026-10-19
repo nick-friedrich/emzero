@@ -23,26 +23,34 @@ export function useDraftAutosave(
   draft: MailSendDraft,
   enabled: boolean,
   initialReference?: MailDraftReference,
+  handedOver?: { sessionKey?: string; unsaved?: boolean },
 ): {
   status: DraftAutosaveState;
   savedDraftReference: MailDraftReference | undefined;
   handoffSavedDraft: () => Promise<MailDraftReference | undefined>;
   discardSavedDraft: () => Promise<boolean>;
   discardSavedDraftInBackground: () => BackgroundDraftDeletion;
+  /** Ties this composer's saves together in the main process; a send or pop-out carries it. */
+  draftSessionKey: string;
+  handoffToWindow: () => { reference?: MailDraftReference; unsaved: boolean };
   pauseAutosaveForSend: () => MailDraftReference | undefined;
-  releaseSavedDraftAfterSend: (handedOver: MailDraftReference | undefined) => void;
+  releaseSavedDraftAfterSend: () => void;
 } {
   const [status, setStatus] = useState<DraftAutosaveState>({ state: 'idle' });
   const [savedDraftReference, setSavedDraftReference] = useState(initialReference);
   const savedDraft = useRef<{ accountId: string; reference: MailDraftReference } | null>(
     initialReference ? { accountId, reference: initialReference } : null,
   );
+  const [draftSessionKey] = useState(() => handedOver?.sessionKey ?? crypto.randomUUID());
   const queue = useRef<Promise<void>>(Promise.resolve());
+  const savingFingerprint = useRef<string | null>(null);
   const timer = useRef<number | null>(null);
   const generation = useRef(0);
   const pendingSave = useRef<(() => void) | null>(null);
   const fingerprint = useMemo(() => JSON.stringify(draft), [draft]);
-  const lastSavedFingerprint = useRef<string | null>(initialReference ? fingerprint : null);
+  const lastSavedFingerprint = useRef<string | null>(
+    initialReference && !handedOver?.unsaved ? fingerprint : null,
+  );
 
   useEffect(() => {
     if (timer.current !== null) window.clearTimeout(timer.current);
@@ -63,7 +71,9 @@ export function useDraftAutosave(
             savedDraft.current?.accountId === accountId
               ? savedDraft.current.reference
               : undefined;
-          const result = await window.emzero.messages.saveDraft(accountId, snapshot, previous);
+          savingFingerprint.current = fingerprint;
+          const result = await window.emzero.messages.saveDraft(accountId, snapshot, previous, draftSessionKey)
+            .finally(() => { savingFingerprint.current = null; });
           if (!result.ok || !result.draft) {
             if (generation.current !== saveGeneration) return;
             setStatus({ state: 'error', message: result.message ?? 'Could not save draft.' });
@@ -86,7 +96,7 @@ export function useDraftAutosave(
       if (timer.current !== null) window.clearTimeout(timer.current);
       timer.current = null;
     };
-  }, [accountId, enabled, fingerprint]);
+  }, [accountId, draftSessionKey, enabled, fingerprint]);
 
   // Navigation can unmount an editor before the debounce expires. Flush the
   // latest snapshot behind any in-flight save instead of dropping those edits.
@@ -102,7 +112,7 @@ export function useDraftAutosave(
     await queue.current.catch(() => undefined);
     const saved = savedDraft.current;
     if (saved) {
-      const result = await window.emzero.messages.deleteDraft(saved.accountId, saved.reference);
+      const result = await window.emzero.messages.deleteDraft(saved.accountId, saved.reference, draftSessionKey);
       if (!result.ok) {
         setStatus({ state: 'error', message: result.message ?? 'Could not delete draft.' });
         return false;
@@ -113,7 +123,7 @@ export function useDraftAutosave(
     setSavedDraftReference(undefined);
     setStatus({ state: 'idle' });
     return true;
-  }, []);
+  }, [draftSessionKey]);
 
   const discardSavedDraftInBackground = useCallback((): BackgroundDraftDeletion => {
     pendingSave.current = null;
@@ -131,7 +141,7 @@ export function useDraftAutosave(
       const saved = savedDraft.current ?? knownDraft;
       if (!saved) return { ok: true };
       try {
-        const result = await window.emzero.messages.deleteDraft(saved.accountId, saved.reference);
+        const result = await window.emzero.messages.deleteDraft(saved.accountId, saved.reference, draftSessionKey);
         if (!result.ok) {
           return {
             ok: false,
@@ -161,7 +171,7 @@ export function useDraftAutosave(
     // that save behind the deletion so it cannot be mistaken for the old draft.
     queue.current = completion.then(() => undefined);
     return { reference: knownDraft?.reference, completion };
-  }, []);
+  }, [draftSessionKey]);
 
   // Sending hands the saved draft to the main process, which deletes it once the
   // message is delivered and rewrites it if delivery fails. Pausing cancels the
@@ -175,18 +185,13 @@ export function useDraftAutosave(
     return saved?.accountId === accountId ? saved.reference : undefined;
   }, [accountId]);
 
-  // Any copy other than the one handed over (an earlier From account's, or one an
-  // in-flight save lands afterwards) belongs to no one once the message is queued.
-  const releaseSavedDraftAfterSend = useCallback((handedOver: MailDraftReference | undefined) => {
+  // The main process removes this account's copy once the message is sent, including one an
+  // in-flight save lands afterwards. A copy under an earlier From account belongs to no one.
+  const releaseSavedDraftAfterSend = useCallback(() => {
     void queue.current.catch(() => undefined).then(() => {
       const saved = savedDraft.current;
       savedDraft.current = null;
-      if (
-        saved &&
-        (saved.accountId !== accountId ||
-          saved.reference.folderPath !== handedOver?.folderPath ||
-          saved.reference.uid !== handedOver.uid)
-      ) {
+      if (saved && saved.accountId !== accountId) {
         void window.emzero.messages.deleteDraft(saved.accountId, saved.reference).catch(() => undefined);
       }
     });
@@ -194,6 +199,21 @@ export function useDraftAutosave(
     setSavedDraftReference(undefined);
     setStatus({ state: 'idle' });
   }, [accountId]);
+
+  // Popping out passes the draft session to the new window without waiting for a save in
+  // flight: the main process finishes that save before the window's first one, which then
+  // replaces it. `unsaved` tells the window to save edits no save has captured yet.
+  const handoffToWindow = useCallback(() => {
+    pendingSave.current = null;
+    generation.current += 1;
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+    const saved = savedDraft.current;
+    return {
+      reference: saved?.accountId === accountId ? saved.reference : undefined,
+      unsaved: lastSavedFingerprint.current !== fingerprint && savingFingerprint.current !== fingerprint,
+    };
+  }, [accountId, fingerprint]);
 
   const handoffSavedDraft = useCallback(async () => {
     pendingSave.current = null;
@@ -211,7 +231,7 @@ export function useDraftAutosave(
           const previous = savedDraft.current?.accountId === accountId
             ? savedDraft.current.reference
             : undefined;
-          const result = await window.emzero.messages.saveDraft(accountId, snapshot, previous);
+          const result = await window.emzero.messages.saveDraft(accountId, snapshot, previous, draftSessionKey);
           if (!result.ok || !result.draft) {
             saveFailed = true;
             if (generation.current === saveGeneration) {
@@ -232,7 +252,7 @@ export function useDraftAutosave(
       setStatus({ state: 'error', message: 'Could not save draft.' });
     });
     return saveFailed ? undefined : savedDraft.current?.reference;
-  }, [accountId, draft, enabled, fingerprint]);
+  }, [accountId, draft, draftSessionKey, enabled, fingerprint]);
 
   return {
     status,
@@ -240,6 +260,8 @@ export function useDraftAutosave(
     handoffSavedDraft,
     discardSavedDraft,
     discardSavedDraftInBackground,
+    draftSessionKey,
+    handoffToWindow,
     pauseAutosaveForSend,
     releaseSavedDraftAfterSend,
   };

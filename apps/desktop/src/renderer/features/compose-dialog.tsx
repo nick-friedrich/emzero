@@ -76,6 +76,8 @@ export function ComposeDialog({
   onSent,
   initialDraft,
   initialDraftReference,
+  initialDraftSessionKey,
+  initialDraftUnsaved,
   composerKind = 'new',
   loadConversation,
   variant = 'page',
@@ -90,6 +92,10 @@ export function ComposeDialog({
   onSent: (message?: import('../../shared/accounts').MailMessageSummary) => void;
   initialDraft?: MailSendDraft;
   initialDraftReference?: MailDraftReference;
+  /** Set in a popped-out window: the draft session it takes over from the original composer. */
+  initialDraftSessionKey?: string;
+  /** Set in a popped-out window when the original composer had edits not yet saved. */
+  initialDraftUnsaved?: boolean;
   composerKind?: MailComposerKind;
   loadConversation?: () => Promise<AiConversationMessage[]>;
   variant?: 'page' | 'inline' | 'window';
@@ -184,6 +190,8 @@ export function ComposeDialog({
     savedDraftReference,
     handoffSavedDraft,
     discardSavedDraftInBackground,
+    draftSessionKey,
+    handoffToWindow,
     pauseAutosaveForSend,
     releaseSavedDraftAfterSend,
   } = useDraftAutosave(
@@ -191,6 +199,7 @@ export function ComposeDialog({
     currentDraft,
     open && hasDraftContent,
     initialDraftReference,
+    { sessionKey: initialDraftSessionKey, unsaved: initialDraftUnsaved },
   );
 
   // The plain-text body carries the signature after the "-- " delimiter; the HTML carries it in
@@ -335,10 +344,10 @@ export function ComposeDialog({
     const draftReference = pauseAutosaveForSend();
     // Invoking dispatches the message synchronously, so even a closing window has handed it off.
     const queued = composerKind === 'reply'
-      ? window.emzero.messages.sendReply(accountId, draft, draftReference)
-      : window.emzero.messages.send(accountId, draft, draftReference);
+      ? window.emzero.messages.sendReply(accountId, draft, draftReference, draftSessionKey)
+      : window.emzero.messages.send(accountId, draft, draftReference, draftSessionKey);
     const deletedEvent = deletedDraftEvent();
-    releaseSavedDraftAfterSend(draftReference);
+    releaseSavedDraftAfterSend();
     if (deletedEvent.references.length > 0) onDeleted?.(deletedEvent);
     resetComposer();
     // A standalone window closes on the main process's acknowledgement, which awaits nothing;
@@ -506,15 +515,19 @@ export function ComposeDialog({
               aria-label="Open in new window"
               title="Open in new window"
               onClick={() => {
-                void handoffSavedDraft().then(async (reference) => {
-                  if (reference) onDraftSaved?.({ accountId, reference });
-                  const opened = await window.emzero.openMailWindow({
-                    kind: 'composer',
-                    composerKind,
-                    accountId,
-                    draft: currentDraft,
-                    ...(reference ? { draftReference: reference } : {}),
-                  });
+                // Open at once, even with large inline images still uploading: the window
+                // takes over this draft's session instead of waiting for the save to land.
+                const { reference, unsaved } = handoffToWindow();
+                if (reference) onDraftSaved?.({ accountId, reference });
+                void window.emzero.openMailWindow({
+                  kind: 'composer',
+                  composerKind,
+                  accountId,
+                  draft: currentDraft,
+                  draftSessionKey,
+                  ...(reference ? { draftReference: reference } : {}),
+                  ...(unsaved ? { draftUnsaved: true } : {}),
+                }).then((opened) => {
                   if (opened) finishClose();
                 });
               }}

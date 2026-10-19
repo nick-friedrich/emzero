@@ -167,12 +167,14 @@ export interface EmzeroDesktopApi {
       accountId: string,
       draft: MailReplyDraft,
       draftReference?: MailDraftReference,
+      draftKey?: string,
     ) => Promise<MailSendQueueResult>;
     /** Queues a message for background delivery; the outcome arrives through `onSendJob`. */
     send: (
       accountId: string,
       draft: MailSendDraft,
       draftReference?: MailDraftReference,
+      draftKey?: string,
     ) => Promise<MailSendQueueResult>;
     retrySend: (jobId: string) => Promise<MailSendQueueResult>;
     dismissSend: (jobId: string) => Promise<void>;
@@ -199,14 +201,17 @@ export interface EmzeroDesktopApi {
     ) => Promise<AttachmentSaveResult>;
     revealSavedAttachment: (savedAttachmentId: string) => Promise<boolean>;
     exportPdf: (request: PdfExportRequest) => Promise<PdfExportResult>;
+    /** `sessionKey` ties saves to one composer so a pop-out window can take its draft over. */
     saveDraft: (
       accountId: string,
       draft: MailSendDraft,
       previous?: MailDraftReference,
+      sessionKey?: string,
     ) => Promise<MailDraftSaveResult>;
     deleteDraft: (
       accountId: string,
       draft: MailDraftReference,
+      sessionKey?: string,
     ) => Promise<MessageOperationResult>;
   };
   sync: {
@@ -356,10 +361,10 @@ contextBridge.exposeInMainWorld('emzero', {
       ipcRenderer.on(ACCOUNT_CHANNELS.bulkMessageJobChanged, handler);
       return () => ipcRenderer.removeListener(ACCOUNT_CHANNELS.bulkMessageJobChanged, handler);
     },
-    sendReply: (accountId, draft, draftReference) =>
-      ipcRenderer.invoke(ACCOUNT_CHANNELS.sendReply, accountId, draft, draftReference),
-    send: (accountId, draft, draftReference) =>
-      ipcRenderer.invoke(ACCOUNT_CHANNELS.sendMessage, accountId, draft, draftReference),
+    sendReply: (accountId, draft, draftReference, draftKey) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.sendReply, accountId, draft, draftReference, draftKey),
+    send: (accountId, draft, draftReference, draftKey) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.sendMessage, accountId, draft, draftReference, draftKey),
     retrySend: (jobId) => ipcRenderer.invoke(ACCOUNT_CHANNELS.retrySend, jobId),
     dismissSend: (jobId) => ipcRenderer.invoke(ACCOUNT_CHANNELS.dismissSend, jobId),
     onSendJob: (listener) => {
@@ -387,10 +392,10 @@ contextBridge.exposeInMainWorld('emzero', {
     revealSavedAttachment: (savedAttachmentId) =>
       ipcRenderer.invoke(ACCOUNT_CHANNELS.revealSavedAttachment, savedAttachmentId),
     exportPdf: (request) => ipcRenderer.invoke(ACCOUNT_CHANNELS.exportPdf, request),
-    saveDraft: (accountId, draft, previous) =>
-      ipcRenderer.invoke(ACCOUNT_CHANNELS.saveDraft, accountId, draft, previous),
-    deleteDraft: (accountId, draft) =>
-      ipcRenderer.invoke(ACCOUNT_CHANNELS.deleteDraft, accountId, draft),
+    saveDraft: (accountId, draft, previous, sessionKey) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.saveDraft, accountId, draft, previous, sessionKey),
+    deleteDraft: (accountId, draft, sessionKey) =>
+      ipcRenderer.invoke(ACCOUNT_CHANNELS.deleteDraft, accountId, draft, sessionKey),
   },
   sync: {
     status: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.syncStatus),
