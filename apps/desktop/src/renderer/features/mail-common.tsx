@@ -58,6 +58,7 @@ import {
   tomorrowDateKey,
   type EmzeroMessageColor,
 } from '../../shared/message-keywords';
+import { linkifyHtml } from './linkified-text';
 import { MoveToDialog } from './message-move';
 
 export type MailboxSelection =
@@ -351,7 +352,7 @@ export function htmlDocument(
   const colors = messageThemeColors[theme];
   const imageSources = loadRemoteImages ? 'data: http: https:' : 'data:';
   const linkRelay = `<script>${htmlFrameScript}</script>`;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${imageSources}; style-src 'unsafe-inline'; script-src '${htmlFrameScriptHash}';"><style>html{color-scheme:light;background:#fff;overflow:hidden}body{display:flow-root;box-sizing:border-box;margin:0;padding:0;color:#202124;background:#fff;font:14px/1.55 Arial,Helvetica,sans-serif;overflow-wrap:anywhere}a{color:${colors.primary}}img{max-width:100%;height:auto}table{max-width:100%}${quotedStyle}</style></head><body>${body}${linkRelay}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${imageSources}; style-src 'unsafe-inline'; script-src '${htmlFrameScriptHash}';"><style>html{color-scheme:light;background:#fff;overflow:hidden}body{display:flow-root;box-sizing:border-box;margin:0;padding:0;color:#202124;background:#fff;font:14px/1.55 Arial,Helvetica,sans-serif;overflow-wrap:anywhere}a{color:${colors.primary}}img{max-width:100%;height:auto}table{max-width:100%}${quotedStyle}</style></head><body>${linkifyHtml(body)}${linkRelay}</body></html>`;
 }
 
 export function messageDate(value: string | null): string {

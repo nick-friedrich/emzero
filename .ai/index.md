@@ -143,8 +143,8 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/mail-common.test.ts` — renderer tests for isolated HTML-email document generation, remote-image privacy controls, and replied-conversation detection.
 - `features/message-move.tsx` — account-and-folder destination picker for single and bulk message moves.
 - `features/conversation-reader.tsx` — conversation reader, message body/thread cards, Copy conversation / Save as PDF actions, received-attachment saving, quoted-content display, and reply entry points.
-- `features/linkified-text.tsx` — http(s)/`www.` URL detection in plain-text message bodies, rendered as links that go through the reader's open-link confirmation.
-- `features/linkified-text.test.ts` — renderer tests for plain-text URL detection and trailing-punctuation trimming.
+- `features/linkified-text.tsx` — http(s)/`www.` URL detection in plain-text message bodies, rendered as links that go through the reader's open-link confirmation, and the same wrapping of bare URLs in sanitized HTML-email text (outside existing `<a>`), applied by `htmlDocument`.
+- `features/linkified-text.test.ts` — renderer tests for plain-text and HTML URL detection and trailing-punctuation trimming.
 - `features/message-html-frame.tsx` — isolated HTML-email frame that reports content height for a single reader scrollbar, validates frame messages, and owns the CSP-authorized resize/link relay.
 - `features/conversation-pdf.ts` — printable, script-free HTML document of a conversation (headers, bodies, attachment names) handed to the main process for PDF export.
 - `features/conversation-pdf.test.ts` — renderer tests for PDF document escaping, quoted-history handling, and image policy.

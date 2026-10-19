@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { linkifyText } from './linkified-text';
+import { linkifyHtml, linkifyText } from './linkified-text';
 
 describe('linkifyText', () => {
   it('leaves text without URLs untouched', () => {
@@ -48,5 +48,31 @@ describe('linkifyText', () => {
     expect(linkifyText('javascript:alert(1) file:///etc')).toEqual([
       { kind: 'text', text: 'javascript:alert(1) file:///etc' },
     ]);
+  });
+});
+
+describe('linkifyHtml', () => {
+  it('wraps bare URLs in HTML text', () => {
+    expect(linkifyHtml('<p>Visit https://example.com/a?b=1&amp;c=2.</p>')).toBe(
+      '<p>Visit <a href="https://example.com/a?b=1&amp;c=2">https://example.com/a?b=1&amp;c=2</a>.</p>',
+    );
+    expect(linkifyHtml('<td>www.example.com</td>')).toBe(
+      '<td><a href="https://www.example.com">www.example.com</a></td>',
+    );
+  });
+
+  it('leaves existing links and attribute values alone', () => {
+    const html =
+      '<a href="https://example.com"><span>https://example.com</span></a> <img src="https://img.example/x.png" alt="https://alt.example">';
+    expect(linkifyHtml(html)).toBe(html);
+    expect(linkifyHtml('<a href="https://a.example">a</a> then https://b.example')).toBe(
+      '<a href="https://a.example">a</a> then <a href="https://b.example">https://b.example</a>',
+    );
+  });
+
+  it('keeps escaped markup in text inert', () => {
+    expect(linkifyHtml('&lt;https://example.com&gt; &lt;script&gt;')).toBe(
+      '&lt;<a href="https://example.com">https://example.com</a>&gt; &lt;script&gt;',
+    );
   });
 });

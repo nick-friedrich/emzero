@@ -43,6 +43,44 @@ export function linkifyText(text: string): TextSegment[] {
   return segments;
 }
 
+const htmlEntities: Record<string, string> = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"' };
+
+function decodeHtmlText(value: string): string {
+  return value.replace(/&(?:amp|lt|gt|quot);/g, (entity) => htmlEntities[entity] ?? entity);
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"]/g, (character) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[character]};`);
+}
+
+/**
+ * Wraps bare URLs in sanitized message HTML with `<a>` so they open like
+ * authored links. Expects sanitizer output, where text and attribute values
+ * have `<`, `>`, `&`, and `"` escaped, so splitting on tags is reliable.
+ * Text already inside an `<a>` is left alone.
+ */
+export function linkifyHtml(html: string): string {
+  let anchorDepth = 0;
+  return html
+    .split(/(<[^>]*>)/)
+    .map((part) => {
+      if (part.startsWith('<')) {
+        if (/^<a\b/i.test(part)) anchorDepth += 1;
+        else if (/^<\/a\s*>/i.test(part)) anchorDepth = Math.max(0, anchorDepth - 1);
+        return part;
+      }
+      if (anchorDepth > 0 || !/https?:\/\/|www\./i.test(part)) return part;
+      return linkifyText(decodeHtmlText(part))
+        .map((segment) =>
+          segment.kind === 'text'
+            ? escapeHtml(segment.text)
+            : `<a href="${escapeHtml(segment.url)}">${escapeHtml(segment.text)}</a>`,
+        )
+        .join('');
+    })
+    .join('');
+}
+
 export function LinkifiedText({ text, onOpenLink }: { text: string; onOpenLink: (url: string) => void }) {
   return linkifyText(text).map((segment, index) =>
     segment.kind === 'text' ? (
