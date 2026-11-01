@@ -53,8 +53,8 @@ importers:
         specifier: ^3.9.38
         version: 3.9.38
       nodemailer:
-        specifier: ^10.1.0
-        version: 10.1.0
+        specifier: ^10.1.4
+        version: 10.1.4
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -2656,6 +2656,10 @@ packages:
 
   nodemailer@10.1.0:
     resolution: {integrity: sha512-fXW8AulB25aOTuwfRYV6lqHyfz2VM4rr4SGXH03mE7x5znEUpzL5mu6anARUpZN7744Ziwkmr4AxSLPJsBQspg==}
+    engines: {node: '>=20.0.0'}
+
+  nodemailer@10.1.4:
+    resolution: {integrity: sha512-EsMnOR2oRv4LGnWvHgcVYkkQ4O2j8KO4WTw6l+PHR4sOXo8SAgIraxtEnGDmotjbhv0hDsu3IuDIFZm8iXwO4A==}
     engines: {node: '>=20.0.0'}
 
   nopt@6.0.0:
@@ -6229,6 +6233,8 @@ snapshots:
   node@runtime:24.21.0: {}
 
   nodemailer@10.1.0: {}
+
+  nodemailer@10.1.4: {}
 
   nopt@6.0.0:
     dependencies:
