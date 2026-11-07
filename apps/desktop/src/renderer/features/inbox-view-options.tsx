@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Mail, Star } from 'lucide-react';
+import { CalendarClock, Mail, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { MailConversation } from '../../shared/conversations';
 import type { UnifiedConversationItem } from './mail-common';
 
-export type InboxFilter = 'all' | 'unread' | 'starred';
+export type InboxFilter = 'all' | 'unread' | 'starred' | 'due';
 export type InboxGroup = 'starred' | 'unread' | 'other';
 
 const groupPriority: Record<InboxGroup, number> = { starred: 0, unread: 1, other: 2 };
@@ -12,7 +12,7 @@ const filterStorageKey = 'emzero:inbox-filter';
 
 function storedFilter(): InboxFilter {
   const value = window.localStorage.getItem(filterStorageKey);
-  return value === 'unread' || value === 'starred' ? value : 'all';
+  return value === 'unread' || value === 'starred' || value === 'due' ? value : 'all';
 }
 
 function hasUnread(conversation: MailConversation, folderPath: string): boolean {
@@ -27,6 +27,36 @@ function hasStarred(conversation: MailConversation, folderPath: string): boolean
   );
 }
 
+/** Earliest due date among the conversation's important messages in this folder, if any. */
+function earliestDueDate(conversation: MailConversation, folderPath: string): string | null {
+  let earliest: string | null = null;
+  for (const message of conversation.messages) {
+    if (message.folderPath !== folderPath || !message.important || !message.dueDate) continue;
+    if (earliest === null || message.dueDate < earliest) earliest = message.dueDate;
+  }
+  return earliest;
+}
+
+function matchesFilter(conversation: MailConversation, folderPath: string, filter: InboxFilter): boolean {
+  if (filter === 'unread') return hasUnread(conversation, folderPath);
+  if (filter === 'starred') return hasStarred(conversation, folderPath);
+  if (filter === 'due') return earliestDueDate(conversation, folderPath) !== null;
+  return true;
+}
+
+/** Due-filter order: soonest (including overdue) first, then newest. */
+function compareDue(
+  left: MailConversation,
+  leftFolder: string,
+  right: MailConversation,
+  rightFolder: string,
+): number {
+  const leftDue = earliestDueDate(left, leftFolder) ?? '';
+  const rightDue = earliestDueDate(right, rightFolder) ?? '';
+  if (leftDue !== rightDue) return leftDue < rightDue ? -1 : 1;
+  return conversationTime(right) - conversationTime(left);
+}
+
 function conversationTime(conversation: MailConversation): number {
   const latest = conversation.messages[0];
   const value = latest?.sentAt ?? latest?.receivedAt;
@@ -39,14 +69,11 @@ export function applyInboxView(
   folderPath: string,
   filter: InboxFilter,
 ): MailConversation[] {
-  return conversations
-    .filter((conversation) =>
-      filter === 'unread'
-        ? hasUnread(conversation, folderPath)
-        : filter === 'starred'
-          ? hasStarred(conversation, folderPath)
-          : true,
-    )
+  const matching = conversations.filter((conversation) => matchesFilter(conversation, folderPath, filter));
+  if (filter === 'due') {
+    return matching.sort((left, right) => compareDue(left, folderPath, right, folderPath));
+  }
+  return matching
     .sort((left, right) => {
       const priority =
         groupPriority[inboxGroup(left, folderPath)] - groupPriority[inboxGroup(right, folderPath)];
@@ -59,14 +86,15 @@ export function applyUnifiedInboxView(
   items: UnifiedConversationItem[],
   filter: InboxFilter,
 ): UnifiedConversationItem[] {
-  return items
-    .filter((item) =>
-      filter === 'unread'
-        ? hasUnread(item.conversation, item.selection.folder.path)
-        : filter === 'starred'
-          ? hasStarred(item.conversation, item.selection.folder.path)
-          : true,
-    )
+  const matching = items.filter((item) =>
+    matchesFilter(item.conversation, item.selection.folder.path, filter),
+  );
+  if (filter === 'due') {
+    return matching.sort((left, right) =>
+      compareDue(left.conversation, left.selection.folder.path, right.conversation, right.selection.folder.path),
+    );
+  }
+  return matching
     .sort((left, right) => {
       const priority =
         groupPriority[inboxGroup(left.conversation, left.selection.folder.path)] -
@@ -178,6 +206,17 @@ export function InboxViewOptions({
         onClick={() => onFilterChange(filter === 'starred' ? 'all' : 'starred')}
       >
         <Star className={filter === 'starred' ? 'size-4 fill-primary text-primary' : 'size-4'} />
+      </Button>
+      <Button
+        type="button"
+        variant={filter === 'due' ? 'secondary' : 'ghost'}
+        className="header-tooltip size-9 px-0"
+        aria-label={filter === 'due' ? 'Show all mail' : 'Show due only'}
+        aria-pressed={filter === 'due'}
+        data-tooltip={filter === 'due' ? 'Show all mail' : 'Show due only'}
+        onClick={() => onFilterChange(filter === 'due' ? 'all' : 'due')}
+      >
+        <CalendarClock className={filter === 'due' ? 'size-4 text-primary' : 'size-4'} />
       </Button>
     </div>
   );

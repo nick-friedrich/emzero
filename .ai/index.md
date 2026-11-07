@@ -135,7 +135,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/account-colors.tsx` — account color palette classes, the hover-labelled account dot shown on unified-inbox avatars, and the settings color picker.
 - `features/conversation-actions.tsx` — per-conversation inline read/delete buttons and the conversation-actions modal (opened from the "More" button or by right-clicking a list row) with star, important/due date, color, archive, move, and delete, plus their follow-up dialogs.
 - `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: selection toolbar, replied-last detection and badge, and mail-view types/helpers.
-- `features/inbox-view-options.tsx` — persisted icon filters, Starred/Unread inbox grouping and ordering, and persisted collapsed sections shared by account and unified inboxes.
+- `features/inbox-view-options.tsx` — persisted icon filters (unread, starred, due — due sorts soonest/overdue first), Starred/Unread inbox grouping and ordering, and persisted collapsed sections shared by account and unified inboxes.
 - `features/mail-view-menu.tsx` — accessible dismissible popover for secondary mailbox layout and filter controls, shared by account, unified, and search headers.
 - `features/mail-split-layout.tsx` — persisted, pointer- and keyboard-resizable list/reader layout shared by three-column mail views, and the empty reader placeholder.
 - `features/reader-selection.ts` — decides which conversation the reader keeps after a delete or move, so unopened rows are never opened (and auto-marked read) behind the user.

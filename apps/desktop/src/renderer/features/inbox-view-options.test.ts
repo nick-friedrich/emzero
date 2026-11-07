@@ -6,7 +6,12 @@ import { applyInboxView } from './inbox-view-options';
 function conversation(
   id: string,
   sentAt: string,
-  { unread = false, flagged = false, relatedUnread = false } = {},
+  {
+    unread = false,
+    flagged = false,
+    relatedUnread = false,
+    dueDate = null,
+  }: { unread?: boolean; flagged?: boolean; relatedUnread?: boolean; dueDate?: string | null } = {},
 ): MailConversation {
   const message = (folderPath: string, values: Partial<MailMessageSummary>): MailMessageSummary => ({
     folderPath,
@@ -31,7 +36,7 @@ function conversation(
     id,
     subject: id,
     messages: [
-      message('INBOX', { unread, flagged }),
+      message('INBOX', { unread, flagged, important: dueDate !== null, dueDate }),
       ...(relatedUnread ? [message('Sent', { unread: true })] : []),
     ],
   };
@@ -59,5 +64,12 @@ describe('inbox view options', () => {
       relatedUnread: true,
     });
     expect(applyInboxView([relatedUnread], 'INBOX', 'unread')).toEqual([]);
+  });
+
+  it('shows only conversations with a due date, soonest first', () => {
+    const dueLater = conversation('later', '2026-08-30T12:00:00.000Z', { dueDate: '2026-09-10' });
+    const overdue = conversation('overdue', '2026-08-20T12:00:00.000Z', { dueDate: '2026-08-25' });
+    expect(applyInboxView([newestRead, dueLater, olderUnread, overdue], 'INBOX', 'due'))
+      .toEqual([overdue, dueLater]);
   });
 });
