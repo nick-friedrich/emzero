@@ -8,16 +8,8 @@ allowBuilds:
   electron: true
 
 overrides:
-  "@electron/node-gyp": 10.2.0-electron.2
-  # Build-time only (Forge's webpack templates); patched releases for
-  # Dependabot alerts that the parents have not picked up yet.
-  "fast-uri": ^3.1.6
-  # external-editor (Forge CLI prompts) only calls tmp.tmpNameSync, which
-  # tmp 0.2 keeps.
-  "external-editor>tmp": ^0.2.7
-  # Forge 7's native-rebuild chain pins tar 6. @electron/node-gyp only calls
-  # tar.extract() and @electron/rebuild only tar.x(), both kept in tar 7;
-  # cacache 16 declares tar but never imports it.
-  "tar@<7.5.22": ^7.5.22
   # ESLint and @electron/universal only call minimatch(); 11.0.1+ is patched.
   "minimatch@>=7 <11.0.1": ^11.0.5
+  # @electron/asar (packaging) only calls the top-level glob() function, which
+  # glob 14 keeps; 14.0.2+ fixes the AbortSignal advisory that 13.x has.
+  "@electron/asar>glob": ^14.0.4
