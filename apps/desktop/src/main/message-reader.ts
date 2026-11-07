@@ -84,13 +84,13 @@ function parsedMessageDetail(uid: number, parsed: ParsedMail): MailMessageDetail
     replyTo: parsedAddresses(parsed.replyTo),
     sentAt: mailDateString(parsed.date),
     text: parsed.text?.trim() || 'This message has no readable text content.',
-    html: sanitizedMessageHtml(parsed.html),
-    htmlHasQuotedText: hasQuotedHtml(parsed.html),
+    html: sanitizedMessageHtml(parsed.html ?? false),
+    htmlHasQuotedText: hasQuotedHtml(parsed.html ?? false),
     attachments: parsed.attachments.map((attachment) => ({
       filename: attachment.filename || 'Unnamed attachment',
       contentType: attachment.contentType,
       size: attachment.size,
-      related: attachment.related,
+      related: attachment.related ?? false,
     })),
   };
 }

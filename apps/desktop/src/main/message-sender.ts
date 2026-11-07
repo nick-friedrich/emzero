@@ -178,13 +178,13 @@ export async function sendMessage(
           replyTo: [],
           sentAt: sentMessage.sentAt,
           text: draft.text.trim(),
-          html: sanitizedMessageHtml(parsedSent.html),
-          htmlHasQuotedText: hasQuotedHtml(parsedSent.html),
+          html: sanitizedMessageHtml(parsedSent.html ?? false),
+          htmlHasQuotedText: hasQuotedHtml(parsedSent.html ?? false),
           attachments: parsedSent.attachments.map((attachment) => ({
             filename: attachment.filename || 'Unnamed attachment',
             contentType: attachment.contentType,
             size: attachment.size,
-            related: attachment.related,
+            related: attachment.related ?? false,
           })),
         });
       }
