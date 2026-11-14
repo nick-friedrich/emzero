@@ -93,16 +93,17 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 
 - `apps/desktop/src/renderer/main.tsx` — React renderer entry point and providers.
 - `apps/desktop/src/renderer/mail-window.tsx` — standalone composer and conversation window loading and actions.
-- `apps/desktop/src/renderer/App.tsx` — application-level orchestration only: account loading and cross-window refresh, current mailbox selection and dedicated new-message navigation, persisted sidebar/mail-layout preferences, dialog visibility, sync revision, and active bulk-operation state.
-- `apps/desktop/src/renderer/styles.css` — global Tailwind styles and visual tokens.
+- `apps/desktop/src/renderer/App.tsx` — application-level orchestration only: account loading and cross-window refresh, current mailbox selection and dedicated new-message navigation, persisted sidebar/mail-layout preferences, dialog visibility, sync revision, and active bulk-operation state. Owns the app shell: the shell-colored window with the pinned sidebar or collapsed rail beside a framed, rounded content panel.
+- `apps/desktop/src/renderer/styles.css` — global Tailwind styles and visual tokens, including the design-language layer (`--ink`, `--shell`, raised/panel shadows) derived from each theme's own tokens so every theme shares one structure.
 - `apps/desktop/src/renderer/theme.tsx` — synchronized appearance and mail-behavior preference persistence/context, plus message color schemes.
 - `apps/desktop/src/renderer/lib/utils.ts` — small renderer-wide helpers such as class merging and range selection.
 - `apps/desktop/src/renderer/components/ui/` — reusable low-level UI primitives.
 
 ## Renderer features
 
-- `features/sidebar.tsx` — desktop/mobile navigation: scrollable mailbox/account navigation, drag-to-reorder accounts, folder CRUD state, and drag-and-drop folder moves.
-- `features/sidebar-chrome.tsx` — sidebar brand header (demo badge, five-click demo toggle, pin toggle) and action footer with sync status.
+- `features/sidebar.tsx` — desktop/mobile navigation: scrollable mailbox/account navigation (Add account is the + beside the Accounts heading), drag-to-reorder accounts, folder CRUD state, and drag-and-drop folder moves.
+- `features/sidebar-chrome.tsx` — sidebar header row (demo badge and collapse toggle; demo mode is switched in Settings), the Sync-above-Settings footer, and the sync-status wording shared with the collapsed rail.
+- `features/sidebar-rail.tsx` — collapsed desktop navigation: scrollable icon rail with Compose, search, unified mailboxes, smart inboxes, and account avatars (per-account folder flyout), unread count bubbles, hover labels, and Sync above Settings at the bottom.
 - `features/folder-dialogs.tsx` — create/rename folder dialog and delete-folder confirmation used by the sidebar.
 - `features/account-setup.tsx` — provider detection, password/app-password setup, personal Microsoft device-code connection flow, and the shared IMAP/SMTP server fields.
 - `features/account-connection-editor.tsx` — per-account username, password, and server editor shown in the Accounts settings tab.
@@ -121,7 +122,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/clipboard-html.ts` — plain-text-to-editor HTML escaping, pasted-HTML rebuilding that interprets inline styles (so Google Docs pastes are not all bold) and link-target normalization.
 - `features/clipboard-html.test.ts` — renderer tests for pasted-style interpretation and link normalization.
 - `features/ai-draft-assistant.tsx` — the AI-configured hook and reusable, dismissible prompt panel for AI drafting in reply, new-message, and saved-draft composers.
-- `features/smart-inboxes.tsx` — smart-inbox sidebar section and create/edit dialog, AI tag chips, the remove-sender row action, the settings toggle, and the shared settings hook.
+- `features/smart-inboxes.tsx` — smart-inbox sidebar section, icon, and unread-count hook (shared with the collapsed rail), create/edit dialog, AI tag chips, the remove-sender row action, the settings toggle, and the shared settings hook.
 - `features/mail-search.tsx` — search form with account/folder scope, cached results, the on-demand server search that merges in uncached matches, and the selected-result reader.
 - `features/message-list.tsx` — one account-folder conversation list (loading messages and folders in parallel, keeping the list visible during refresh), selection, row right-click actions, and folder-scoped actions.
 - `features/conversation-row.tsx` — the conversation row shared by folder and unified lists (row facts, starred highlight, unread bar, metadata) and the rounded section cards with collapsible Starred/Unread/Everything else headers and date sub-headings.

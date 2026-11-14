@@ -127,10 +127,31 @@ const templateIcons: Record<SmartInboxTemplate['icon'], typeof Newspaper> = {
   bell: Bell,
 };
 
-function SmartInboxIcon({ inbox, className }: { inbox: SmartInbox; className?: string }) {
+export function SmartInboxIcon({ inbox, className }: { inbox: SmartInbox; className?: string }) {
   const template = SMART_INBOX_TEMPLATES.find((candidate) => candidate.name === inbox.name);
   const Icon = template ? templateIcons[template.icon] : Sparkles;
   return <Icon className={className} />;
+}
+
+/** Unread counts per smart inbox, refreshed when settings change or mail syncs. */
+export function useSmartInboxUnreadCounts(
+  settings: SmartInboxState['settings'],
+  syncRevision: number,
+): Record<string, number> {
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!settings.enabled || settings.inboxes.length === 0) return;
+    let active = true;
+    void window.emzero.smartInboxes.unreadCounts()
+      .then((counts) => {
+        if (active) setUnreadCounts(counts);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [settings, syncRevision]);
+  return unreadCounts;
 }
 
 export function SmartInboxNav({
@@ -145,21 +166,8 @@ export function SmartInboxNav({
   onDeleted: (inboxId: string) => void;
 }) {
   const { loaded, settings, status } = useSmartInboxes();
-  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const unreadCounts = useSmartInboxUnreadCounts(settings, syncRevision);
   const [editor, setEditor] = useState<SmartInbox | 'new' | null>(null);
-
-  useEffect(() => {
-    if (!settings.enabled || settings.inboxes.length === 0) return;
-    let active = true;
-    void window.emzero.smartInboxes.unreadCounts()
-      .then((counts) => {
-        if (active) setUnreadCounts(counts);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [settings, syncRevision]);
 
   if (!loaded) return null;
   const inboxes = settings.enabled ? settings.inboxes : [];
@@ -167,7 +175,7 @@ export function SmartInboxNav({
   return (
     <div className="pt-5">
       <div className="mb-2 flex items-center justify-between px-3">
-        <p className="text-[0.68rem] font-semibold uppercase tracking-wider text-muted-foreground">
+        <p className="text-[0.7rem] font-semibold tracking-wide text-muted-foreground">
           Smart inboxes
         </p>
         <span className="flex items-center gap-1">
@@ -204,8 +212,11 @@ export function SmartInboxNav({
           {inboxes.map((inbox) => (
             <div key={inbox.id} className="group relative">
               <Button
-                variant={selectedInboxId === inbox.id ? 'secondary' : 'ghost'}
-                className="w-full shrink-0 justify-start pr-9"
+                variant={selectedInboxId === inbox.id ? 'raised' : 'ghost'}
+                className={cn(
+                  'h-9 w-full shrink-0 justify-start gap-2.5 rounded-xl px-3 pr-9 text-[13px]',
+                  selectedInboxId !== inbox.id && 'text-muted-foreground hover:text-foreground',
+                )}
                 onClick={() => onSelect(inbox.id)}
               >
                 <SmartInboxIcon inbox={inbox} className="size-4" />

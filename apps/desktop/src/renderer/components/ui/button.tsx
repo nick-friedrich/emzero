@@ -8,13 +8,15 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-        destructive: 'bg-danger text-white hover:bg-danger/90 focus-visible:ring-danger',
-        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+        default: 'rounded-full bg-ink text-ink-foreground shadow-sm hover:bg-ink/85',
+        destructive: 'rounded-full bg-danger text-white hover:bg-danger/90 focus-visible:ring-danger',
+        secondary: 'rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80',
         ghost: 'hover:bg-accent hover:text-accent-foreground',
+        /** Selected navigation item: a raised card on the shell surface. */
+        raised: 'border border-border/70 bg-card text-foreground shadow-raised',
       },
       size: {
-        default: 'h-9 px-3',
+        default: 'h-9 px-3.5',
         lg: 'h-10 px-4',
       },
     },

@@ -703,7 +703,7 @@ export function UnifiedInbox({
         window.emzero?.platform === 'darwin' && 'macos-content-header macos-titlebar-drag',
       )}>
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold tracking-tight">{title}</h1>
+          <h1 className="truncate text-xl font-medium tracking-tight">{title}</h1>
           <p className="truncate text-xs text-muted-foreground">
             {smartInbox
               ? smartInbox.rule

@@ -104,7 +104,7 @@ export function ConversationRow({
         flagged && !dueClass && 'bg-starred-row hover:bg-starred-row-hover',
         dueClass,
         checked && 'bg-primary/8 ring-1 ring-inset ring-primary/15',
-        open && 'bg-primary/10',
+        open && 'bg-primary/10 before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r-full before:bg-ink',
       )}
       role="listitem"
       onContextMenu={onContextMenu}
@@ -117,16 +117,19 @@ export function ConversationRow({
       )}
       <div
         className={compact
-          ? 'relative ml-2 grid size-8 shrink-0 place-items-center'
-          : 'relative ml-3 grid size-8 shrink-0 place-items-center lg:ml-4'}
+          ? 'relative ml-3 grid size-9 shrink-0 place-items-center'
+          : 'relative ml-3 grid size-9 shrink-0 place-items-center lg:ml-4'}
         onClick={(event) => event.stopPropagation()}
       >
         <SenderAvatar
           label={opponent}
           imageUrl={conversationAvatarUrl(conversation.messages, account)}
-          className={selectionActive
-            ? 'opacity-0'
-            : 'opacity-100 group-hover:opacity-0 group-focus-within:opacity-0'}
+          className={cn(
+            'size-9 text-[0.7rem]',
+            selectionActive
+              ? 'opacity-0'
+              : 'opacity-100 group-hover:opacity-0 group-focus-within:opacity-0',
+          )}
         />
         {showAccountDot && (
           <AccountColorDot account={account} className="absolute -bottom-0.5 -right-0.5 z-10" />
@@ -147,8 +150,8 @@ export function ConversationRow({
         className={cn(
           'grid min-w-0 flex-1 items-center gap-y-0.5 text-left focus-visible:outline-none',
           compact
-            ? 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-3 py-2.5'
-            : 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-4 py-2.5 lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-x-4',
+            ? 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-3 py-3'
+            : 'grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-4 py-3 lg:grid-cols-[minmax(9rem,14rem)_minmax(0,1fr)_auto] lg:gap-x-4',
         )}
         onMouseEnter={prefetch.soon}
         onMouseLeave={(event) => {
@@ -165,7 +168,7 @@ export function ConversationRow({
         }}
       >
         {unread && <span className="sr-only">Unread conversation.</span>}
-        <span className={cn('min-w-0 truncate text-sm', textTone, unread && 'font-semibold')}>
+        <span className={cn('min-w-0 truncate text-sm', textTone, unread ? 'font-semibold' : 'font-medium')}>
           {showRecipients ? `To: ${opponent}` : opponent}
         </span>
         <div className={cn(
@@ -191,10 +194,10 @@ export function ConversationRow({
         </div>
         <p
           className={cn(
-            'min-w-0 truncate text-xs leading-5 text-muted-foreground/90',
+            'min-w-0 text-xs leading-5 text-muted-foreground/90',
             compact
-              ? 'col-span-2 col-start-1 row-start-3'
-              : 'col-span-2 col-start-1 row-start-3 lg:col-span-1 lg:col-start-2 lg:row-start-2',
+              ? 'col-span-2 col-start-1 row-start-3 line-clamp-2'
+              : 'col-span-2 col-start-1 row-start-3 truncate lg:col-span-1 lg:col-start-2 lg:row-start-2',
           )}
           aria-hidden={latest.preview ? undefined : true}
         >

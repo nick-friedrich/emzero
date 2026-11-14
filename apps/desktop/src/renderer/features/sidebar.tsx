@@ -52,6 +52,14 @@ import {
   type MailboxSelection,
 } from './mail-common';
 
+/** Unified mailbox entries: a raised card when selected, muted text otherwise. */
+function navItemClass(active: boolean): string {
+  return cn(
+    'h-9 w-full shrink-0 justify-start gap-2.5 rounded-xl px-3 text-[13px]',
+    !active && 'text-muted-foreground hover:text-foreground',
+  );
+}
+
 type FolderDropTarget = {
   accountId: string;
   folderPath: string | null;
@@ -71,7 +79,6 @@ export function Sidebar({
   pinned,
   onPinnedChange,
   demoMode,
-  onDemoModeChange,
   className,
 }: {
   accounts: AccountSummary[];
@@ -86,7 +93,6 @@ export function Sidebar({
   pinned?: boolean;
   onPinnedChange?: (pinned: boolean) => void;
   demoMode: boolean;
-  onDemoModeChange: (enabled: boolean) => void;
   className?: string;
 }) {
   const [expanded, setExpanded] = useState(() => new Set<string>());
@@ -384,7 +390,7 @@ export function Sidebar({
     <>
       <aside
       className={cn(
-        'relative flex min-h-0 flex-col overflow-hidden border-r border-border bg-sidebar p-3',
+        'relative flex min-h-0 flex-col overflow-hidden bg-sidebar p-3 pr-2',
         className,
       )}
     >
@@ -393,14 +399,13 @@ export function Sidebar({
       )}
       <SidebarBrand
         demoMode={demoMode}
-        onDemoModeChange={onDemoModeChange}
         pinned={pinned}
         onPinnedChange={onPinnedChange}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         <Button
-          className="mb-3 h-9 w-full justify-start rounded-lg shadow-sm"
+          className="mb-3 h-10 w-full justify-start px-4 text-[13px]"
           disabled={accounts.length === 0}
           onClick={onCompose}
         >
@@ -409,8 +414,11 @@ export function Sidebar({
         </Button>
 
         <Button
-          variant={selection.kind === 'search' ? 'secondary' : 'ghost'}
-          className="mb-2 h-9 w-full justify-start rounded-lg bg-background/60 text-muted-foreground"
+          variant={selection.kind === 'search' ? 'raised' : 'ghost'}
+          className={cn(
+            'mb-3 h-9 w-full justify-start rounded-xl text-[13px] text-muted-foreground',
+            selection.kind !== 'search' && 'bg-secondary/70 hover:bg-secondary',
+          )}
           onClick={() => onSelect({ kind: 'search', query: '' })}
         >
           <Search className="size-4" />
@@ -420,10 +428,10 @@ export function Sidebar({
           </kbd>
         </Button>
 
-        <nav aria-label="Mailboxes" className="space-y-1">
+        <nav aria-label="Mailboxes" className="space-y-0.5">
         <Button
-          variant={selection.kind === 'unified' && (selection.mailbox ?? 'inbox') === 'inbox' ? 'secondary' : 'ghost'}
-          className="h-8 w-full shrink-0 justify-start rounded-lg text-[13px]"
+          variant={selection.kind === 'unified' && (selection.mailbox ?? 'inbox') === 'inbox' ? 'raised' : 'ghost'}
+          className={navItemClass(selection.kind === 'unified' && (selection.mailbox ?? 'inbox') === 'inbox')}
           onClick={() => onSelect({ kind: 'unified', mailbox: 'inbox' })}
         >
           <Inbox className="size-4" />
@@ -431,16 +439,16 @@ export function Sidebar({
           <UnreadBadge count={unifiedInboxUnread} />
         </Button>
         <Button
-          variant={selection.kind === 'unified' && selection.mailbox === 'starred' ? 'secondary' : 'ghost'}
-          className="h-8 w-full shrink-0 justify-start rounded-lg text-[13px]"
+          variant={selection.kind === 'unified' && selection.mailbox === 'starred' ? 'raised' : 'ghost'}
+          className={navItemClass(selection.kind === 'unified' && selection.mailbox === 'starred')}
           onClick={() => onSelect({ kind: 'unified', mailbox: 'starred' })}
         >
           <Star className="size-4" />
           Starred
         </Button>
         <Button
-          variant={selection.kind === 'unified' && selection.mailbox === 'drafts' ? 'secondary' : 'ghost'}
-          className="h-8 w-full shrink-0 justify-start rounded-lg text-[13px]"
+          variant={selection.kind === 'unified' && selection.mailbox === 'drafts' ? 'raised' : 'ghost'}
+          className={navItemClass(selection.kind === 'unified' && selection.mailbox === 'drafts')}
           onClick={() => onSelect({ kind: 'unified', mailbox: 'drafts' })}
         >
           <FileText className="size-4" />
@@ -448,8 +456,8 @@ export function Sidebar({
           <CountBadge count={unifiedDraftCount} label={unifiedDraftCount === 1 ? 'draft' : 'drafts'} />
         </Button>
         <Button
-          variant={selection.kind === 'unified' && selection.mailbox === 'trash' ? 'secondary' : 'ghost'}
-          className="h-8 w-full shrink-0 justify-start rounded-lg text-[13px]"
+          variant={selection.kind === 'unified' && selection.mailbox === 'trash' ? 'raised' : 'ghost'}
+          className={navItemClass(selection.kind === 'unified' && selection.mailbox === 'trash')}
           onClick={() => onSelect({ kind: 'unified', mailbox: 'trash' })}
         >
           <Trash2 className="size-4" />
@@ -467,9 +475,22 @@ export function Sidebar({
         />
         {accounts.length > 0 && (
           <div className="pt-4">
-            <p className="mb-2 px-3 text-[0.68rem] font-semibold uppercase tracking-wider text-muted-foreground">
-              Accounts
-            </p>
+            <div className="mb-1.5 flex items-center justify-between px-3">
+              <p className="text-[0.7rem] font-semibold tracking-wide text-muted-foreground">
+                Accounts
+              </p>
+              {!demoMode && (
+                <button
+                  type="button"
+                  className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                  aria-label="Add account"
+                  title="Add account"
+                  onClick={onAdd}
+                >
+                  <Plus className="size-3.5" />
+                </button>
+              )}
+            </div>
             {accounts.map((account) => {
               const isExpanded = expanded.has(account.id);
               const folderState = folderStates[account.id];
@@ -509,7 +530,7 @@ export function Sidebar({
                   >
                     <Button
                       variant="ghost"
-                      className="h-9 w-full cursor-grab justify-start gap-2 rounded-lg py-1 focus-visible:ring-inset active:cursor-grabbing"
+                      className="h-9 w-full cursor-grab justify-start gap-2.5 rounded-xl px-2.5 py-1 focus-visible:ring-inset active:cursor-grabbing"
                       aria-expanded={isExpanded}
                       draggable
                       title={`${account.email} · Drag to reorder account`}
@@ -524,26 +545,26 @@ export function Sidebar({
                       }}
                       onClick={() => toggleAccount(account)}
                     >
-                    {isExpanded ? (
-                      <ChevronDown className="size-3.5 text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="size-3.5 text-muted-foreground" />
-                    )}
-                    <span className={cn('grid size-5 shrink-0 place-items-center rounded-md text-[10px] font-semibold text-white', accountColorDotClass(account.color))}>
+                    <span className={cn('grid size-6 shrink-0 place-items-center rounded-full text-[10px] font-semibold text-white', accountColorDotClass(account.color))}>
                       {account.name.charAt(0).toUpperCase()}
                     </span>
                     <span className="min-w-0 flex-1 text-left">
-                      <span className="block truncate text-sm">{account.name}</span>
+                      <span className="block truncate text-[13px] font-semibold">{account.name}</span>
                       <span className="sr-only">
                         {account.email}
                       </span>
                     </span>
                     {!isExpanded && <UnreadBadge count={accountUnread} />}
+                    {isExpanded ? (
+                      <ChevronDown className="size-3.5 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="size-3.5 text-muted-foreground" />
+                    )}
                     </Button>
                   </div>
 
                   {isExpanded && (
-                    <div className="mb-2 ml-3 pl-1">
+                    <div className="mb-2 ml-[1.3rem] border-l border-border/70 pl-1.5">
                       {(!folderState || folderState.status === 'loading') && (
                         <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
                           <LoaderCircle className="size-3.5 animate-spin" />
@@ -579,7 +600,7 @@ export function Sidebar({
                             <div
                               key={folder.path}
                               className={cn(
-                                'group/folder relative flex rounded-md',
+                                'group/folder relative flex rounded-[0.6rem]',
                                 dropTarget?.accountId === account.id &&
                                   dropTarget.folderPath === folder.path &&
                                   dropTarget.mode === 'inside' && 'bg-primary/12 ring-1 ring-inset ring-primary/50',
@@ -647,8 +668,11 @@ export function Sidebar({
                                   : <ChevronDown className="size-3.5" />)}
                               </button>
                               <Button
-                                variant={isSelected ? 'secondary' : 'ghost'}
-                                className="h-7 min-w-0 flex-1 justify-start gap-1.5 rounded-md px-1 font-normal"
+                                variant={isSelected ? 'raised' : 'ghost'}
+                                className={cn(
+                                  'h-7 min-w-0 flex-1 justify-start gap-1.5 rounded-[0.6rem] px-1 font-normal',
+                                  !isSelected && 'text-muted-foreground hover:text-foreground',
+                                )}
                                 disabled={!folder.selectable}
                                 title={canManage ? `${folder.path} · drag to move` : folder.path}
                                 onClick={() => onSelect({ kind: 'folder', account, folder })}
@@ -667,7 +691,7 @@ export function Sidebar({
                                   : <UnreadBadge count={folder.unreadCount ?? 0} />}
                               </Button>
                               {canManage && (
-                                <div className="absolute right-1 top-0.5 flex bg-sidebar opacity-0 group-hover/folder:opacity-100 focus-within:opacity-100">
+                                <div className="absolute right-1 top-0.5 flex rounded-md bg-sidebar opacity-0 group-hover/folder:opacity-100 focus-within:opacity-100">
                                   <Button
                                     variant="ghost"
                                     className="size-6 px-0"
@@ -756,10 +780,7 @@ export function Sidebar({
       <SidebarFooter
         syncStatus={syncStatus}
         hasAccounts={accounts.length > 0}
-        demoMode={demoMode}
         onManage={onManage}
-        onAdd={onAdd}
-        onDemoModeChange={onDemoModeChange}
       />
       </aside>
       {folderEditor && (

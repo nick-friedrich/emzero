@@ -23,6 +23,11 @@
   --color-success: var(--success);
   --color-danger: var(--danger);
   --color-account: var(--account);
+  --color-ink: var(--ink);
+  --color-ink-foreground: var(--ink-foreground);
+  --color-shell: var(--shell);
+  --shadow-raised: var(--raised-shadow);
+  --shadow-panel: var(--panel-shadow);
 }
 
 :root {
@@ -244,10 +249,26 @@
   --account: #e4dcef;
 }
 
-* {
-  border-color: var(--border);
-  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 30%, transparent) transparent;
-  scrollbar-width: thin;
+/* Design language: every theme gets the same structure, derived from its own
+   tokens. Primary actions use the theme's text color ("ink"); the theme's
+   --primary stays the accent for unread markers, counts, and selection. */
+:root {
+  --ink: var(--foreground);
+  --ink-foreground: var(--card);
+  --shell: var(--sidebar);
+  --raised-shadow: 0 4px 12px -8px color-mix(in oklab, black 40%, transparent),
+    0 1px 2px color-mix(in oklab, black 6%, transparent);
+  --panel-shadow: 0 1px 2px color-mix(in oklab, black 5%, transparent),
+    0 12px 32px -20px color-mix(in oklab, black 30%, transparent);
+}
+
+/* In the base layer so border-color utilities (border-transparent, border-danger/20, …) win. */
+@layer base {
+  * {
+    border-color: var(--border);
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 30%, transparent) transparent;
+    scrollbar-width: thin;
+  }
 }
 
 *::-webkit-scrollbar {
@@ -340,14 +361,6 @@ body {
   transform: translateY(0);
 }
 
-@media (min-width: 64rem) {
-  main[data-sidebar-pinned="false"] .macos-content-header {
-    padding-top: 3rem;
-    padding-left: 1.5rem;
-    background: var(--background);
-  }
-}
-
 @media (max-width: 63.999rem) {
   .macos-content-header {
     position: relative;
@@ -371,26 +384,18 @@ body {
   padding-left: 6rem;
 }
 
-.emzero-logo {
-  position: relative;
-  display: inline-block;
-  isolation: isolate;
-  filter: drop-shadow(0 1px 1px color-mix(in oklab, var(--foreground) 18%, transparent));
-}
-
-.emzero-logo::after {
-  position: absolute;
-  inset: 0;
-  content: "";
-  pointer-events: none;
-  background: var(--primary);
-  mask: var(--emzero-logo-mask) center / contain no-repeat;
-  mix-blend-mode: color;
-  opacity: 0.82;
-}
-
 button {
   font-family: inherit;
+}
+
+/* Collapsed navigation rail: scrolls without a visible scrollbar and fades at its edges. */
+.rail-scroll {
+  scrollbar-width: none;
+  mask-image: linear-gradient(transparent, black 0.75rem, black calc(100% - 0.75rem), transparent);
+}
+
+.rail-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .mail-pane-header {

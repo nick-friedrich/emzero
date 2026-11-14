@@ -161,7 +161,7 @@ export function UnreadBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
     <span
-      className="ml-auto min-w-5 shrink-0 rounded-full bg-primary px-1.5 py-0.5 text-center text-[0.62rem] font-semibold tabular-nums leading-none text-primary-foreground"
+      className="ml-auto min-w-5 shrink-0 rounded-full bg-primary/15 px-1.5 py-[0.2rem] text-center text-[0.65rem] font-semibold tabular-nums leading-none text-primary"
       aria-label={`${count} unread ${count === 1 ? 'message' : 'messages'}`}
     >
       {count > 999 ? '999+' : count}
