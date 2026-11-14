@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties, type PointerEvent } from 'react';
 import { LoaderCircle, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -33,6 +33,7 @@ import {
 import { MessageList } from './features/message-list';
 import { OutgoingMailStatus } from './features/outgoing-mail-status';
 import { Sidebar } from './features/sidebar';
+import { SidebarRail } from './features/sidebar-rail';
 import { UnifiedInbox } from './features/unified-inbox';
 import { mailEventsChannel } from './mail-window';
 
@@ -65,8 +66,6 @@ export function App() {
   const [sidebarPinned, setSidebarPinned] = useState(
     () => window.localStorage.getItem(sidebarPinnedStorageKey) !== 'false',
   );
-  const [sidebarHoverOpen, setSidebarHoverOpen] = useState(false);
-  const sidebarCloseTimer = useRef<number | null>(null);
   const [mailLayout, setMailLayout] = useState<MailLayout>(
     () => window.localStorage.getItem(mailLayoutStorageKey) === 'split' ? 'split' : 'list',
   );
@@ -81,32 +80,11 @@ export function App() {
   const [draftDeletedEvent, setDraftDeletedEvent] = useState<DraftDeletedEvent | null>(null);
   const [bulkOperation, setBulkOperation] = useState<BulkOperationView | null>(null);
 
-  const keepSidebarOpen = () => {
-    if (sidebarCloseTimer.current !== null) {
-      window.clearTimeout(sidebarCloseTimer.current);
-      sidebarCloseTimer.current = null;
-    }
-    setSidebarHoverOpen(true);
-  };
-
-  const scheduleSidebarClose = () => {
-    if (sidebarCloseTimer.current !== null) window.clearTimeout(sidebarCloseTimer.current);
-    sidebarCloseTimer.current = window.setTimeout(() => {
-      setSidebarHoverOpen(false);
-      sidebarCloseTimer.current = null;
-    }, 250);
-  };
-
-  useEffect(() => () => {
-    if (sidebarCloseTimer.current !== null) window.clearTimeout(sidebarCloseTimer.current);
-  }, []);
-
   useEffect(() => {
     const toggleSidebar = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== 'b' || !(event.metaKey || event.ctrlKey)) return;
       event.preventDefault();
       setSidebarPinned((current) => !current);
-      setSidebarHoverOpen(false);
     };
     window.addEventListener('keydown', toggleSidebar);
     return () => window.removeEventListener('keydown', toggleSidebar);
@@ -334,61 +312,59 @@ export function App() {
 
   const isMac = window.emzero?.platform === 'darwin';
   const macTitleBarInset = isMac ? '!pt-12' : undefined;
-  const changeDemoMode = (enabled: boolean) => {
-    void window.emzero.demo.setEnabled(enabled);
-  };
   const openComposer = () => {
     if (composeOpen) return;
     setComposeRevision((current) => current + 1);
     setComposeOpen(true);
   };
+  const selectMailbox = (nextSelection: MailboxSelection) => {
+    setSelection(nextSelection);
+    setComposeOpen(false);
+    setShowSetup(false);
+  };
+  const reorderAccounts = async (accountIds: string[]): Promise<boolean> => {
+    const previous = accounts;
+    const byId = new Map(accounts.map((account) => [account.id, account]));
+    setAccounts(accountIds.flatMap((id) => byId.get(id) ?? []));
+    try {
+      const result = await window.emzero.accounts.reorder(accountIds);
+      if (!result.ok || !result.accounts) {
+        setAccounts(previous);
+        return false;
+      }
+      setAccounts(result.accounts);
+      return true;
+    } catch {
+      setAccounts(previous);
+      return false;
+    }
+  };
 
   return (
     <main
-      className="grid h-screen grid-cols-1 overflow-hidden bg-background text-foreground lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]"
+      className="relative grid h-screen grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden bg-shell text-foreground lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]"
       data-sidebar-pinned={sidebarPinned}
-      style={{ '--sidebar-width': sidebarPinned ? `${sidebarWidth}px` : '0.5rem' } as CSSProperties}
+      style={{ '--sidebar-width': sidebarPinned ? `${sidebarWidth}px` : '5rem' } as CSSProperties}
     >
-      {sidebarPinned && (
+      {isMac && (
+        <div className="macos-titlebar-drag absolute inset-x-0 top-0 hidden h-2 lg:block" aria-hidden="true" />
+      )}
+      {sidebarPinned ? (
         <div className="relative hidden min-h-0 min-w-0 lg:flex">
           <Sidebar
             key="mail-pinned"
-            className={cn('min-w-0 flex-1 border-r-0', macTitleBarInset)}
+            className={cn('min-w-0 flex-1', macTitleBarInset)}
             accounts={accounts}
             selection={selection}
             syncStatus={syncStatus}
             syncRevision={folderRevision}
             demoMode={demoMode}
-            onDemoModeChange={changeDemoMode}
             pinned
-            onPinnedChange={isMac ? undefined : (pinned) => {
-              setSidebarPinned(pinned);
-              setSidebarHoverOpen(!pinned);
-            }}
-            onSelect={(nextSelection) => {
-              setSelection(nextSelection);
-              setComposeOpen(false);
-              setShowSetup(false);
-            }}
+            onPinnedChange={setSidebarPinned}
+            onSelect={selectMailbox}
             onAdd={() => { setComposeOpen(false); setShowSetup(true); }}
             onManage={() => void window.emzero.openSettingsWindow()}
-            onReorder={async (accountIds) => {
-              const previous = accounts;
-              const byId = new Map(accounts.map((account) => [account.id, account]));
-              setAccounts(accountIds.flatMap((id) => byId.get(id) ?? []));
-              try {
-                const result = await window.emzero.accounts.reorder(accountIds);
-                if (!result.ok || !result.accounts) {
-                  setAccounts(previous);
-                  return false;
-                }
-                setAccounts(result.accounts);
-                return true;
-              } catch {
-                setAccounts(previous);
-                return false;
-              }
-            }}
+            onReorder={reorderAccounts}
             onCompose={openComposer}
           />
           <div
@@ -399,7 +375,7 @@ export function App() {
             aria-valuemin={minimumSidebarWidth}
             aria-valuemax={maximumSidebarWidth}
             aria-valuenow={sidebarWidth}
-            className="absolute inset-y-0 right-0 z-20 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-primary/35"
+            className="absolute inset-y-0 right-0 z-20 w-1.5 cursor-col-resize bg-transparent transition-colors hover:bg-primary/35"
             onPointerDown={startSidebarResize}
             onKeyDown={(event) => {
               if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
@@ -411,95 +387,19 @@ export function App() {
             }}
           />
         </div>
-      )}
-      {!sidebarPinned && (
-        <>
-          <button
-            type="button"
-            className="hidden min-h-0 w-full bg-background outline-none lg:block"
-            aria-label="Reveal navigation"
-            aria-expanded={sidebarHoverOpen}
-            title="Reveal navigation"
-            onMouseEnter={keepSidebarOpen}
-            onFocus={keepSidebarOpen}
-            onClick={keepSidebarOpen}
+      ) : (
+        <div className="hidden min-h-0 min-w-0 lg:block">
+          <SidebarRail
+            accounts={accounts}
+            selection={selection}
+            syncRevision={folderRevision}
+            syncStatus={syncStatus}
+            onSelect={selectMailbox}
+            onCompose={openComposer}
+            onExpand={() => setSidebarPinned(true)}
+            onManage={() => void window.emzero.openSettingsWindow()}
           />
-          <div
-            className={`fixed inset-y-0 left-0 z-50 hidden min-h-0 shadow-2xl transition-transform duration-200 ease-out lg:flex ${
-              sidebarHoverOpen ? 'translate-x-0' : '-translate-x-full'
-            }`}
-            style={{ width: sidebarWidth }}
-            inert={!sidebarHoverOpen}
-            onMouseEnter={keepSidebarOpen}
-            onMouseMove={keepSidebarOpen}
-            onMouseLeave={scheduleSidebarClose}
-            onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) {
-                setSidebarHoverOpen(false);
-              }
-            }}
-          >
-            <Sidebar
-              key="mail-hover"
-              className={cn('min-w-0 flex-1', macTitleBarInset)}
-              accounts={accounts}
-              selection={selection}
-              syncStatus={syncStatus}
-              syncRevision={folderRevision}
-              demoMode={demoMode}
-              onDemoModeChange={changeDemoMode}
-              pinned={false}
-              onPinnedChange={isMac ? undefined : (pinned) => {
-                setSidebarPinned(pinned);
-                setSidebarHoverOpen(false);
-              }}
-              onSelect={(nextSelection) => {
-                setSelection(nextSelection);
-                setComposeOpen(false);
-                setShowSetup(false);
-              }}
-              onAdd={() => { setComposeOpen(false); setShowSetup(true); }}
-              onManage={() => void window.emzero.openSettingsWindow()}
-              onReorder={async (accountIds) => {
-                  const previous = accounts;
-                const byId = new Map(accounts.map((account) => [account.id, account]));
-                setAccounts(accountIds.flatMap((id) => byId.get(id) ?? []));
-                try {
-                  const result = await window.emzero.accounts.reorder(accountIds);
-                  if (!result.ok || !result.accounts) {
-                    setAccounts(previous);
-                    return false;
-                  }
-                  setAccounts(result.accounts);
-                  return true;
-                } catch {
-                  setAccounts(previous);
-                  return false;
-                }
-              }}
-              onCompose={openComposer}
-            />
-            <div
-              role="separator"
-              tabIndex={0}
-              aria-label="Resize navigation"
-              aria-orientation="vertical"
-              aria-valuemin={minimumSidebarWidth}
-              aria-valuemax={maximumSidebarWidth}
-              aria-valuenow={sidebarWidth}
-              className="absolute inset-y-0 right-0 z-20 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-primary/35"
-              onPointerDown={startSidebarResize}
-              onKeyDown={(event) => {
-                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-                event.preventDefault();
-                setSidebarWidth((current) => Math.min(
-                  maximumSidebarWidth,
-                  Math.max(minimumSidebarWidth, current + (event.key === 'ArrowRight' ? 16 : -16)),
-                ));
-              }}
-            />
-          </div>
-        </>
+        </div>
       )}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetTrigger asChild>
@@ -528,7 +428,6 @@ export function App() {
             syncStatus={syncStatus}
             syncRevision={folderRevision}
             demoMode={demoMode}
-            onDemoModeChange={changeDemoMode}
             onSelect={(nextSelection) => {
               setSelection(nextSelection);
               setComposeOpen(false);
@@ -544,23 +443,7 @@ export function App() {
               void window.emzero.openSettingsWindow();
               setSidebarOpen(false);
             }}
-            onReorder={async (accountIds) => {
-              const previous = accounts;
-              const byId = new Map(accounts.map((account) => [account.id, account]));
-              setAccounts(accountIds.flatMap((id) => byId.get(id) ?? []));
-              try {
-                const result = await window.emzero.accounts.reorder(accountIds);
-                if (!result.ok || !result.accounts) {
-                  setAccounts(previous);
-                  return false;
-                }
-                setAccounts(result.accounts);
-                return true;
-              } catch {
-                setAccounts(previous);
-                return false;
-              }
-            }}
+            onReorder={reorderAccounts}
             onCompose={() => {
               openComposer();
               setSidebarOpen(false);
@@ -568,6 +451,7 @@ export function App() {
           />
         </SheetContent>
       </Sheet>
+      <div className="relative grid min-h-0 min-w-0 overflow-hidden bg-card lg:my-2 lg:mr-2 lg:rounded-[1.25rem] lg:border lg:border-border/70 lg:shadow-panel">
       {composeOpen && <ComposeDialog
         key={composeRevision}
         open={composeOpen}
@@ -657,6 +541,7 @@ export function App() {
           draftDeletedEvent={draftDeletedEvent}
         />
       )}
+      </div>
       {bulkOperation && (
         <BulkOperationBar
           operation={bulkOperation}

@@ -697,7 +697,7 @@ export function MessageList({
         window.emzero?.platform === 'darwin' && 'macos-content-header macos-titlebar-drag',
       )}>
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold tracking-tight">
+          <h1 className="truncate text-xl font-medium tracking-tight">
             {displayFolderName(selection.folder)}
           </h1>
           <p className="truncate text-xs text-muted-foreground">

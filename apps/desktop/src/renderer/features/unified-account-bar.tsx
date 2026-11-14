@@ -15,14 +15,14 @@ export function AccountFilterBar({
   onChange: (accountId: string | null) => void;
 }) {
   const chip = (active: boolean) => cn(
-    'flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+    'flex h-8 shrink-0 items-center gap-2 rounded-full px-3.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
     active
-      ? 'border-border bg-secondary font-medium text-foreground'
-      : 'border-transparent text-muted-foreground hover:bg-secondary/60 hover:text-foreground',
+      ? 'bg-secondary text-foreground'
+      : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground',
   );
   return (
     <div
-      className="flex min-w-0 items-center gap-1 overflow-x-auto border-b border-border/60 px-4 py-2 lg:px-6"
+      className="flex min-w-0 items-center gap-1 overflow-x-auto border-b border-border/60 px-3 py-2.5 lg:px-5"
       role="toolbar"
       aria-label="Filter by account"
     >

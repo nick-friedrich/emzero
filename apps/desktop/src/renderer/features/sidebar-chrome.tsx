@@ -1,58 +1,24 @@
-import { useRef, type CSSProperties } from 'react';
-import { LogOut, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Settings2 } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, RefreshCw, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import type { MailSyncStatus } from '../../shared/accounts';
-import emzeroLogoUrl from '../../../assets/emzero-logo-header.webp';
 import { messageDate } from './mail-common';
 
-/** Logo (five quick clicks toggle demo mode), app name, demo badge, and the pin toggle. */
+/** Demo badge and the collapse toggle. Demo mode itself is switched in Settings. */
 export function SidebarBrand({
   demoMode,
-  onDemoModeChange,
   pinned,
   onPinnedChange,
 }: {
   demoMode: boolean;
-  onDemoModeChange: (enabled: boolean) => void;
   pinned?: boolean;
   onPinnedChange?: (pinned: boolean) => void;
 }) {
-  const demoClickTimes = useRef<number[]>([]);
-  const logoStyle = {
-    '--emzero-logo-mask': `url("${emzeroLogoUrl}")`,
-  } as CSSProperties;
-
+  const showToggle = Boolean(onPinnedChange) && pinned !== undefined;
+  if (!demoMode && !showToggle) return null;
   return (
-    <div className="mb-5 flex shrink-0 items-center gap-2.5 px-2">
-      <button
-        type="button"
-        className="emzero-logo size-7 shrink-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        style={logoStyle}
-        aria-label="Emzero"
-        onClick={() => {
-          const now = Date.now();
-          const recentClicks = demoClickTimes.current.filter(
-            (clickedAt) => now - clickedAt < 2_000,
-          );
-          recentClicks.push(now);
-          demoClickTimes.current = recentClicks;
-          if (recentClicks.length >= 5) {
-            demoClickTimes.current = [];
-            onDemoModeChange(!demoMode);
-          }
-        }}
-      >
-        <img
-          src={emzeroLogoUrl}
-          alt=""
-          width={192}
-          height={192}
-          draggable={false}
-          className="size-full object-contain"
-        />
-      </button>
+    <div className="mb-3 flex shrink-0 items-center gap-2.5 px-1">
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <p className="font-semibold tracking-tight">Emzero</p>
         {demoMode && (
           <span
             className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
@@ -65,9 +31,9 @@ export function SidebarBrand({
       {onPinnedChange && pinned !== undefined && (
         <Button
           variant="ghost"
-          className="size-8 shrink-0 px-0"
-          aria-label={pinned ? 'Unpin navigation' : 'Pin navigation'}
-          title={pinned ? 'Unpin navigation' : 'Keep navigation open'}
+          className="size-8 shrink-0 px-0 text-muted-foreground hover:text-foreground"
+          aria-label={pinned ? 'Collapse sidebar' : 'Expand sidebar'}
+          title={`${pinned ? 'Collapse' : 'Expand'} sidebar (${window.emzero?.platform === 'darwin' ? '⌘B' : 'Ctrl+B'})`}
           onClick={() => onPinnedChange(!pinned)}
         >
           {pinned
@@ -79,70 +45,42 @@ export function SidebarBrand({
   );
 }
 
-/** Sync status, Settings, and Add account / Exit demo mode actions. */
+/** Sync and Settings, shared wording for the expanded sidebar and the collapsed rail. */
+export function syncStatusLabel(syncStatus: MailSyncStatus): string {
+  if (syncStatus.state === 'syncing') return 'Syncing mail';
+  if (syncStatus.state === 'error') return 'Sync needs attention';
+  return syncStatus.lastSyncedAt ? `Synced ${messageDate(syncStatus.lastSyncedAt)}` : 'Sync mail';
+}
+
+/** Sync now (with status) above Settings, matching the collapsed rail's footer. */
 export function SidebarFooter({
   syncStatus,
   hasAccounts,
-  demoMode,
   onManage,
-  onAdd,
-  onDemoModeChange,
 }: {
   syncStatus: MailSyncStatus;
   hasAccounts: boolean;
-  demoMode: boolean;
   onManage: () => void;
-  onAdd: () => void;
-  onDemoModeChange: (enabled: boolean) => void;
 }) {
+  const syncing = syncStatus.state === 'syncing';
+  const failed = syncStatus.state === 'error';
+  const row = 'h-9 w-full justify-start gap-2.5 rounded-xl px-3 text-[13px] text-muted-foreground hover:text-foreground';
   return (
-    <div className="mt-3 shrink-0 border-t border-border/60 pt-2">
+    <div className="mt-3 shrink-0 space-y-0.5 border-t border-border/60 pt-2">
       <Button
         variant="ghost"
-        className="mb-0.5 h-8 w-full justify-start text-xs text-muted-foreground"
-        disabled={syncStatus.state === 'syncing' || !hasAccounts}
-        title={syncStatus.message}
+        className={cn(row, failed && 'text-danger hover:text-danger')}
+        disabled={syncing || !hasAccounts}
+        title={syncStatus.message ?? 'Sync all accounts now'}
         onClick={() => void window.emzero.sync.now()}
       >
-        <RefreshCw
-          className={`size-4 ${syncStatus.state === 'syncing' ? 'animate-spin' : ''}`}
-        />
-        {syncStatus.state === 'syncing'
-          ? 'Syncing mail'
-          : syncStatus.state === 'error'
-            ? 'Sync needs attention'
-            : syncStatus.lastSyncedAt
-              ? `Synced ${messageDate(syncStatus.lastSyncedAt)}`
-              : 'Sync mail'}
+        <RefreshCw className={cn('size-4', syncing && 'animate-spin')} />
+        <span className="min-w-0 flex-1 truncate text-left">{syncStatusLabel(syncStatus)}</span>
       </Button>
-      <Button
-        variant="ghost"
-        className="mb-0.5 h-8 w-full justify-start text-xs text-muted-foreground"
-        onClick={onManage}
-      >
+      <Button variant="ghost" className={row} onClick={onManage}>
         <Settings2 className="size-4" />
         Settings
       </Button>
-      {demoMode ? (
-        <Button
-          variant="ghost"
-          className="h-8 w-full justify-start text-xs text-muted-foreground"
-          title="Restart Emzero with your own accounts"
-          onClick={() => onDemoModeChange(false)}
-        >
-          <LogOut className="size-4" />
-          Exit demo mode
-        </Button>
-      ) : (
-        <Button
-          variant="ghost"
-          className="h-8 w-full justify-start text-xs text-muted-foreground"
-          onClick={onAdd}
-        >
-          <Plus className="size-4" />
-          Add account
-        </Button>
-      )}
     </div>
   );
 }
