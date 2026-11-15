@@ -39,6 +39,7 @@ import {
 } from '@/lib/utils';
 import {
   messageThemeColors,
+  themeColorSchemes,
   type Theme,
 } from '@/theme';
 import {
@@ -345,14 +346,28 @@ export function htmlDocument(
   showQuoted: boolean,
   theme: Theme,
   loadRemoteImages = false,
+  originalColors = false,
 ): string {
   const quotedStyle = showQuoted
     ? ''
     : 'blockquote,.gmail_quote,.yahoo_quoted,.moz-cite-prefix,#divRplyFwdMsg{display:none!important}';
   const colors = messageThemeColors[theme];
+  const colorScheme = originalColors ? 'light' : themeColorSchemes[theme];
+  const background = originalColors ? '#fff' : 'transparent';
+  const foreground = originalColors ? '#202124' : colors.foreground;
+  // Reset sender colors together so fixed white panels and dark text cannot clash
+  // with the app theme. Original colors remain available for branded messages.
+  const themeStyle = originalColors ? ''
+    : `body,body *{color:${colors.foreground}!important;background-color:transparent!important;background-image:none!important;-webkit-text-fill-color:currentColor!important}body a,body a *{color:${colors.primary}!important}`;
+  // Sanitized attributes are double-quoted. Remove inline priority so the
+  // theme rules also win over sender declarations marked !important.
+  const themedBody = originalColors ? body : body.replace(
+    /(<[^>]*\sstyle=")([^"]*)"/gi,
+    (_match, prefix: string, style: string) => `${prefix}${style.replace(/!\s*important/gi, '')}"`,
+  );
   const imageSources = loadRemoteImages ? 'data: http: https:' : 'data:';
   const linkRelay = `<script>${htmlFrameScript}</script>`;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${imageSources}; style-src 'unsafe-inline'; script-src '${htmlFrameScriptHash}';"><style>html{color-scheme:light;background:#fff;overflow:hidden}body{display:flow-root;box-sizing:border-box;margin:0;padding:0;color:#202124;background:#fff;font:14px/1.55 Arial,Helvetica,sans-serif;overflow-wrap:anywhere}a{color:${colors.primary}}img{max-width:100%;height:auto}table{max-width:100%}${quotedStyle}</style></head><body>${linkifyHtml(body)}${linkRelay}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="${colorScheme}"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${imageSources}; style-src 'unsafe-inline'; script-src '${htmlFrameScriptHash}';"><style>html{color-scheme:${colorScheme};background:${background};overflow:hidden}body{display:flow-root;box-sizing:border-box;margin:0;padding:0;color:${foreground};background:${background};font:14px/1.55 Arial,Helvetica,sans-serif;overflow-wrap:anywhere}a{color:${originalColors ? '#316dcc' : colors.primary}}${themeStyle}img{max-width:100%;height:auto}table{max-width:100%}${quotedStyle}</style></head><body>${linkifyHtml(themedBody)}${linkRelay}</body></html>`;
 }
 
 export function messageDate(value: string | null): string {

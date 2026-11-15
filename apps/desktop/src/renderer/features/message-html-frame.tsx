@@ -36,6 +36,6 @@ export function MessageHtmlFrame({ document, onOpenLink }: {
 
   return <iframe ref={frame} title="Email content" sandbox="allow-scripts"
     referrerPolicy="no-referrer" scrolling="no"
-    className="mt-4 block w-full border-0 bg-white"
+    className="mt-4 block w-full border-0 bg-transparent"
     style={{ height }} srcDoc={document} />;
 }

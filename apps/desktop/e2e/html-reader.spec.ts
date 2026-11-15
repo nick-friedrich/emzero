@@ -33,7 +33,7 @@ test('HTML mail grows with content and uses only the reader scrollbar', async ()
         'messages:list': () => ({ ok: true, messages: [message], total: 1 }),
         'messages:get': () => ({ ok: true, messageDetail: { ...message, cc: [], replyTo: [],
           text: 'Plain text version of the newsletter.', htmlHasQuotedText: true, attachments: [],
-          html: `<div style="height:1400px;background:#f5f6f8;padding:20px"><h2>Newsletter</h2><p>A long message should flow through the reader.</p></div>
+          html: `<div style="height:1400px;background:#f5f6f8!important;color:#000!important;padding:20px"><h2>Newsletter</h2><p>A long message should flow through the reader.</p></div>
             <img src="https://images.example.test/banner.png" alt="Blocked remote image">
             <blockquote style="height:400px">An older quoted message</blockquote>
             <a href="https://example.test/article">Read the article</a>
@@ -81,6 +81,20 @@ test('HTML mail grows with content and uses only the reader scrollbar', async ()
       }));
       await button.click();
     };
+    // Theme colors override even inline sender colors; the fallback restores them.
+    await page.evaluate(() => window.localStorage.setItem('emzero-theme', 'catppuccin'));
+    await page.reload();
+    await page.getByRole('button', { name: /Newsletter.*A long HTML newsletter/ }).click();
+    await expect(frame.locator('body > div').first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(frame.getByRole('heading', { name: 'Newsletter' })).toHaveCSS('color', 'rgb(205, 214, 244)');
+    await clickReaderButton('Original colors');
+    await expect(page.getByRole('button', { name: 'Original colors', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(frame.locator('body')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect(frame.locator('body > div').first()).toHaveCSS('background-color', 'rgb(245, 246, 248)');
+    await expect(frame.getByRole('heading', { name: 'Newsletter' })).toHaveCSS('color', 'rgb(0, 0, 0)');
+    await expect(page.getByRole('button', { name: 'Load images', exact: true })).toBeVisible();
+    await clickReaderButton('Original colors');
+    await expect(frame.getByRole('heading', { name: 'Newsletter' })).toHaveCSS('color', 'rgb(205, 214, 244)');
     await clickReaderButton('Show quoted text');
     await expect(page.getByRole('button', { name: 'Hide quoted text', exact: true })).toBeVisible();
     await expect(frame.getByText('An older quoted message')).toBeVisible();

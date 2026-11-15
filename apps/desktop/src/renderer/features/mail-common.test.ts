@@ -56,6 +56,28 @@ describe('HTML email documents', () => {
     expect(hasRemoteImages('<img src="data:image/png;base64,AA==">')).toBe(false);
   });
 
+  it('applies theme colors over sender colors by default', () => {
+    const document = htmlDocument('<div style="background:#fff!important;color:#000 !important">Mail</div>', false, 'catppuccin');
+    expect(document).toContain('body,body *{color:#cdd6f4!important;background-color:transparent!important');
+    expect(document).toContain('background-image:none!important');
+    expect(document).toContain('body a,body a *{color:#cba6f7!important}');
+    expect(document).toContain('content="dark"');
+    expect(document).toContain('<div style="background:#fff;color:#000 ">Mail</div>');
+  });
+
+  it('restores sender colors on a light surface without changing privacy or quote controls', () => {
+    const body = '<div style="background:#fff;color:#000">Mail</div>';
+    const document = htmlDocument(body, false, 'catppuccin', false, true);
+    expect(document).toContain(body);
+    expect(document).toContain('color-scheme:light;background:#fff');
+    expect(document).toContain('color:#202124;background:#fff');
+    expect(document).not.toContain('body,body *');
+    expect(document).toContain('a{color:#316dcc}');
+    expect(document).toContain('img-src data:;');
+    expect(document).toContain('display:none!important');
+    expect(document).toContain(`script-src '${htmlFrameScriptHash}'`);
+  });
+
   it('blocks remote images until the user opts in', () => {
     const blocked = htmlDocument('<img src="https://images.example/banner.png">', false, 'catppuccin');
     const allowed = htmlDocument(
@@ -68,8 +90,8 @@ describe('HTML email documents', () => {
     expect(blocked).toContain("img-src data:");
     expect(blocked).not.toContain("img-src data: http: https:");
     expect(allowed).toContain("img-src data: http: https:");
-    expect(blocked).toContain('color-scheme:light');
-    expect(blocked).toContain('background:#fff');
+    expect(blocked).toContain('color-scheme:dark');
+    expect(blocked).toContain('background:transparent');
     expect(blocked).toContain("type:'emzero:open-link'");
     expect(blocked).toContain(`script-src '${htmlFrameScriptHash}'`);
   });

@@ -90,6 +90,7 @@ function MessageBody({
 }) {
   const { theme, alwaysLoadRemoteImages } = useTheme();
   const [view, setView] = useState<'html' | 'text'>('html');
+  const [originalColorsFor, setOriginalColorsFor] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [showQuoted, setShowQuoted] = useState(false);
   const [remoteImagesLoadedFor, setRemoteImagesLoadedFor] = useState<string | null>(null);
@@ -100,12 +101,13 @@ function MessageBody({
   const textParts = splitQuotedText(message.text);
   const hasQuotedText = view === 'html' ? message.htmlHasQuotedText : Boolean(textParts.quoted);
   const messageKey = `${accountId}\0${folderPath}\0${message.uid}`;
+  const originalColors = originalColorsFor === messageKey;
   const loadRemoteImages = alwaysLoadRemoteImages || remoteImagesLoadedFor === messageKey;
   const remoteImagesBlocked = Boolean(message.html && hasRemoteImages(message.html) && !loadRemoteImages);
 
   return (
     <>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button
           variant="ghost"
           className="h-8 px-2 text-xs text-muted-foreground"
@@ -116,7 +118,18 @@ function MessageBody({
           Details
         </Button>
         {message.html && (
-          <div className="flex gap-1" aria-label="Message format">
+          <div className="flex flex-wrap gap-1" aria-label="Message format">
+            {view === 'html' && (
+              <Button
+                variant={originalColors ? 'secondary' : 'ghost'}
+                className="h-8 px-3 text-xs"
+                aria-pressed={originalColors}
+                title="Use the sender’s original colors if this email is hard to read"
+                onClick={() => setOriginalColorsFor(originalColors ? null : messageKey)}
+              >
+                Original colors
+              </Button>
+            )}
             <Button
               variant={view === 'html' ? 'secondary' : 'ghost'}
               className="h-8 px-3 text-xs"
@@ -163,7 +176,7 @@ function MessageBody({
             </div>
           )}
           <MessageHtmlFrame
-            document={htmlDocument(message.html, showQuoted, theme, loadRemoteImages)}
+            document={htmlDocument(message.html, showQuoted, theme, loadRemoteImages, originalColors)}
             onOpenLink={setPendingLink}
           />
         </>

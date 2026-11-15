@@ -135,7 +135,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/unified-account-bar.tsx` — unified-inbox account filter chips and per-account failure/notice banners.
 - `features/account-colors.tsx` — account color palette classes, the hover-labelled account dot shown on unified-inbox avatars, and the settings color picker.
 - `features/conversation-actions.tsx` — per-conversation inline read/delete buttons and the conversation-actions modal (opened from the "More" button or by right-clicking a list row) with star, important/due date, color, archive, move, and delete, plus their follow-up dialogs.
-- `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: selection toolbar, replied-last detection and badge, and mail-view types/helpers.
+- `features/mail-common.tsx` — shared mail-list building blocks used by folder, unified, and search views: selection toolbar, replied-last detection and badge, themed HTML-email document generation with original-color fallback, and mail-view types/helpers.
 - `features/inbox-view-options.tsx` — persisted icon filters (unread, starred, due — due sorts soonest/overdue first), Starred/Unread inbox grouping and ordering, and persisted collapsed sections shared by account and unified inboxes.
 - `features/mail-view-menu.tsx` — accessible dismissible popover for secondary mailbox layout and filter controls, shared by account, unified, and search headers.
 - `features/mail-split-layout.tsx` — persisted, pointer- and keyboard-resizable list/reader layout shared by three-column mail views, and the empty reader placeholder.
@@ -143,7 +143,7 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/reader-selection.test.ts` — renderer tests for post-delete reader selection.
 - `features/mail-common.test.ts` — renderer tests for isolated HTML-email document generation, remote-image privacy controls, and replied-conversation detection.
 - `features/message-move.tsx` — account-and-folder destination picker for single and bulk message moves.
-- `features/conversation-reader.tsx` — conversation reader, message body/thread cards, Copy conversation / Save as PDF actions, received-attachment saving, quoted-content display, and reply entry points.
+- `features/conversation-reader.tsx` — conversation reader, message body/thread cards, Copy conversation / Save as PDF actions, received-attachment saving, quoted-content display, per-message original-color fallback, and reply entry points.
 - `features/linkified-text.tsx` — http(s)/`www.` URL detection in plain-text message bodies, rendered as links that go through the reader's open-link confirmation, and the same wrapping of bare URLs in sanitized HTML-email text (outside existing `<a>`), applied by `htmlDocument`.
 - `features/linkified-text.test.ts` — renderer tests for plain-text and HTML URL detection and trailing-punctuation trimming.
 - `features/message-html-frame.tsx` — isolated HTML-email frame that reports content height for a single reader scrollbar, validates frame messages, and owns the CSP-authorized resize/link relay.
