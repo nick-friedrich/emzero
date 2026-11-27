@@ -46,6 +46,7 @@ import { ConversationRow, conversationRowFacts, ConversationSections } from './c
 import { optimisticPatches, patchConversation, type MessagePatches } from './conversation-patches';
 import { useListSelection, useReadToggleShortcut } from './list-selection';
 import {
+  conversationTime,
   loadUnifiedAccount,
   unifiedInboxState,
   unifiedItemKey as itemKey,
@@ -55,7 +56,7 @@ import {
   type UnifiedMailbox,
 } from './unified-inbox-data';
 import { MailReaderPlaceholder, MailSplitLayout } from './mail-split-layout';
-import { readerSelectionAfterRemoval } from './reader-selection';
+import { readerSelectionAfterRemoval, withReadingOrder } from './reader-selection';
 import { ConversationReader } from './conversation-reader';
 import type { DraftDeletedEvent, DraftSavedEvent } from './compose-dialog';
 import { useMessagePrefetch } from './message-prefetch';
@@ -139,7 +140,7 @@ export function UnifiedInbox({
   if (stableAccounts.key !== accountsKey) setStableAccounts({ key: accountsKey, accounts });
   const loadAccounts = stableAccounts.accounts;
   const [selectedItem, setSelectedItem] = useState<UnifiedConversationItem | null>(null);
-  const [readingOrderKeys, setReadingOrderKeys] = useState<readonly string[] | null>(null);
+  const [readingOrder, setReadingOrder] = useState<ReadonlyMap<string, number> | null>(null);
   const [readingGroups, setReadingGroups] = useState<ReadonlyMap<string, InboxGroup> | null>(null);
   const unreadReadingQueue = useRef<readonly string[] | null>(null);
   const pendingActions = useRef(new Set<string>());
@@ -287,19 +288,17 @@ export function UnifiedInbox({
   );
   const orderedItems = useMemo(() => {
     let ordered = visibleItems;
-    if (selectedItem && readingOrderKeys && state.status === 'loaded') {
-      const byKey = new Map(state.items.map((item) => [itemKey(item), item]));
-      const pinnedKeys = new Set(readingOrderKeys);
-      ordered = [
-        ...readingOrderKeys.flatMap((key) => {
-          const item = byKey.get(key);
-          return item ? [item] : [];
-        }),
-        ...visibleItems.filter((item) => !pinnedKeys.has(itemKey(item))),
-      ];
+    if (selectedItem && readingOrder && state.status === 'loaded') {
+      ordered = withReadingOrder({
+        captured: readingOrder,
+        current: state.items,
+        visible: visibleItems,
+        keyOf: itemKey,
+        timeOf: (item) => conversationTime(item.conversation),
+      });
     }
     return mailbox === 'inbox' ? sortByInboxGroup(ordered, groupOf) : ordered;
-  }, [groupOf, mailbox, readingOrderKeys, selectedItem, state, visibleItems]);
+  }, [groupOf, mailbox, readingOrder, selectedItem, state, visibleItems]);
   const groupCounts = useMemo(
     () => mailbox === 'inbox' ? countByInboxGroup(orderedItems, groupOf) : null,
     [groupOf, mailbox, orderedItems],
@@ -637,7 +636,7 @@ export function UnifiedInbox({
         onBack={() => {
           unreadReadingQueue.current = null;
           setReadingGroups(null);
-          setReadingOrderKeys(null);
+          setReadingOrder(null);
           setSelectedItem(null);
         }}
         navigationVariant={mailLayout === 'split' ? 'close' : 'back'}
@@ -912,7 +911,10 @@ export function UnifiedInbox({
                           ))
                           .map((candidate) => itemKey(candidate))
                       : null;
-                    setReadingOrderKeys(orderedItems.map((candidate) => itemKey(candidate)));
+                    setReadingOrder(new Map(orderedItems.map((candidate) => [
+                      itemKey(candidate),
+                      conversationTime(candidate.conversation),
+                    ])));
                     setReadingGroups(mailbox === 'inbox'
                       ? new Map(orderedItems.map((candidate) => [itemKey(candidate), groupOf(candidate)]))
                       : null);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readerSelectionAfterRemoval } from './reader-selection';
+import { readerSelectionAfterRemoval, withReadingOrder } from './reader-selection';
 
 interface Row {
   id: string;
@@ -59,5 +59,40 @@ describe('readerSelectionAfterRemoval', () => {
       selectNext: false,
       next: second,
     })).toBeNull();
+  });
+});
+
+describe('withReadingOrder', () => {
+  interface Timed {
+    id: string;
+    time: number;
+  }
+  const order = (captured: Timed[], current: Timed[], visible = current) =>
+    withReadingOrder({
+      captured: new Map(captured.map((item) => [item.id, item.time])),
+      current,
+      visible,
+      keyOf: (item) => item.id,
+      timeOf: (item) => item.time,
+    }).map((item) => item.id);
+
+  it('merges a newly arrived conversation by date instead of appending it', () => {
+    const older = { id: 'older', time: 10 };
+    const old = { id: 'old', time: 5 };
+    const arrived = { id: 'arrived', time: 20 };
+    expect(order([older, old], [arrived, older, old])).toEqual(['arrived', 'older', 'old']);
+  });
+
+  it('keeps captured rows in place while reading', () => {
+    // A row the live sort or filters would move or hide stays where it was.
+    const read = { id: 'read', time: 10 };
+    const other = { id: 'other', time: 5 };
+    expect(order([read, other], [read, other], [other])).toEqual(['read', 'other']);
+  });
+
+  it('moves a conversation that got a newer message since it was captured', () => {
+    const top = { id: 'top', time: 10 };
+    const replied = { id: 'replied', time: 30 };
+    expect(order([top, { id: 'replied', time: 5 }], [replied, top])).toEqual(['replied', 'top']);
   });
 });

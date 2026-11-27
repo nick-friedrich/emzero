@@ -139,8 +139,8 @@ Shared modules must remain usable by both Electron and renderer code; do not imp
 - `features/inbox-view-options.tsx` — persisted icon filters (unread, starred, due — due sorts soonest/overdue first), Starred/Unread inbox grouping and ordering, and persisted collapsed sections shared by account and unified inboxes.
 - `features/mail-view-menu.tsx` — accessible dismissible popover for secondary mailbox layout and filter controls, shared by account, unified, and search headers.
 - `features/mail-split-layout.tsx` — persisted, pointer- and keyboard-resizable list/reader layout shared by three-column mail views, and the empty reader placeholder.
-- `features/reader-selection.ts` — decides which conversation the reader keeps after a delete or move, so unopened rows are never opened (and auto-marked read) behind the user.
-- `features/reader-selection.test.ts` — renderer tests for post-delete reader selection.
+- `features/reader-selection.ts` — decides which conversation the reader keeps after a delete or move, so unopened rows are never opened (and auto-marked read) behind the user, and keeps the list order frozen while reading while merging newly arrived or newly replied conversations in by date.
+- `features/reader-selection.test.ts` — renderer tests for post-delete reader selection and the frozen reading order.
 - `features/mail-common.test.ts` — renderer tests for isolated HTML-email document generation, remote-image privacy controls, and replied-conversation detection.
 - `features/message-move.tsx` — account-and-folder destination picker for single and bulk message moves.
 - `features/conversation-reader.tsx` — conversation reader, message body/thread cards, Copy conversation / Save as PDF actions, received-attachment saving, quoted-content display, per-message original-color fallback, and reply entry points.

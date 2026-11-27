@@ -24,3 +24,45 @@ export function readerSelectionAfterRemoval<T>({
   if (!current || keyOf(current) !== removedKey) return current;
   return selectNext ? (next ?? null) : null;
 }
+
+/**
+ * Keeps the list order captured when a conversation was opened, so rows do not
+ * jump while the user reads, and merges in conversations that arrived or got a
+ * newer message since by date instead of leaving them below everything else.
+ *
+ * `captured` maps each key, in captured order, to its time when captured.
+ * `current` holds every loaded item (including ones the live filters now hide,
+ * which stay put while reading); `visible` is the live list, newest first.
+ */
+export function withReadingOrder<T>({
+  captured,
+  current,
+  visible,
+  keyOf,
+  timeOf,
+}: {
+  captured: ReadonlyMap<string, number>;
+  current: readonly T[];
+  visible: readonly T[];
+  keyOf: (item: T) => string;
+  timeOf: (item: T) => number;
+}): T[] {
+  const byKey = new Map(current.map((item) => [keyOf(item), item]));
+  const pinned = [...captured].flatMap(([key, time]) => {
+    const item = byKey.get(key);
+    return item && timeOf(item) <= time ? [item] : [];
+  });
+  const pinnedKeys = new Set(pinned.map(keyOf));
+  const arrived = visible.filter((item) => !pinnedKeys.has(keyOf(item)));
+  const merged: T[] = [];
+  let pinnedIndex = 0;
+  let arrivedIndex = 0;
+  while (pinnedIndex < pinned.length && arrivedIndex < arrived.length) {
+    merged.push(
+      timeOf(arrived[arrivedIndex]) > timeOf(pinned[pinnedIndex])
+        ? arrived[arrivedIndex++]
+        : pinned[pinnedIndex++],
+    );
+  }
+  return [...merged, ...pinned.slice(pinnedIndex), ...arrived.slice(arrivedIndex)];
+}
